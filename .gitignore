@@ -1,0 +1,97 @@
+# Dependencies
+node_modules/
+project_context
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime files
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build folders
+dist/
+build/
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite
+.vite/
+
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+# PostgreSQL dumps
+*.sql
+*.dump
+*.bak
+
+# Docker
+.docker/
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JetBrains
+.idea/
+
+# Linux
+*~
+.directory
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+tmp/
+temp/
+
+# Uploads
+uploads/
+public/uploads/
+
+# Generated docs
+*.pdf
+*.png
+
+# Testing
+playwright-report/
+test-results/
+
+# Cache
+.cache/
+.eslintcache
+
+# Secrets
+secrets/
+credentials/
+service-account.json
+
+# Azure
+.azure/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
