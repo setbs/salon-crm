@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-project_context
+project_context.md 
 # Logs
 logs/
 *.log

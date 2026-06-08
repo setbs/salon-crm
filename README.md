@@ -189,18 +189,54 @@ crm-salon/
 * Use Case Diagrams
 * Activity Diagrams
 * Initial API Design
+* Initial PostgreSQL/Prisma schema
+* Guest appointment booking MVP skeleton
 
 ### In Progress
 
-* Backend architecture
-* API implementation
+* Backend API implementation
+* Frontend booking flow
 
 ### Planned
 
-* Frontend implementation
+* Authentication and role-based dashboards
+* Admin calendar management
 * Docker deployment
 * Azure deployment
 * Production testing
+
+---
+
+## Local Development
+
+### Prerequisites
+
+* Node.js 22+
+* Docker
+* Docker Compose
+
+### Setup
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+npm install
+npm run db:up
+npm run prisma:migrate
+npm run prisma:seed
+npm run dev
+```
+
+The frontend runs on `http://localhost:5173`.
+The backend API runs on `http://localhost:4000`.
+
+### Useful Commands
+
+```bash
+npm run typecheck
+npm run build
+npm run db:down
+```
 
 ---
 
