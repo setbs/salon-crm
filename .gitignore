@@ -38,6 +38,8 @@ prisma/dev.db-journal
 
 # PostgreSQL dumps
 *.sql
+!docs/ERD.sql
+!backend/prisma/migrations/**/*.sql
 *.dump
 *.bak
 

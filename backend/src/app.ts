@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { env } from "./config/env.js";
+import { adminRouter } from "./modules/admin/admin.routes.js";
 import { bookingRouter } from "./modules/booking/booking.routes.js";
 import { catalogRouter } from "./modules/catalog/catalog.routes.js";
 import { HttpError } from "./utils/http-error.js";
@@ -17,6 +18,7 @@ app.get("/api/health", (_request, response) => {
 
 app.use("/api", catalogRouter);
 app.use("/api", bookingRouter);
+app.use("/api", adminRouter);
 
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   if (error instanceof z.ZodError) {

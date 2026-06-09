@@ -17,7 +17,8 @@ if (Admin wants to create an appointment?) then (Yes)
   :Select an available slot;
   :Confirm booking;
   :System creates appointment;
-  :System sends notification to client;
+  :System sends email notification to client;
+  :System logs notification attempt;
 
 else (No)
   if (Admin wants to modify an appointment?) then (Yes)
@@ -25,7 +26,8 @@ else (No)
     :Change time / services / status / comment;
     :Save changes;
     :System updates appointment;
-    :System sends notification to client;
+    :System sends email notification to client;
+    :System logs notification attempt;
 
   else (No)
     if (Admin wants to cancel an appointment?) then (Yes)
@@ -33,7 +35,8 @@ else (No)
       :Specify cancellation reason;
       :Confirm cancellation;
       :System changes status to cancelled;
-      :System sends notification to client;
+      :System sends email notification to client;
+      :System logs notification attempt;
     else (No)
       :View calendar without changes;
     endif

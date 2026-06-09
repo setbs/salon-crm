@@ -32,7 +32,9 @@ if (Are slots available?) then (Yes)
 
   :Create appointment in the system;
   :Assign services to appointment;
-  :Send notification to client;
+  :Send email notification to client;
+  :Log notification attempt;
+  :Schedule 24h and 2h reminders;
   :Show booking success page;
 
 else (No)

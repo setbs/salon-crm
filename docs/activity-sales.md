@@ -30,6 +30,8 @@ if (Product found?) then (Yes)
     :Create sale items;
     :Deduct product stock;
     :Log inventory movement;
+    :Make sale available for analytics;
+    :Make sale available for CSV reports;
 
     if (Stock below minimum?) then (Yes)
       :Show low stock\nwarning;

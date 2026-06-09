@@ -5,6 +5,14 @@ export async function getServices() {
 
   return services.map((service) => ({
     id: service.id.toString(),
+    categoryId: service.categoryId?.toString() ?? null,
+    category: service.categoryId
+      ? {
+          id: service.categoryId.toString(),
+          name: service.categoryName ?? "Інші послуги",
+          description: service.categoryDescription
+        }
+      : null,
     name: service.name,
     description: service.description,
     durationMinutes: service.durationMinutes,
@@ -23,7 +31,9 @@ export async function getEmployees(serviceIds: bigint[]) {
     description: employee.description,
     services: employee.services.map(({ service }) => ({
       id: service.id.toString(),
-      name: service.name
+      name: service.name,
+      categoryId: null,
+      category: null
     }))
   }));
 }
