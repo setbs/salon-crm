@@ -1,9 +1,10 @@
 import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 
-export function countTodayAppointments(dayStart: Date, dayEnd: Date) {
+export function countTodayAppointments(dayStart: Date, dayEnd: Date, employeeId?: bigint) {
   return prisma.appointment.count({
     where: {
+      employeeId,
       startTime: {
         gte: dayStart,
         lt: dayEnd
@@ -12,7 +13,7 @@ export function countTodayAppointments(dayStart: Date, dayEnd: Date) {
   });
 }
 
-export function sumTodayPaidRevenue(dayStart: Date, dayEnd: Date) {
+export function sumTodayPaidRevenue(dayStart: Date, dayEnd: Date, employeeId?: bigint) {
   return prisma.payment.aggregate({
     _sum: { amount: true },
     where: {
@@ -20,14 +21,20 @@ export function sumTodayPaidRevenue(dayStart: Date, dayEnd: Date) {
       paidAt: {
         gte: dayStart,
         lt: dayEnd
-      }
+      },
+      ...(employeeId
+        ? {
+            OR: [{ appointment: { employeeId } }, { productSale: { employeeId } }]
+          }
+        : {})
     }
   });
 }
 
-export function findNextAppointment(now: Date) {
+export function findNextAppointment(now: Date, employeeId?: bigint) {
   return prisma.appointment.findFirst({
     where: {
+      employeeId,
       startTime: { gte: now },
       status: { not: AppointmentStatus.CANCELLED }
     },
@@ -45,17 +52,19 @@ export function countLowStockProducts() {
   });
 }
 
-export function listAppointments() {
+export function listAppointments(employeeId?: bigint) {
   return prisma.appointment.findMany({
+    where: { employeeId },
     include: appointmentInclude,
     orderBy: { startTime: "asc" }
   });
 }
 
-export function listClients(search?: string) {
+export function listClients(search?: string, employeeId?: bigint) {
   return prisma.user.findMany({
     where: {
       role: "CLIENT",
+      ...(employeeId ? { clientAppointments: { some: { employeeId } } } : {}),
       ...(search
         ? {
             OR: [
@@ -106,8 +115,9 @@ export function listServiceCategories() {
   `;
 }
 
-export function listEmployees() {
+export function listEmployees(employeeId?: bigint) {
   return prisma.employee.findMany({
+    where: { id: employeeId },
     include: {
       user: true,
       workingHours: { orderBy: { dayOfWeek: "asc" } },
@@ -117,8 +127,9 @@ export function listEmployees() {
   });
 }
 
-export function listPortfolio() {
+export function listPortfolio(employeeId?: bigint) {
   return prisma.portfolioPhoto.findMany({
+    where: { employeeId },
     include: { employee: { include: { user: true } } },
     orderBy: { createdAt: "desc" }
   });
@@ -134,8 +145,9 @@ export function listProducts() {
   });
 }
 
-export function listProductSales() {
+export function listProductSales(employeeId?: bigint) {
   return prisma.productSale.findMany({
+    where: { employeeId },
     include: {
       client: true,
       employee: { include: { user: true } },
@@ -146,8 +158,9 @@ export function listProductSales() {
   });
 }
 
-export function listPayments() {
+export function listPayments(employeeId?: bigint) {
   return prisma.payment.findMany({
+    where: employeeId ? { OR: [{ appointment: { employeeId } }, { productSale: { employeeId } }] } : undefined,
     include: {
       appointment: { include: appointmentInclude },
       productSale: { include: { client: true } }
@@ -156,8 +169,9 @@ export function listPayments() {
   });
 }
 
-export function listReviews() {
+export function listReviews(employeeId?: bigint) {
   return prisma.review.findMany({
+    where: employeeId ? { appointment: { employeeId } } : undefined,
     include: {
       appointment: {
         include: {

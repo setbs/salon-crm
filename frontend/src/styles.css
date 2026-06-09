@@ -32,7 +32,8 @@ p {
 }
 
 .app-shell,
-.success-screen {
+.success-screen,
+.login-shell {
   min-height: 100vh;
   padding: 32px;
   background:
@@ -430,6 +431,11 @@ textarea {
   place-items: center;
 }
 
+.login-shell {
+  display: grid;
+  place-items: center;
+}
+
 .success-panel {
   display: grid;
   justify-items: center;
@@ -437,6 +443,20 @@ textarea {
   width: min(540px, 100%);
   padding: 42px;
   text-align: center;
+}
+
+.login-panel {
+  display: grid;
+  gap: 18px;
+  width: min(460px, 100%);
+  padding: 34px;
+}
+
+.login-panel h1 {
+  color: #302820;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2.2rem;
+  font-weight: 500;
 }
 
 .success-panel h1 {
@@ -565,6 +585,11 @@ textarea {
   font-weight: 800;
 }
 
+.booking-link.light {
+  border-color: #c8beb0;
+  color: #4b4038;
+}
+
 .admin-workspace {
   display: grid;
   align-content: start;
@@ -592,6 +617,11 @@ textarea {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.admin-userline {
+  color: #6d6258;
+  font-size: 0.9rem;
 }
 
 .admin-search {
@@ -833,6 +863,19 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.checkbox-group {
+  display: grid;
+  gap: 8px;
+}
+
+.checkbox-group > span {
+  color: #75695d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .admin-form .checkbox-line input {

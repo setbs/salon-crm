@@ -1,6 +1,9 @@
 import { AppointmentStatus, PaymentMethod, PaymentStatus, PrismaClient, StockMovementType, UserRole } from "@prisma/client";
+import { hashPassword } from "../src/modules/auth/auth.crypto.js";
 
 const prisma = new PrismaClient();
+const adminPasswordHash = hashPassword("admin12345");
+const employeePasswordHash = hashPassword("employee12345");
 
 async function main() {
   const serviceCategories = await Promise.all([
@@ -58,26 +61,53 @@ async function main() {
     assignServiceCategory(coloring.id, serviceCategories[2].id)
   ]);
 
+  await prisma.user.upsert({
+    where: { email: "admin@sl-color.local" },
+    update: {
+      firstName: "Головний",
+      lastName: "Адмін",
+      phone: "+380500000000",
+      passwordHash: adminPasswordHash,
+      role: UserRole.ADMIN
+    },
+    create: {
+      firstName: "Головний",
+      lastName: "Адмін",
+      phone: "+380500000000",
+      email: "admin@sl-color.local",
+      passwordHash: adminPasswordHash,
+      role: UserRole.ADMIN
+    }
+  });
+
   const annaUser = await prisma.user.upsert({
     where: { email: "anna@soulbeauty.local" },
-    update: {},
+    update: {
+      passwordHash: employeePasswordHash,
+      role: UserRole.EMPLOYEE
+    },
     create: {
       firstName: "Anna",
       lastName: "Kowalska",
       phone: "+48111000111",
       email: "anna@soulbeauty.local",
+      passwordHash: employeePasswordHash,
       role: UserRole.EMPLOYEE
     }
   });
 
   const mayaUser = await prisma.user.upsert({
     where: { email: "maya@soulbeauty.local" },
-    update: {},
+    update: {
+      passwordHash: employeePasswordHash,
+      role: UserRole.EMPLOYEE
+    },
     create: {
       firstName: "Maya",
       lastName: "Nowak",
       phone: "+48111000222",
       email: "maya@soulbeauty.local",
+      passwordHash: employeePasswordHash,
       role: UserRole.EMPLOYEE
     }
   });

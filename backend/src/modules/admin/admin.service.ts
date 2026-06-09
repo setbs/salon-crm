@@ -1,6 +1,8 @@
 import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/http-error.js";
+import { assertAdmin } from "../auth/auth.middleware.js";
+import type { AuthenticatedUser } from "../auth/auth.crypto.js";
 import {
   countLowStockProducts,
   countTodayAppointments,
@@ -19,6 +21,7 @@ import {
   sumTodayPaidRevenue
 } from "./admin.repository.js";
 import type {
+  createAppointmentSchema,
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
@@ -32,18 +35,19 @@ import type {
 } from "./admin.schemas.js";
 import type { z } from "zod";
 
-export async function getDashboard() {
+export async function getDashboard(actor: AuthenticatedUser) {
   const now = new Date();
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
+  const scopedEmployeeId = employeeScope(actor);
 
   const [todayAppointments, revenue, nextAppointment, lowStockProducts] = await Promise.all([
-    countTodayAppointments(dayStart, dayEnd),
-    sumTodayPaidRevenue(dayStart, dayEnd),
-    findNextAppointment(now),
-    countLowStockProducts()
+    countTodayAppointments(dayStart, dayEnd, scopedEmployeeId),
+    sumTodayPaidRevenue(dayStart, dayEnd, scopedEmployeeId),
+    findNextAppointment(now, scopedEmployeeId),
+    actor.role === "ADMIN" ? countLowStockProducts() : Promise.resolve(0)
   ]);
 
   return {
@@ -54,13 +58,13 @@ export async function getDashboard() {
   };
 }
 
-export async function getAppointments() {
-  const appointments = await listAppointments();
+export async function getAppointments(actor: AuthenticatedUser) {
+  const appointments = await listAppointments(employeeScope(actor));
   return appointments.map(mapAppointment);
 }
 
-export async function getClients(search?: string) {
-  const clients = await listClients(search);
+export async function getClients(actor: AuthenticatedUser, search?: string) {
+  const clients = await listClients(search, employeeScope(actor));
 
   return clients.map((client) => {
     const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + Number(appointment.payment?.amount ?? 0), 0);
@@ -78,7 +82,7 @@ export async function getClients(search?: string) {
   });
 }
 
-export async function getServices() {
+export async function getServices(_actor: AuthenticatedUser) {
   const services = await listServices();
 
   return services.map((service) => ({
@@ -100,7 +104,7 @@ export async function getServices() {
   }));
 }
 
-export async function getServiceCategories() {
+export async function getServiceCategories(_actor: AuthenticatedUser) {
   const categories = await listServiceCategories();
 
   return categories.map((category) => ({
@@ -111,8 +115,8 @@ export async function getServiceCategories() {
   }));
 }
 
-export async function getEmployees() {
-  const employees = await listEmployees();
+export async function getEmployees(actor: AuthenticatedUser) {
+  const employees = await listEmployees(employeeScope(actor));
 
   return employees.map((employee) => ({
     id: employee.id.toString(),
@@ -124,8 +128,8 @@ export async function getEmployees() {
   }));
 }
 
-export async function getPortfolio() {
-  const photos = await listPortfolio();
+export async function getPortfolio(actor: AuthenticatedUser) {
+  const photos = await listPortfolio(employeeScope(actor));
 
   return photos.map((photo) => ({
     id: photo.id.toString(),
@@ -136,7 +140,11 @@ export async function getPortfolio() {
   }));
 }
 
-export async function getProducts() {
+export async function getProducts(actor: AuthenticatedUser) {
+  if (actor.role !== "ADMIN") {
+    return [];
+  }
+
   const products = await listProducts();
 
   return products.map((product) => ({
@@ -156,8 +164,8 @@ export async function getProducts() {
   }));
 }
 
-export async function getProductSales() {
-  const sales = await listProductSales();
+export async function getProductSales(actor: AuthenticatedUser) {
+  const sales = await listProductSales(employeeScope(actor));
 
   return sales.map((sale) => ({
     id: sale.id.toString(),
@@ -171,8 +179,8 @@ export async function getProductSales() {
   }));
 }
 
-export async function getPayments() {
-  const payments = await listPayments();
+export async function getPayments(actor: AuthenticatedUser) {
+  const payments = await listPayments(employeeScope(actor));
 
   return payments.map((payment) => ({
     id: payment.id.toString(),
@@ -189,8 +197,8 @@ export async function getPayments() {
   }));
 }
 
-export async function getReviews() {
-  const reviews = await listReviews();
+export async function getReviews(actor: AuthenticatedUser) {
+  const reviews = await listReviews(employeeScope(actor));
 
   return reviews.map((review) => ({
     id: review.id.toString(),
@@ -202,7 +210,7 @@ export async function getReviews() {
   }));
 }
 
-export async function getSettings() {
+export async function getSettings(_actor: AuthenticatedUser) {
   const settings = await getSalonSettings();
 
   return {
@@ -215,22 +223,128 @@ export async function getSettings() {
   };
 }
 
-export async function updateAppointment(id: bigint, input: z.infer<typeof updateAppointmentSchema>) {
+export async function updateAppointment(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateAppointmentSchema>) {
+  const current = await prisma.appointment.findUnique({
+    where: { id },
+    select: { employeeId: true, startTime: true, endTime: true }
+  });
+
+  if (!current) {
+    throw new HttpError(404, "Запис не знайдено.");
+  }
+
+  assertOwnEmployee(actor, current.employeeId);
+
+  const startTime = input.startTime ? new Date(input.startTime) : current.startTime;
+  const endTime = input.endTime
+    ? new Date(input.endTime)
+    : input.startTime
+      ? new Date(startTime.getTime() + (current.endTime.getTime() - current.startTime.getTime()))
+      : current.endTime;
+
+  if (endTime <= startTime) {
+    throw new HttpError(400, "Час завершення має бути пізніше часу початку.");
+  }
+
+  await ensureAppointmentSlotAvailable({
+    employeeId: current.employeeId,
+    startTime,
+    endTime,
+    excludeAppointmentId: id
+  });
+
   const appointment = await prisma.appointment.update({
     where: { id },
     data: {
       status: input.status ? toAppointmentStatus(input.status) : undefined,
       clientComment: input.clientComment,
       employeeComment: input.employeeComment,
-      startTime: input.startTime ? new Date(input.startTime) : undefined,
-      endTime: input.endTime ? new Date(input.endTime) : undefined
+      startTime,
+      endTime
     }
   });
 
   return { id: appointment.id.toString() };
 }
 
-export async function createService(input: z.infer<typeof createServiceSchema>) {
+export async function createAppointment(actor: AuthenticatedUser, input: z.infer<typeof createAppointmentSchema>) {
+  const employeeId = BigInt(input.employeeId);
+  const serviceIds = input.serviceIds.map((serviceId) => BigInt(serviceId));
+  const startTime = new Date(input.startTime);
+
+  assertOwnEmployee(actor, employeeId);
+
+  const services = await prisma.service.findMany({
+    where: { id: { in: serviceIds }, isActive: true }
+  });
+
+  if (services.length !== serviceIds.length) {
+    throw new HttpError(400, "Одна або кілька послуг недоступні.");
+  }
+
+  const employeeServices = await prisma.employeeService.count({
+    where: { employeeId, serviceId: { in: serviceIds } }
+  });
+
+  if (employeeServices !== serviceIds.length) {
+    throw new HttpError(400, "Обраний майстер не виконує всі вибрані послуги.");
+  }
+
+  const durationMinutes = services.reduce((sum, service) => sum + service.durationMinutes, 0);
+  const endTime = new Date(startTime.getTime() + durationMinutes * 60_000);
+
+  await ensureAppointmentSlotAvailable({ employeeId, startTime, endTime });
+
+  const appointment = await prisma.$transaction(async (transaction) => {
+    let clientId = input.clientId ? BigInt(input.clientId) : null;
+
+    if (!clientId) {
+      if (!input.client) {
+        throw new HttpError(400, "Оберіть клієнта або заповніть нового клієнта.");
+      }
+
+      const client = await transaction.user.create({
+        data: {
+          firstName: input.client.firstName,
+          lastName: input.client.lastName,
+          phone: input.client.phone,
+          email: input.client.email || null
+        }
+      });
+      clientId = client.id;
+    } else {
+      const existingClient = await transaction.user.findUnique({
+        where: { id: clientId },
+        select: { id: true }
+      });
+
+      if (!existingClient) {
+        throw new HttpError(404, "Клієнта не знайдено.");
+      }
+    }
+
+    return transaction.appointment.create({
+      data: {
+        clientId,
+        employeeId,
+        startTime,
+        endTime,
+        status: toAppointmentStatus(input.status),
+        clientComment: input.clientComment,
+        employeeComment: input.employeeComment,
+        services: {
+          create: serviceIds.map((serviceId) => ({ serviceId }))
+        }
+      }
+    });
+  });
+
+  return { id: appointment.id.toString() };
+}
+
+export async function createService(actor: AuthenticatedUser, input: z.infer<typeof createServiceSchema>) {
+  assertAdmin(actor);
+
   const [service] = await prisma.$queryRaw<{ id: bigint }[]>`
     INSERT INTO services (category_id, name, description, duration_minutes, price, is_active)
     VALUES (${input.categoryId ? BigInt(input.categoryId) : null}, ${input.name}, ${input.description ?? null}, ${input.duration}, ${input.price}, ${input.active})
@@ -240,7 +354,9 @@ export async function createService(input: z.infer<typeof createServiceSchema>) 
   return { id: service.id.toString() };
 }
 
-export async function updateService(id: bigint, input: z.infer<typeof updateServiceSchema>) {
+export async function updateService(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceSchema>) {
+  assertAdmin(actor);
+
   const updates: Prisma.Sql[] = [];
 
   if (input.categoryId !== undefined) {
@@ -281,7 +397,9 @@ export async function updateService(id: bigint, input: z.infer<typeof updateServ
   return { id: service.id.toString() };
 }
 
-export async function createServiceCategory(input: z.infer<typeof createServiceCategorySchema>) {
+export async function createServiceCategory(actor: AuthenticatedUser, input: z.infer<typeof createServiceCategorySchema>) {
+  assertAdmin(actor);
+
   const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
     INSERT INTO service_categories (name, description, is_active, updated_at)
     VALUES (${input.name}, ${input.description ?? null}, ${input.active}, now())
@@ -291,7 +409,9 @@ export async function createServiceCategory(input: z.infer<typeof createServiceC
   return { id: category.id.toString() };
 }
 
-export async function updateServiceCategory(id: bigint, input: z.infer<typeof updateServiceCategorySchema>) {
+export async function updateServiceCategory(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceCategorySchema>) {
+  assertAdmin(actor);
+
   const updates: Prisma.Sql[] = [Prisma.sql`updated_at = now()`];
 
   if (input.name !== undefined) {
@@ -316,7 +436,9 @@ export async function updateServiceCategory(id: bigint, input: z.infer<typeof up
   return { id: category.id.toString() };
 }
 
-export async function createProduct(input: z.infer<typeof createProductSchema>) {
+export async function createProduct(actor: AuthenticatedUser, input: z.infer<typeof createProductSchema>) {
+  assertAdmin(actor);
+
   const category = await prisma.productCategory.upsert({
     where: { name: input.category },
     update: {},
@@ -348,7 +470,9 @@ export async function createProduct(input: z.infer<typeof createProductSchema>) 
   return { id: product.id.toString() };
 }
 
-export async function updateProduct(id: bigint, input: z.infer<typeof updateProductSchema>) {
+export async function updateProduct(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateProductSchema>) {
+  assertAdmin(actor);
+
   const category =
     input.category !== undefined
       ? await prisma.productCategory.upsert({
@@ -375,10 +499,11 @@ export async function updateProduct(id: bigint, input: z.infer<typeof updateProd
   return { id: product.id.toString() };
 }
 
-export async function createProductSale(input: z.infer<typeof createSaleSchema>) {
+export async function createProductSale(actor: AuthenticatedUser, input: z.infer<typeof createSaleSchema>) {
   const productId = BigInt(input.productId);
   const quantity = input.quantity;
   const paymentMethod = toPaymentMethod(input.paymentMethod);
+  const employeeId = actor.role === "EMPLOYEE" ? employeeScope(actor) : input.employeeId ? BigInt(input.employeeId) : null;
 
   const sale = await prisma.$transaction(async (transaction) => {
     const product = await transaction.product.findUnique({ where: { id: productId } });
@@ -396,7 +521,7 @@ export async function createProductSale(input: z.infer<typeof createSaleSchema>)
     const createdSale = await transaction.productSale.create({
       data: {
         clientId: input.clientId ? BigInt(input.clientId) : null,
-        employeeId: input.employeeId ? BigInt(input.employeeId) : null,
+        employeeId,
         totalAmount,
         saleDate: new Date(),
         items: {
@@ -439,7 +564,9 @@ export async function createProductSale(input: z.infer<typeof createSaleSchema>)
   return { id: sale.id.toString() };
 }
 
-export async function updatePayment(id: bigint, input: z.infer<typeof updatePaymentSchema>) {
+export async function updatePayment(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updatePaymentSchema>) {
+  await assertPaymentAccess(actor, id);
+
   const payment = await prisma.payment.update({
     where: { id },
     data: {
@@ -452,7 +579,9 @@ export async function updatePayment(id: bigint, input: z.infer<typeof updatePaym
   return { id: payment.id.toString() };
 }
 
-export async function updateSettings(input: z.infer<typeof updateSettingsSchema>) {
+export async function updateSettings(actor: AuthenticatedUser, input: z.infer<typeof updateSettingsSchema>) {
+  assertAdmin(actor);
+
   const settings = await prisma.salonSetting.upsert({
     where: { id: 1n },
     update: {
@@ -484,13 +613,40 @@ function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>
     id: appointment.id.toString(),
     time: appointment.startTime.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
     date: appointment.startTime.toISOString(),
+    endDate: appointment.endTime.toISOString(),
+    employeeId: appointment.employeeId.toString(),
+    serviceIds: appointment.services.map(({ service }) => service.id.toString()),
     client: `${appointment.client.firstName} ${appointment.client.lastName}`,
     service: appointment.services.map(({ service }) => service.name).join(", "),
     master: `${appointment.employee.user.firstName} ${appointment.employee.user.lastName}`,
     status: mapAppointmentStatus(appointment.status),
+    clientComment: appointment.clientComment ?? "",
+    employeeComment: appointment.employeeComment ?? "",
     comment: appointment.clientComment ?? appointment.employeeComment ?? "",
     amount: Number(appointment.payment?.amount ?? 0)
   };
+}
+
+async function ensureAppointmentSlotAvailable(input: {
+  employeeId: bigint;
+  startTime: Date;
+  endTime: Date;
+  excludeAppointmentId?: bigint;
+}) {
+  const conflict = await prisma.appointment.findFirst({
+    where: {
+      employeeId: input.employeeId,
+      status: { not: AppointmentStatus.CANCELLED },
+      id: input.excludeAppointmentId ? { not: input.excludeAppointmentId } : undefined,
+      startTime: { lt: input.endTime },
+      endTime: { gt: input.startTime }
+    },
+    select: { id: true }
+  });
+
+  if (conflict) {
+    throw new HttpError(409, "Цей час уже зайнятий іншим записом.");
+  }
 }
 
 function mapAppointmentStatus(status: AppointmentStatus) {
@@ -551,6 +707,49 @@ function toPaymentStatus(status: string) {
   }
 
   return PaymentStatus.PENDING;
+}
+
+function employeeScope(actor: AuthenticatedUser) {
+  if (actor.role === "ADMIN") {
+    return undefined;
+  }
+
+  if (!actor.employeeId) {
+    throw new HttpError(403, "Профіль працівника не налаштовано.");
+  }
+
+  return BigInt(actor.employeeId);
+}
+
+function assertOwnEmployee(actor: AuthenticatedUser, employeeId: bigint) {
+  if (actor.role === "ADMIN") {
+    return;
+  }
+
+  const scopedEmployeeId = employeeScope(actor);
+
+  if (scopedEmployeeId !== employeeId) {
+    throw new HttpError(403, "Працівник має доступ тільки до своєї частини CRM.");
+  }
+}
+
+async function assertPaymentAccess(actor: AuthenticatedUser, paymentId: bigint) {
+  if (actor.role === "ADMIN") {
+    return;
+  }
+
+  const scopedEmployeeId = employeeScope(actor);
+  const payment = await prisma.payment.findFirst({
+    where: {
+      id: paymentId,
+      OR: [{ appointment: { employeeId: scopedEmployeeId } }, { productSale: { employeeId: scopedEmployeeId } }]
+    },
+    select: { id: true }
+  });
+
+  if (!payment) {
+    throw new HttpError(403, "Працівник має доступ тільки до своїх оплат.");
+  }
 }
 
 function formatWorkingHours(hours: Array<{ startTime: string; endTime: string }>) {

@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { getAuthenticatedUser, requireCrmUser } from "../auth/auth.middleware.js";
 import {
   createProduct,
   createProductSale,
+  createAppointment,
   createService,
   createServiceCategory,
   getAppointments,
@@ -25,6 +27,7 @@ import {
 } from "./admin.service.js";
 import {
   createProductSchema,
+  createAppointmentSchema,
   createSaleSchema,
   createServiceSchema,
   createServiceCategorySchema,
@@ -38,17 +41,28 @@ import {
 
 export const adminRouter = Router();
 
-adminRouter.get("/admin/dashboard", async (_request, response, next) => {
+adminRouter.use("/admin", requireCrmUser);
+
+adminRouter.get("/admin/dashboard", async (request, response, next) => {
   try {
-    response.json({ data: await getDashboard() });
+    response.json({ data: await getDashboard(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/appointments", async (_request, response, next) => {
+adminRouter.get("/admin/appointments", async (request, response, next) => {
   try {
-    response.json({ data: await getAppointments() });
+    response.json({ data: await getAppointments(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/appointments", async (request, response, next) => {
+  try {
+    const body = createAppointmentSchema.parse(request.body);
+    response.status(201).json({ data: await createAppointment(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }
@@ -57,7 +71,7 @@ adminRouter.get("/admin/appointments", async (_request, response, next) => {
 adminRouter.patch("/admin/appointments/:id", async (request, response, next) => {
   try {
     const body = updateAppointmentSchema.parse(request.body);
-    response.json({ data: await updateAppointment(BigInt(request.params.id), body) });
+    response.json({ data: await updateAppointment(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
@@ -65,15 +79,15 @@ adminRouter.patch("/admin/appointments/:id", async (request, response, next) => 
 
 adminRouter.get("/admin/clients", async (request, response, next) => {
   try {
-    response.json({ data: await getClients(typeof request.query.search === "string" ? request.query.search : undefined) });
+    response.json({ data: await getClients(getAuthenticatedUser(request), typeof request.query.search === "string" ? request.query.search : undefined) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/services", async (_request, response, next) => {
+adminRouter.get("/admin/services", async (request, response, next) => {
   try {
-    response.json({ data: await getServices() });
+    response.json({ data: await getServices(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -82,7 +96,7 @@ adminRouter.get("/admin/services", async (_request, response, next) => {
 adminRouter.post("/admin/services", async (request, response, next) => {
   try {
     const body = createServiceSchema.parse(request.body);
-    response.status(201).json({ data: await createService(body) });
+    response.status(201).json({ data: await createService(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }
@@ -91,15 +105,15 @@ adminRouter.post("/admin/services", async (request, response, next) => {
 adminRouter.patch("/admin/services/:id", async (request, response, next) => {
   try {
     const body = updateServiceSchema.parse(request.body);
-    response.json({ data: await updateService(BigInt(request.params.id), body) });
+    response.json({ data: await updateService(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/service-categories", async (_request, response, next) => {
+adminRouter.get("/admin/service-categories", async (request, response, next) => {
   try {
-    response.json({ data: await getServiceCategories() });
+    response.json({ data: await getServiceCategories(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -108,7 +122,7 @@ adminRouter.get("/admin/service-categories", async (_request, response, next) =>
 adminRouter.post("/admin/service-categories", async (request, response, next) => {
   try {
     const body = createServiceCategorySchema.parse(request.body);
-    response.status(201).json({ data: await createServiceCategory(body) });
+    response.status(201).json({ data: await createServiceCategory(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }
@@ -117,31 +131,31 @@ adminRouter.post("/admin/service-categories", async (request, response, next) =>
 adminRouter.patch("/admin/service-categories/:id", async (request, response, next) => {
   try {
     const body = updateServiceCategorySchema.parse(request.body);
-    response.json({ data: await updateServiceCategory(BigInt(request.params.id), body) });
+    response.json({ data: await updateServiceCategory(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/employees", async (_request, response, next) => {
+adminRouter.get("/admin/employees", async (request, response, next) => {
   try {
-    response.json({ data: await getEmployees() });
+    response.json({ data: await getEmployees(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/portfolio", async (_request, response, next) => {
+adminRouter.get("/admin/portfolio", async (request, response, next) => {
   try {
-    response.json({ data: await getPortfolio() });
+    response.json({ data: await getPortfolio(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/products", async (_request, response, next) => {
+adminRouter.get("/admin/products", async (request, response, next) => {
   try {
-    response.json({ data: await getProducts() });
+    response.json({ data: await getProducts(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -150,7 +164,7 @@ adminRouter.get("/admin/products", async (_request, response, next) => {
 adminRouter.post("/admin/products", async (request, response, next) => {
   try {
     const body = createProductSchema.parse(request.body);
-    response.status(201).json({ data: await createProduct(body) });
+    response.status(201).json({ data: await createProduct(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }
@@ -159,15 +173,15 @@ adminRouter.post("/admin/products", async (request, response, next) => {
 adminRouter.patch("/admin/products/:id", async (request, response, next) => {
   try {
     const body = updateProductSchema.parse(request.body);
-    response.json({ data: await updateProduct(BigInt(request.params.id), body) });
+    response.json({ data: await updateProduct(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/sales", async (_request, response, next) => {
+adminRouter.get("/admin/sales", async (request, response, next) => {
   try {
-    response.json({ data: await getProductSales() });
+    response.json({ data: await getProductSales(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -176,15 +190,15 @@ adminRouter.get("/admin/sales", async (_request, response, next) => {
 adminRouter.post("/admin/sales", async (request, response, next) => {
   try {
     const body = createSaleSchema.parse(request.body);
-    response.status(201).json({ data: await createProductSale(body) });
+    response.status(201).json({ data: await createProductSale(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/payments", async (_request, response, next) => {
+adminRouter.get("/admin/payments", async (request, response, next) => {
   try {
-    response.json({ data: await getPayments() });
+    response.json({ data: await getPayments(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -193,23 +207,23 @@ adminRouter.get("/admin/payments", async (_request, response, next) => {
 adminRouter.patch("/admin/payments/:id", async (request, response, next) => {
   try {
     const body = updatePaymentSchema.parse(request.body);
-    response.json({ data: await updatePayment(BigInt(request.params.id), body) });
+    response.json({ data: await updatePayment(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/reviews", async (_request, response, next) => {
+adminRouter.get("/admin/reviews", async (request, response, next) => {
   try {
-    response.json({ data: await getReviews() });
+    response.json({ data: await getReviews(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.get("/admin/settings", async (_request, response, next) => {
+adminRouter.get("/admin/settings", async (request, response, next) => {
   try {
-    response.json({ data: await getSettings() });
+    response.json({ data: await getSettings(getAuthenticatedUser(request)) });
   } catch (error) {
     next(error);
   }
@@ -218,7 +232,7 @@ adminRouter.get("/admin/settings", async (_request, response, next) => {
 adminRouter.patch("/admin/settings", async (request, response, next) => {
   try {
     const body = updateSettingsSchema.parse(request.body);
-    response.json({ data: await updateSettings(body) });
+    response.json({ data: await updateSettings(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }

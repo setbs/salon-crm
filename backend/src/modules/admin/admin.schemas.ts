@@ -8,6 +8,24 @@ export const updateAppointmentSchema = z.object({
   endTime: z.string().datetime().optional()
 });
 
+export const createAppointmentSchema = z.object({
+  employeeId: z.string().regex(/^\d+$/),
+  serviceIds: z.array(z.string().regex(/^\d+$/)).min(1),
+  startTime: z.string().datetime(),
+  status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).default("scheduled"),
+  clientId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
+  client: z
+    .object({
+      firstName: z.string().trim().min(1).max(100),
+      lastName: z.string().trim().min(1).max(100),
+      phone: z.string().trim().min(1).max(20),
+      email: z.string().trim().email().optional().or(z.literal(""))
+    })
+    .optional(),
+  clientComment: z.string().trim().max(1000).optional(),
+  employeeComment: z.string().trim().max(1000).optional()
+});
+
 export const createServiceSchema = z.object({
   categoryId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
   name: z.string().trim().min(1).max(255),

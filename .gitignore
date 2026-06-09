@@ -97,3 +97,13 @@ service-account.json
 .terraform/
 *.tfstate
 *.tfstate.*
+project_context.md
+
+private_notes/
+*.local.md
+chat_exports/
+prompts/
+ai_notes/
+.env
+.env.local
+project_context.md

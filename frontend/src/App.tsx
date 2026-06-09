@@ -8,6 +8,7 @@ import {
   EyeOff,
   FileText,
   LayoutDashboard,
+  LogOut,
   Mail,
   MapPin,
   Package,
@@ -25,20 +26,29 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createAdminServiceCategory,
+  createAdminAppointment,
   createAdminProduct,
   createAdminSale,
   createAdminService,
   createAppointment,
   fetchAdminData,
   fetchAvailability,
+  fetchCurrentUser,
   fetchEmployees,
   fetchServices,
+  getStoredAuthToken,
+  loginCrm,
+  setStoredAuthToken,
   updateAdminAppointment,
+  rescheduleAdminAppointment,
+  updateAdminAppointmentComment,
   updateAdminPayment,
   updateAdminService,
   updateAdminServiceCategory,
   updateAdminSettings,
   type AdminData,
+  type AdminAppointmentInput,
+  type AuthUser,
   type Employee,
   type ProductInput,
   type SaleInput,
@@ -90,6 +100,20 @@ const serviceCopy: Record<string, { name: string; description: string }> = {
 
 const today = new Date().toISOString().slice(0, 10);
 
+function toIsoDateTime(date: string, time: string) {
+  return new Date(`${date}T${time}:00`).toISOString();
+}
+
+function toDateTimeFields(value: string) {
+  const date = new Date(value);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+
+  return {
+    date: localDate,
+    time: date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+  };
+}
+
 type AppMode = "admin" | "booking";
 type AdminSection =
   | "dashboard"
@@ -118,22 +142,136 @@ const adminNav: Array<{ id: AdminSection; label: string; icon: typeof LayoutDash
   { id: "settings", label: "Налаштування", icon: Settings }
 ];
 
+const employeeSections: AdminSection[] = ["dashboard", "calendar", "clients", "employees", "portfolio", "payments", "reviews"];
+
+function getVisibleAdminNav(user: AuthUser) {
+  if (user.role === "ADMIN") {
+    return adminNav;
+  }
+
+  return adminNav.filter((item) => employeeSections.includes(item.id));
+}
+
 export function App() {
   const [mode, setMode] = useState<AppMode>("admin");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(() => Boolean(getStoredAuthToken()));
+
+  useEffect(() => {
+    if (!getStoredAuthToken()) {
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    fetchCurrentUser()
+      .then(setAuthUser)
+      .catch(() => {
+        setStoredAuthToken(null);
+        setAuthUser(null);
+      })
+      .finally(() => setIsCheckingAuth(false));
+  }, []);
+
+  function logout() {
+    setStoredAuthToken(null);
+    setAuthUser(null);
+  }
 
   return (
     <>
-      {mode === "admin" ? <AdminPanel onOpenBooking={() => setMode("booking")} /> : <BookingView onOpenAdmin={() => setMode("admin")} />}
+      {mode === "admin" ? (
+        authUser ? (
+          <AdminPanel onLogout={logout} onOpenBooking={() => setMode("booking")} user={authUser} />
+        ) : (
+          <LoginView
+            isCheckingAuth={isCheckingAuth}
+            onOpenBooking={() => setMode("booking")}
+            onSuccess={(user) => {
+              setAuthUser(user);
+              setMode("admin");
+            }}
+          />
+        )
+      ) : (
+        <BookingView onOpenAdmin={() => setMode("admin")} />
+      )}
     </>
   );
 }
 
-function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
+function LoginView({
+  isCheckingAuth,
+  onOpenBooking,
+  onSuccess
+}: {
+  isCheckingAuth: boolean;
+  onOpenBooking: () => void;
+  onSuccess: (user: AuthUser) => void;
+}) {
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      const result = await loginCrm(form);
+      onSuccess(result.user);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Не вдалося увійти.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-panel document-frame">
+        <div className="sl-logo compact" aria-hidden="true">
+          <span>S</span>
+          <span>L</span>
+        </div>
+        <p className="eyebrow">SL Color Studio</p>
+        <h1>Вхід у CRM</h1>
+        {isCheckingAuth ? <div className="admin-panel">Перевірка сесії...</div> : null}
+        {error ? <div className="admin-alert">{error}</div> : null}
+        <form className="admin-form" onSubmit={submit}>
+          <label>
+            <span>Email</span>
+            <input autoComplete="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+          </label>
+          <label>
+            <span>Пароль</span>
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+              required
+            />
+          </label>
+          <button className="primary-button admin-submit" disabled={isSubmitting || isCheckingAuth} type="submit">
+            {isSubmitting ? "Вхід..." : "Увійти"}
+          </button>
+        </form>
+        <button className="booking-link light" onClick={onOpenBooking} type="button">
+          Перейти до онлайн-запису
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; onOpenBooking: () => void; user: AuthUser }) {
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [adminData, setAdminData] = useState<AdminData | null>(null);
   const [isLoadingAdmin, setIsLoadingAdmin] = useState(true);
   const [adminError, setAdminError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const visibleNav = getVisibleAdminNav(user);
 
   async function loadAdminData() {
     setIsLoadingAdmin(true);
@@ -151,6 +289,12 @@ function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
   useEffect(() => {
     void loadAdminData();
   }, []);
+
+  useEffect(() => {
+    if (!visibleNav.some((item) => item.id === activeSection)) {
+      setActiveSection("dashboard");
+    }
+  }, [activeSection, visibleNav]);
 
   async function runAdminAction(action: () => Promise<unknown>) {
     setAdminError("");
@@ -172,12 +316,12 @@ function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
           <div className="admin-logo">SL</div>
           <div>
             <strong>Color Studio</strong>
-            <span>Адмін CRM</span>
+            <span>{user.role === "ADMIN" ? "Головний адмін" : "Працівник CRM"}</span>
           </div>
         </div>
 
         <nav className="admin-nav" aria-label="Адмін навігація">
-          {adminNav.map((item) => {
+          {visibleNav.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -196,13 +340,18 @@ function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
         <button className="booking-link" onClick={onOpenBooking} type="button">
           Відкрити онлайн-запис
         </button>
+        <button className="booking-link" onClick={onLogout} type="button">
+          <LogOut aria-hidden="true" size={16} />
+          Вийти
+        </button>
       </aside>
 
       <section className="admin-workspace">
         <header className="admin-topbar">
           <div>
             <p className="admin-kicker">MVP адмінки</p>
-            <h1>{adminNav.find((item) => item.id === activeSection)?.label}</h1>
+            <h1>{visibleNav.find((item) => item.id === activeSection)?.label}</h1>
+            <span className="admin-userline">{user.name}</span>
           </div>
           <div className="admin-search">
             <Search aria-hidden="true" size={17} />
@@ -215,7 +364,7 @@ function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
         {isLoadingAdmin || !adminData ? (
           <div className="admin-panel">Завантаження CRM даних...</div>
         ) : (
-          <AdminContent section={activeSection} data={adminData} runAction={runAdminAction} />
+          <AdminContent section={activeSection} data={adminData} runAction={runAdminAction} user={user} />
         )}
       </section>
     </main>
@@ -225,18 +374,32 @@ function AdminPanel({ onOpenBooking }: { onOpenBooking: () => void }) {
 function AdminContent({
   section,
   data,
-  runAction
+  runAction,
+  user
 }: {
   section: AdminSection;
   data: AdminData;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
+  user: AuthUser;
 }) {
+  if (user.role !== "ADMIN" && !employeeSections.includes(section)) {
+    return <DashboardSection dashboard={data.dashboard} appointments={data.appointments} />;
+  }
+
   if (section === "dashboard") {
     return <DashboardSection dashboard={data.dashboard} appointments={data.appointments} />;
   }
 
   if (section === "calendar") {
-    return <CalendarSection appointments={data.appointments} runAction={runAction} />;
+    return (
+      <CalendarSection
+        appointments={data.appointments}
+        clients={data.clients}
+        employees={data.employees}
+        services={data.services}
+        runAction={runAction}
+      />
+    );
   }
 
   if (section === "clients") {
@@ -309,9 +472,15 @@ function DashboardSection({ dashboard, appointments }: { dashboard: AdminData["d
 
 function CalendarSection({
   appointments,
+  clients,
+  employees,
+  services,
   runAction
 }: {
   appointments: AdminData["appointments"];
+  clients: AdminData["clients"];
+  employees: AdminData["employees"];
+  services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   return (
@@ -325,11 +494,13 @@ function CalendarSection({
           <button type="button">Місяць</button>
         </div>
         <DataTable
-          columns={["Час", "Клієнт", "Послуга", "Дії", "Статус"]}
+          columns={["Час", "Клієнт", "Послуга", "Майстер", "Коментар", "Дії", "Статус"]}
           rows={appointments.map((item) => [
             item.time,
             item.client,
             item.service,
+            item.master,
+            item.comment || "-",
             <InlineActions
               labels={["Завершити", "Не прийшов", "Скасувати"]}
               onAction={(label) =>
@@ -344,16 +515,264 @@ function CalendarSection({
           ])}
         />
       </Panel>
-      <Panel title="Картка візиту">
-        <InfoList
-          items={[
-            ["Створення", "ручне створення запису буде наступним CRUD кроком"],
-            ["Перенесення", "оновлення startTime/endTime вже підтримує API"],
-            ["Статуси", "scheduled / completed / cancelled / no_show"]
-          ]}
-        />
-      </Panel>
+      <AppointmentCreateForm
+        clients={clients}
+        employees={employees}
+        services={services}
+        onSubmit={(payload) => runAction(() => createAdminAppointment(payload))}
+      />
+      <AppointmentRescheduleForm appointments={appointments} onSubmit={(id, payload) => runAction(() => rescheduleAdminAppointment(id, payload))} />
+      <AppointmentCommentForm appointments={appointments} onSubmit={(id, employeeComment) => runAction(() => updateAdminAppointmentComment(id, { employeeComment }))} />
     </div>
+  );
+}
+
+function AppointmentCreateForm({
+  clients,
+  employees,
+  services,
+  onSubmit
+}: {
+  clients: AdminData["clients"];
+  employees: AdminData["employees"];
+  services: AdminData["services"];
+  onSubmit: (payload: AdminAppointmentInput) => Promise<void>;
+}) {
+  const activeServices = services.filter((service) => service.active);
+  const [form, setForm] = useState({
+    employeeId: employees[0]?.id ?? "",
+    clientMode: clients.length > 0 ? "existing" : "new",
+    clientId: clients[0]?.id ?? "",
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    date: today,
+    time: "09:00",
+    status: "scheduled",
+    clientComment: "",
+    employeeComment: ""
+  });
+  const [serviceIds, setServiceIds] = useState<string[]>(activeServices[0] ? [activeServices[0].id] : []);
+
+  function toggleService(id: string) {
+    setServiceIds((current) => (current.includes(id) ? current.filter((serviceId) => serviceId !== id) : [...current, id]));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const isExistingClient = form.clientMode === "existing" && form.clientId;
+
+    void onSubmit({
+      employeeId: form.employeeId,
+      serviceIds,
+      startTime: toIsoDateTime(form.date, form.time),
+      status: form.status as AdminAppointmentInput["status"],
+      clientId: isExistingClient ? form.clientId : undefined,
+      client: isExistingClient
+        ? undefined
+        : {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            phone: form.phone,
+            email: form.email
+          },
+      clientComment: form.clientComment || undefined,
+      employeeComment: form.employeeComment || undefined
+    });
+  }
+
+  return (
+    <Panel title="Новий запис">
+      <form className="admin-form" onSubmit={submit}>
+        <label>
+          <span>Майстер</span>
+          <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="checkbox-group">
+          <span>Послуги</span>
+          {activeServices.map((service) => (
+            <label className="checkbox-line" key={service.id}>
+              <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
+              <span>
+                {service.name} · {service.duration} хв · {adminMoney.format(service.price)}
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="form-section">
+          <label>
+            <span>Дата</span>
+            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
+          </label>
+          <label>
+            <span>Час</span>
+            <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
+          </label>
+        </div>
+        <label>
+          <span>Клієнт</span>
+          <select value={form.clientMode === "existing" ? form.clientId : "new"} onChange={(event) => setForm({ ...form, clientMode: event.target.value === "new" ? "new" : "existing", clientId: event.target.value })}>
+            <option value="new">Новий клієнт</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name} · {client.phone}
+              </option>
+            ))}
+          </select>
+        </label>
+        {form.clientMode === "new" ? (
+          <div className="client-grid">
+            <label>
+              <span>Ім'я</span>
+              <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
+            </label>
+            <label>
+              <span>Прізвище</span>
+              <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
+            </label>
+            <label>
+              <span>Телефон</span>
+              <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            </label>
+          </div>
+        ) : null}
+        <label>
+          <span>Коментар клієнта</span>
+          <textarea value={form.clientComment} onChange={(event) => setForm({ ...form, clientComment: event.target.value })} rows={3} />
+        </label>
+        <label>
+          <span>Коментар до візиту</span>
+          <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
+        </label>
+        <button className="primary-button admin-submit" disabled={serviceIds.length === 0 || !form.employeeId} type="submit">
+          Створити запис
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+function AppointmentRescheduleForm({
+  appointments,
+  onSubmit
+}: {
+  appointments: AdminData["appointments"];
+  onSubmit: (id: string, payload: { startTime: string; endTime: string; employeeComment?: string }) => Promise<void>;
+}) {
+  const [appointmentId, setAppointmentId] = useState(appointments[0]?.id ?? "");
+  const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
+  const initial = selected ? toDateTimeFields(selected.date) : { date: today, time: "09:00" };
+  const [form, setForm] = useState({ date: initial.date, time: initial.time, employeeComment: "" });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selected) {
+      return;
+    }
+
+    const duration = new Date(selected.endDate).getTime() - new Date(selected.date).getTime();
+    const startTime = new Date(toIsoDateTime(form.date, form.time));
+    const endTime = new Date(startTime.getTime() + duration);
+
+    void onSubmit(selected.id, {
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      employeeComment: form.employeeComment || selected.employeeComment || undefined
+    });
+  }
+
+  return (
+    <Panel title="Перенести запис">
+      <form className="admin-form" onSubmit={submit}>
+        <label>
+          <span>Запис</span>
+          <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
+            {appointments.map((appointment) => (
+              <option key={appointment.id} value={appointment.id}>
+                {appointment.time} · {appointment.client} · {appointment.service}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="form-section">
+          <label>
+            <span>Нова дата</span>
+            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
+          </label>
+          <label>
+            <span>Новий час</span>
+            <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
+          </label>
+        </div>
+        <label>
+          <span>Коментар до перенесення</span>
+          <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
+        </label>
+        <button className="primary-button admin-submit" disabled={!selected} type="submit">
+          Перенести
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+function AppointmentCommentForm({
+  appointments,
+  onSubmit
+}: {
+  appointments: AdminData["appointments"];
+  onSubmit: (id: string, employeeComment: string) => Promise<void>;
+}) {
+  const [appointmentId, setAppointmentId] = useState(appointments[0]?.id ?? "");
+  const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
+  const [comment, setComment] = useState(selected?.employeeComment ?? "");
+
+  useEffect(() => {
+    setComment(selected?.employeeComment ?? "");
+  }, [selected?.id]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (selected) {
+      void onSubmit(selected.id, comment);
+    }
+  }
+
+  return (
+    <Panel title="Коментар до візиту">
+      <form className="admin-form" onSubmit={submit}>
+        <label>
+          <span>Запис</span>
+          <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
+            {appointments.map((appointment) => (
+              <option key={appointment.id} value={appointment.id}>
+                {appointment.time} · {appointment.client}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Внутрішній коментар</span>
+          <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
+        </label>
+        <button className="primary-button admin-submit" disabled={!selected} type="submit">
+          Зберегти коментар
+        </button>
+      </form>
+    </Panel>
   );
 }
 

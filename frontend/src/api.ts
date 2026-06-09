@@ -51,10 +51,15 @@ export type AdminAppointment = {
   id: string;
   time: string;
   date: string;
+  endDate: string;
+  employeeId: string;
+  serviceIds: string[];
   client: string;
   service: string;
   master: string;
   status: string;
+  clientComment: string;
+  employeeComment: string;
   comment: string;
   amount: number;
 };
@@ -184,6 +189,22 @@ export type ServiceCategoryInput = {
   active: boolean;
 };
 
+export type AdminAppointmentInput = {
+  employeeId: string;
+  serviceIds: string[];
+  startTime: string;
+  status?: "scheduled" | "completed" | "cancelled" | "no_show";
+  clientId?: string;
+  client?: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email?: string;
+  };
+  clientComment?: string;
+  employeeComment?: string;
+};
+
 export type ProductInput = {
   category: string;
   name: string;
@@ -211,9 +232,46 @@ export type SettingsInput = {
   closingTime?: string;
 };
 
+export type AuthUser = {
+  id: string;
+  role: "ADMIN" | "EMPLOYEE";
+  employeeId: string | null;
+  name: string;
+  email: string | null;
+};
+
+export type LoginResult = {
+  token: string;
+  user: AuthUser;
+};
+
 type ApiResponse<T> = {
   data: T;
 };
+
+const authTokenKey = "salon-crm-token";
+
+export function getStoredAuthToken() {
+  return localStorage.getItem(authTokenKey);
+}
+
+export function setStoredAuthToken(token: string | null) {
+  if (token) {
+    localStorage.setItem(authTokenKey, token);
+  } else {
+    localStorage.removeItem(authTokenKey);
+  }
+}
+
+export async function loginCrm(payload: { email: string; password: string }) {
+  const data = await request<ApiResponse<LoginResult>>("/api/auth/login", jsonRequest("POST", payload), false).then((response) => response.data);
+  setStoredAuthToken(data.token);
+  return data;
+}
+
+export async function fetchCurrentUser() {
+  return request<ApiResponse<AuthUser>>("/api/auth/me").then((response) => response.data);
+}
 
 export async function fetchServices() {
   return request<ApiResponse<Service[]>>("/api/services").then((response) => response.data);
@@ -268,6 +326,18 @@ export async function updateAdminAppointment(id: string, payload: { status?: str
   return request<ApiResponse<{ id: string }>>(`/api/admin/appointments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
 }
 
+export async function createAdminAppointment(payload: AdminAppointmentInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/appointments", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function rescheduleAdminAppointment(id: string, payload: { startTime: string; endTime?: string; employeeComment?: string }) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/appointments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function updateAdminAppointmentComment(id: string, payload: { employeeComment: string }) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/appointments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
 export async function createAdminService(payload: ServiceInput) {
   return request<ApiResponse<{ id: string }>>("/api/admin/services", jsonRequest("POST", payload)).then((response) => response.data);
 }
@@ -308,8 +378,8 @@ function jsonRequest(method: "POST" | "PATCH", payload: unknown): RequestInit {
   };
 }
 
-async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, init);
+async function request<T>(input: RequestInfo, init: RequestInit = {}, withAuth = true): Promise<T> {
+  const response = await fetch(input, withAuth ? withAuthHeader(init) : init);
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -317,4 +387,20 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   }
 
   return data as T;
+}
+
+function withAuthHeader(init: RequestInit): RequestInit {
+  const token = getStoredAuthToken();
+
+  if (!token) {
+    return init;
+  }
+
+  return {
+    ...init,
+    headers: {
+      ...(init.headers ?? {}),
+      Authorization: `Bearer ${token}`
+    }
+  };
 }

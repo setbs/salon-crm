@@ -20,6 +20,13 @@ The admin dashboard must contain these sections:
 * Reports
 * Settings
 
+Access model:
+
+* CRM access requires login.
+* Main admin (`ADMIN`) can access all dashboard sections and all employee sessions/data.
+* Employee (`EMPLOYEE`) can access only their own working CRM data.
+* Employee navigation should hide global management sections that are only for the main admin.
+
 ## Section Responsibilities
 
 Dashboard:
@@ -35,6 +42,7 @@ Calendar:
 * Day, week, and month appointment views.
 * Create, edit, cancel appointments.
 * Show free and booked slots.
+* Current MVP implementation supports manual appointment creation, reschedule, status update, and visit comment update.
 
 Clients:
 
