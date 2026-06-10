@@ -32,7 +32,7 @@ export async function login(input: z.infer<typeof loginSchema>) {
   };
 
   return {
-    token: createSessionToken(sessionUser),
+    token: await createSessionToken(sessionUser),
     user: sessionUser
   };
 }

@@ -2,7 +2,7 @@ import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementT
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/http-error.js";
 import { assertAdmin } from "../auth/auth.middleware.js";
-import type { AuthenticatedUser } from "../auth/auth.crypto.js";
+import type { CrmAuthenticatedUser } from "../auth/auth.crypto.js";
 import {
   countLowStockProducts,
   countTodayAppointments,
@@ -35,7 +35,7 @@ import type {
 } from "./admin.schemas.js";
 import type { z } from "zod";
 
-export async function getDashboard(actor: AuthenticatedUser) {
+export async function getDashboard(actor: CrmAuthenticatedUser) {
   const now = new Date();
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
@@ -58,12 +58,12 @@ export async function getDashboard(actor: AuthenticatedUser) {
   };
 }
 
-export async function getAppointments(actor: AuthenticatedUser) {
+export async function getAppointments(actor: CrmAuthenticatedUser) {
   const appointments = await listAppointments(employeeScope(actor));
   return appointments.map(mapAppointment);
 }
 
-export async function getClients(actor: AuthenticatedUser, search?: string) {
+export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
   const clients = await listClients(search, employeeScope(actor));
 
   return clients.map((client) => {
@@ -82,7 +82,7 @@ export async function getClients(actor: AuthenticatedUser, search?: string) {
   });
 }
 
-export async function getServices(_actor: AuthenticatedUser) {
+export async function getServices(_actor: CrmAuthenticatedUser) {
   const services = await listServices();
 
   return services.map((service) => {
@@ -110,7 +110,7 @@ export async function getServices(_actor: AuthenticatedUser) {
   });
 }
 
-export async function getServiceCategories(_actor: AuthenticatedUser) {
+export async function getServiceCategories(_actor: CrmAuthenticatedUser) {
   const categories = await listServiceCategories();
 
   return categories.map((category) => ({
@@ -121,7 +121,7 @@ export async function getServiceCategories(_actor: AuthenticatedUser) {
   }));
 }
 
-export async function getEmployees(actor: AuthenticatedUser) {
+export async function getEmployees(actor: CrmAuthenticatedUser) {
   const employees = await listEmployees(employeeScope(actor));
 
   return employees.map((employee) => ({
@@ -134,7 +134,7 @@ export async function getEmployees(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getPortfolio(actor: AuthenticatedUser) {
+export async function getPortfolio(actor: CrmAuthenticatedUser) {
   const photos = await listPortfolio(employeeScope(actor));
 
   return photos.map((photo) => ({
@@ -146,7 +146,7 @@ export async function getPortfolio(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getProducts(actor: AuthenticatedUser) {
+export async function getProducts(actor: CrmAuthenticatedUser) {
   if (actor.role !== "ADMIN") {
     return [];
   }
@@ -170,7 +170,7 @@ export async function getProducts(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getProductSales(actor: AuthenticatedUser) {
+export async function getProductSales(actor: CrmAuthenticatedUser) {
   const sales = await listProductSales(employeeScope(actor));
 
   return sales.map((sale) => ({
@@ -185,7 +185,7 @@ export async function getProductSales(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getPayments(actor: AuthenticatedUser) {
+export async function getPayments(actor: CrmAuthenticatedUser) {
   const payments = await listPayments(employeeScope(actor));
 
   return payments.map((payment) => ({
@@ -203,7 +203,7 @@ export async function getPayments(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getReviews(actor: AuthenticatedUser) {
+export async function getReviews(actor: CrmAuthenticatedUser) {
   const reviews = await listReviews(employeeScope(actor));
 
   return reviews.map((review) => ({
@@ -216,7 +216,7 @@ export async function getReviews(actor: AuthenticatedUser) {
   }));
 }
 
-export async function getSettings(_actor: AuthenticatedUser) {
+export async function getSettings(_actor: CrmAuthenticatedUser) {
   const settings = await getSalonSettings();
 
   return {
@@ -229,7 +229,7 @@ export async function getSettings(_actor: AuthenticatedUser) {
   };
 }
 
-export async function updateAppointment(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateAppointmentSchema>) {
+export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateAppointmentSchema>) {
   const current = await prisma.appointment.findUnique({
     where: { id },
     select: { employeeId: true, startTime: true, endTime: true }
@@ -273,7 +273,7 @@ export async function updateAppointment(actor: AuthenticatedUser, id: bigint, in
   return { id: appointment.id.toString() };
 }
 
-export async function createAppointment(actor: AuthenticatedUser, input: z.infer<typeof createAppointmentSchema>) {
+export async function createAppointment(actor: CrmAuthenticatedUser, input: z.infer<typeof createAppointmentSchema>) {
   const employeeId = BigInt(input.employeeId);
   const serviceIds = input.serviceIds.map((serviceId) => BigInt(serviceId));
   const startTime = new Date(input.startTime);
@@ -348,7 +348,7 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
   return { id: appointment.id.toString() };
 }
 
-export async function createService(actor: AuthenticatedUser, input: z.infer<typeof createServiceSchema>) {
+export async function createService(actor: CrmAuthenticatedUser, input: z.infer<typeof createServiceSchema>) {
   assertAdmin(actor);
   const employeeIds = toUniqueBigIntIds(input.employeeIds);
 
@@ -368,7 +368,7 @@ export async function createService(actor: AuthenticatedUser, input: z.infer<typ
   return { id: service.id.toString() };
 }
 
-export async function updateService(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceSchema>) {
+export async function updateService(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceSchema>) {
   assertAdmin(actor);
 
   const updates: Prisma.Sql[] = [];
@@ -432,7 +432,7 @@ export async function updateService(actor: AuthenticatedUser, id: bigint, input:
   return { id: service.id.toString() };
 }
 
-export async function deleteService(actor: AuthenticatedUser, id: bigint) {
+export async function deleteService(actor: CrmAuthenticatedUser, id: bigint) {
   assertAdmin(actor);
 
   const service = await prisma.service.findUnique({ where: { id }, select: { id: true } });
@@ -455,7 +455,7 @@ export async function deleteService(actor: AuthenticatedUser, id: bigint) {
   return { id: id.toString() };
 }
 
-export async function createServiceCategory(actor: AuthenticatedUser, input: z.infer<typeof createServiceCategorySchema>) {
+export async function createServiceCategory(actor: CrmAuthenticatedUser, input: z.infer<typeof createServiceCategorySchema>) {
   assertAdmin(actor);
 
   const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
@@ -467,7 +467,7 @@ export async function createServiceCategory(actor: AuthenticatedUser, input: z.i
   return { id: category.id.toString() };
 }
 
-export async function updateServiceCategory(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceCategorySchema>) {
+export async function updateServiceCategory(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateServiceCategorySchema>) {
   assertAdmin(actor);
 
   const updates: Prisma.Sql[] = [Prisma.sql`updated_at = now()`];
@@ -494,7 +494,7 @@ export async function updateServiceCategory(actor: AuthenticatedUser, id: bigint
   return { id: category.id.toString() };
 }
 
-export async function createProduct(actor: AuthenticatedUser, input: z.infer<typeof createProductSchema>) {
+export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductSchema>) {
   assertAdmin(actor);
 
   const category = await prisma.productCategory.upsert({
@@ -528,7 +528,7 @@ export async function createProduct(actor: AuthenticatedUser, input: z.infer<typ
   return { id: product.id.toString() };
 }
 
-export async function updateProduct(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updateProductSchema>) {
+export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateProductSchema>) {
   assertAdmin(actor);
 
   const category =
@@ -557,7 +557,7 @@ export async function updateProduct(actor: AuthenticatedUser, id: bigint, input:
   return { id: product.id.toString() };
 }
 
-export async function createProductSale(actor: AuthenticatedUser, input: z.infer<typeof createSaleSchema>) {
+export async function createProductSale(actor: CrmAuthenticatedUser, input: z.infer<typeof createSaleSchema>) {
   const productId = BigInt(input.productId);
   const quantity = input.quantity;
   const paymentMethod = toPaymentMethod(input.paymentMethod);
@@ -622,7 +622,7 @@ export async function createProductSale(actor: AuthenticatedUser, input: z.infer
   return { id: sale.id.toString() };
 }
 
-export async function updatePayment(actor: AuthenticatedUser, id: bigint, input: z.infer<typeof updatePaymentSchema>) {
+export async function updatePayment(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updatePaymentSchema>) {
   await assertPaymentAccess(actor, id);
 
   const payment = await prisma.payment.update({
@@ -637,7 +637,7 @@ export async function updatePayment(actor: AuthenticatedUser, id: bigint, input:
   return { id: payment.id.toString() };
 }
 
-export async function updateSettings(actor: AuthenticatedUser, input: z.infer<typeof updateSettingsSchema>) {
+export async function updateSettings(actor: CrmAuthenticatedUser, input: z.infer<typeof updateSettingsSchema>) {
   assertAdmin(actor);
 
   const settings = await prisma.salonSetting.upsert({
@@ -814,7 +814,7 @@ function toPaymentStatus(status: string) {
   return PaymentStatus.PENDING;
 }
 
-function employeeScope(actor: AuthenticatedUser) {
+function employeeScope(actor: CrmAuthenticatedUser) {
   if (actor.role === "ADMIN") {
     return undefined;
   }
@@ -826,7 +826,7 @@ function employeeScope(actor: AuthenticatedUser) {
   return BigInt(actor.employeeId);
 }
 
-function assertOwnEmployee(actor: AuthenticatedUser, employeeId: bigint) {
+function assertOwnEmployee(actor: CrmAuthenticatedUser, employeeId: bigint) {
   if (actor.role === "ADMIN") {
     return;
   }
@@ -838,7 +838,7 @@ function assertOwnEmployee(actor: AuthenticatedUser, employeeId: bigint) {
   }
 }
 
-async function assertPaymentAccess(actor: AuthenticatedUser, paymentId: bigint) {
+async function assertPaymentAccess(actor: CrmAuthenticatedUser, paymentId: bigint) {
   if (actor.role === "ADMIN") {
     return;
   }

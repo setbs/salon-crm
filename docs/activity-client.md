@@ -1,45 +1,69 @@
 @startuml
-title User Flow: Client Appointment Booking
+title Diagram procesu rezerwacji wizyty przez klienta
 
+|Klient|
 start
+:Otwiera stronę rezerwacji online;
+:Przegląda listę usług;
+:Wybiera jedną lub kilka usług;
+:Wybiera pracownika;
+:Wybiera datę;
 
-:Open salon website;
+|Frontend|
+:Wysyła zapytanie o dostępne terminy\nGET /api/availability;
 
-:Browse services;
-:Select one or multiple services;
+|Backend|
+:Sprawdza, czy wybrane usługi są aktywne;
+if (Czy usługi są dostępne?) then (Tak)
+  :Oblicza łączny czas trwania usług;
+  :Pobiera godziny pracy pracownika\nw wybranym dniu;
+  :Pobiera istniejące wizyty pracownika;
+  :Usuwa terminy kolidujące\nz istniejącymi wizytami;
+  :Zwraca listę wolnych terminów;
+else (Nie)
+  :Zwraca błąd walidacji;
+endif
 
-:Select specialist;
+|Frontend|
+if (Czy są wolne terminy?) then (Tak)
+  :Wyświetla dostępne godziny;
 
-:Select date;
+  |Klient|
+  :Wybiera godzinę;
+  :Wprowadza imię, nazwisko,\ntelefon, email i komentarz;
+  :Potwierdza rezerwację;
 
-:System checks salon schedule;
-:System checks specialist schedule;
-:System checks existing bookings;
+  |Frontend|
+  :Wysyła żądanie utworzenia wizyty\nPOST /api/appointments;
 
-if (Are slots available?) then (Yes)
-  :Show available times;
-  :Client selects a time slot;
+  |Backend|
+  :Sprawdza dane wejściowe;
+  :Sprawdza aktywność usług;
+  :Sprawdza, czy pracownik\nwykonuje wybrane usługi;
+  :Oblicza godzinę zakończenia wizyty;
+  :Sprawdza kolizję\nz istniejącymi wizytami;
 
-  if (Is client logged in?) then (Yes)
-    :Use account data;
-  else (No)
-    :Enter full name;
-    :Enter phone number;
-    :Enter email;
+  if (Czy termin jest nadal wolny?) then (Tak)
+    :Tworzy klienta w tabeli users;
+    :Tworzy wizytę w tabeli appointments;
+    :Łączy wizytę z usługami\nw appointment_services;
+    :Zwraca dane utworzonej wizyty;
+
+    |Frontend|
+    :Wyświetla potwierdzenie rezerwacji;
+
+    |Klient|
+    :Widzi informację o udanej rezerwacji;
+  else (Nie)
+    :Zwraca błąd konfliktu 409;
+
+    |Frontend|
+    :Wyświetla komunikat,\nże termin jest już zajęty;
+    :Proponuje wybór innej godziny;
   endif
-
-  :Confirm booking;
-
-  :Create appointment in the system;
-  :Assign services to appointment;
-  :Send email notification to client;
-  :Log notification attempt;
-  :Schedule 24h and 2h reminders;
-  :Show booking success page;
-
-else (No)
-  :Show message\n"No available time slots";
-  :Suggest choosing another date;
+else (Nie)
+  :Wyświetla komunikat,\nże brak wolnych terminów;
+  :Proponuje wybór innej daty\nlub pracownika;
 endif
 
 stop

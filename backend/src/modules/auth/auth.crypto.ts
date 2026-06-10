@@ -1,20 +1,34 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { TextEncoder } from "node:util";
+import { jwtVerify, SignJWT } from "jose";
+import { z } from "zod";
 import { env } from "../../config/env.js";
 import { HttpError } from "../../utils/http-error.js";
 
-const TOKEN_TTL_SECONDS = 60 * 60 * 12;
+const JWT_ISSUER = "salon-crm";
+const STAFF_ACCESS_TOKEN_TTL = "12h";
+const CLIENT_ACCESS_TOKEN_TTL = "30m";
+const jwtSecret = new TextEncoder().encode(env.AUTH_SECRET);
 
 export type AuthenticatedUser = {
   id: string;
-  role: "ADMIN" | "EMPLOYEE";
+  role: "ADMIN" | "EMPLOYEE" | "CLIENT";
   employeeId: string | null;
   name: string;
   email: string | null;
 };
 
-type SessionPayload = AuthenticatedUser & {
-  exp: number;
+export type CrmAuthenticatedUser = AuthenticatedUser & {
+  role: "ADMIN" | "EMPLOYEE";
 };
+
+const sessionPayloadSchema = z.object({
+  sub: z.string().min(1),
+  role: z.enum(["ADMIN", "EMPLOYEE", "CLIENT"]),
+  employeeId: z.string().nullable(),
+  name: z.string().min(1),
+  email: z.string().email().nullable()
+});
 
 export function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -40,51 +54,40 @@ export function verifyPassword(password: string, storedHash: string | null) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-export function createSessionToken(user: AuthenticatedUser) {
-  const payload: SessionPayload = {
-    ...user,
-    exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS
-  };
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signature = sign(encodedPayload);
+export async function createSessionToken(user: AuthenticatedUser) {
+  const expiresIn = user.role === "CLIENT" ? CLIENT_ACCESS_TOKEN_TTL : STAFF_ACCESS_TOKEN_TTL;
 
-  return `${encodedPayload}.${signature}`;
+  return new SignJWT({
+    role: user.role,
+    employeeId: user.employeeId,
+    name: user.name,
+    email: user.email
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(JWT_ISSUER)
+    .setSubject(user.id)
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(jwtSecret);
 }
 
-export function verifySessionToken(token: string) {
-  const [encodedPayload, signature] = token.split(".");
+export async function verifySessionToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, jwtSecret, { issuer: JWT_ISSUER });
+    const sessionPayload = sessionPayloadSchema.parse(payload);
 
-  if (!encodedPayload || !signature || sign(encodedPayload) !== signature) {
-    throw new HttpError(401, "Invalid session. Please sign in again.");
+    return {
+      id: sessionPayload.sub,
+      role: sessionPayload.role,
+      employeeId: sessionPayload.employeeId,
+      name: sessionPayload.name,
+      email: sessionPayload.email
+    } satisfies AuthenticatedUser;
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new HttpError(401, "Invalid session. Please sign in again.");
+    }
+
+    throw new HttpError(401, "Session expired or invalid. Please sign in again.");
   }
-
-  const payload = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload;
-
-  if (payload.exp < Math.floor(Date.now() / 1000)) {
-    throw new HttpError(401, "Session expired. Please sign in again.");
-  }
-
-  if (payload.role !== "ADMIN" && payload.role !== "EMPLOYEE") {
-    throw new HttpError(403, "You do not have access to CRM.");
-  }
-
-  return {
-    id: payload.id,
-    role: payload.role,
-    employeeId: payload.employeeId,
-    name: payload.name,
-    email: payload.email
-  } satisfies AuthenticatedUser;
-}
-
-function sign(value: string) {
-  return createHmac("sha256", env.AUTH_SECRET).update(value).digest("base64url");
-}
-
-function base64UrlEncode(value: string) {
-  return Buffer.from(value, "utf8").toString("base64url");
-}
-
-function base64UrlDecode(value: string) {
-  return Buffer.from(value, "base64url").toString("utf8");
 }
