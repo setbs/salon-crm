@@ -85,23 +85,29 @@ export async function getClients(actor: AuthenticatedUser, search?: string) {
 export async function getServices(_actor: AuthenticatedUser) {
   const services = await listServices();
 
-  return services.map((service) => ({
-    id: service.id.toString(),
-    categoryId: service.categoryId?.toString() ?? null,
-    category: service.categoryId
-      ? {
-          id: service.categoryId.toString(),
-          name: service.categoryName ?? "Без категорії",
-          description: service.categoryDescription,
-          active: service.categoryActive ?? true
-        }
-      : null,
-    name: service.name,
-    price: Number(service.price),
-    duration: service.durationMinutes,
-    description: service.description,
-    active: service.isActive
-  }));
+  return services.map((service) => {
+    const employees = mapServiceEmployees(service.employees);
+
+    return {
+      id: service.id.toString(),
+      categoryId: service.categoryId?.toString() ?? null,
+      category: service.categoryId
+        ? {
+            id: service.categoryId.toString(),
+            name: service.categoryName ?? "Uncategorized",
+            description: service.categoryDescription,
+            active: service.categoryActive ?? true
+          }
+        : null,
+      name: service.name,
+      price: Number(service.price),
+      duration: service.durationMinutes,
+      description: service.description,
+      active: service.isActive,
+      employees,
+      employeeIds: employees.map((employee) => employee.id)
+    };
+  });
 }
 
 export async function getServiceCategories(_actor: AuthenticatedUser) {
@@ -133,7 +139,7 @@ export async function getPortfolio(actor: AuthenticatedUser) {
 
   return photos.map((photo) => ({
     id: photo.id.toString(),
-    title: photo.description ?? "Робота без опису",
+    title: photo.description ?? "Work without description",
     master: `${photo.employee.user.firstName} ${photo.employee.user.lastName}`,
     imageUrl: photo.imageUrl,
     visible: photo.isVisible
@@ -149,7 +155,7 @@ export async function getProducts(actor: AuthenticatedUser) {
 
   return products.map((product) => ({
     id: product.id.toString(),
-    category: product.category?.name ?? "Без категорії",
+    category: product.category?.name ?? "Uncategorized",
     name: product.name,
     purchase: Number(product.purchasePrice ?? 0),
     sale: Number(product.sellingPrice),
@@ -171,7 +177,7 @@ export async function getProductSales(actor: AuthenticatedUser) {
     id: sale.id.toString(),
     product: sale.items.map((item) => item.product.name).join(", "),
     qty: sale.items.reduce((sum, item) => sum + item.quantity, 0),
-    client: sale.client ? `${sale.client.firstName} ${sale.client.lastName}` : "без клієнта",
+    client: sale.client ? `${sale.client.firstName} ${sale.client.lastName}` : "no client",
     employee: sale.employee ? `${sale.employee.user.firstName} ${sale.employee.user.lastName}` : null,
     payment: sale.payment?.paymentMethod.toLowerCase() ?? "cash",
     total: Number(sale.totalAmount),
@@ -184,12 +190,12 @@ export async function getPayments(actor: AuthenticatedUser) {
 
   return payments.map((payment) => ({
     id: payment.id.toString(),
-    source: payment.appointment ? "Послуга" : "Косметика",
+    source: payment.appointment ? "Service" : "Products",
     client: payment.appointment
       ? `${payment.appointment.client.firstName} ${payment.appointment.client.lastName}`
       : payment.productSale?.client
         ? `${payment.productSale.client.firstName} ${payment.productSale.client.lastName}`
-        : "без клієнта",
+        : "no client",
     method: payment.paymentMethod.toLowerCase(),
     status: payment.paymentStatus.toLowerCase(),
     amount: Number(payment.amount),
@@ -230,7 +236,7 @@ export async function updateAppointment(actor: AuthenticatedUser, id: bigint, in
   });
 
   if (!current) {
-    throw new HttpError(404, "Запис не знайдено.");
+    throw new HttpError(404, "Appointment not found.");
   }
 
   assertOwnEmployee(actor, current.employeeId);
@@ -243,7 +249,7 @@ export async function updateAppointment(actor: AuthenticatedUser, id: bigint, in
       : current.endTime;
 
   if (endTime <= startTime) {
-    throw new HttpError(400, "Час завершення має бути пізніше часу початку.");
+    throw new HttpError(400, "End time must be later than start time.");
   }
 
   await ensureAppointmentSlotAvailable({
@@ -279,7 +285,7 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
   });
 
   if (services.length !== serviceIds.length) {
-    throw new HttpError(400, "Одна або кілька послуг недоступні.");
+    throw new HttpError(400, "One or more services are unavailable.");
   }
 
   const employeeServices = await prisma.employeeService.count({
@@ -287,7 +293,7 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
   });
 
   if (employeeServices !== serviceIds.length) {
-    throw new HttpError(400, "Обраний майстер не виконує всі вибрані послуги.");
+    throw new HttpError(400, "The selected employee does not provide all selected services.");
   }
 
   const durationMinutes = services.reduce((sum, service) => sum + service.durationMinutes, 0);
@@ -300,7 +306,7 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
 
     if (!clientId) {
       if (!input.client) {
-        throw new HttpError(400, "Оберіть клієнта або заповніть нового клієнта.");
+        throw new HttpError(400, "Select an existing client or fill in a new client.");
       }
 
       const client = await transaction.user.create({
@@ -319,7 +325,7 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
       });
 
       if (!existingClient) {
-        throw new HttpError(404, "Клієнта не знайдено.");
+        throw new HttpError(404, "Client not found.");
       }
     }
 
@@ -344,12 +350,20 @@ export async function createAppointment(actor: AuthenticatedUser, input: z.infer
 
 export async function createService(actor: AuthenticatedUser, input: z.infer<typeof createServiceSchema>) {
   assertAdmin(actor);
+  const employeeIds = toUniqueBigIntIds(input.employeeIds);
 
-  const [service] = await prisma.$queryRaw<{ id: bigint }[]>`
-    INSERT INTO services (category_id, name, description, duration_minutes, price, is_active)
-    VALUES (${input.categoryId ? BigInt(input.categoryId) : null}, ${input.name}, ${input.description ?? null}, ${input.duration}, ${input.price}, ${input.active})
-    RETURNING id
-  `;
+  const service = await prisma.$transaction(async (tx) => {
+    await ensureEmployeesExist(tx, employeeIds);
+
+    const [createdService] = await tx.$queryRaw<{ id: bigint }[]>`
+      INSERT INTO services (category_id, name, description, duration_minutes, price, is_active)
+      VALUES (${input.categoryId ? BigInt(input.categoryId) : null}, ${input.name}, ${input.description ?? null}, ${input.duration}, ${input.price}, ${input.active})
+      RETURNING id
+    `;
+
+    await syncServiceEmployees(tx, createdService.id, employeeIds);
+    return createdService;
+  });
 
   return { id: service.id.toString() };
 }
@@ -358,6 +372,8 @@ export async function updateService(actor: AuthenticatedUser, id: bigint, input:
   assertAdmin(actor);
 
   const updates: Prisma.Sql[] = [];
+  const shouldSyncEmployees = input.employeeIds !== undefined;
+  const employeeIds = shouldSyncEmployees ? toUniqueBigIntIds(input.employeeIds) : [];
 
   if (input.categoryId !== undefined) {
     updates.push(Prisma.sql`category_id = ${input.categoryId ? BigInt(input.categoryId) : null}`);
@@ -383,18 +399,60 @@ export async function updateService(actor: AuthenticatedUser, id: bigint, input:
     updates.push(Prisma.sql`is_active = ${input.active}`);
   }
 
-  if (updates.length === 0) {
-    return { id: id.toString() };
-  }
+  const service = await prisma.$transaction(async (tx) => {
+    if (shouldSyncEmployees) {
+      const existingService = await tx.service.findUnique({ where: { id }, select: { id: true } });
 
-  const [service] = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
-    UPDATE services
-    SET ${Prisma.join(updates, ", ")}
-    WHERE id = ${id}
-    RETURNING id
-  `);
+      if (!existingService) {
+        throw new HttpError(404, "Service not found.");
+      }
+
+      await ensureEmployeesExist(tx, employeeIds);
+      await syncServiceEmployees(tx, id, employeeIds);
+    }
+
+    if (updates.length === 0) {
+      return { id };
+    }
+
+    const [updatedService] = await tx.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+      UPDATE services
+      SET ${Prisma.join(updates, ", ")}
+      WHERE id = ${id}
+      RETURNING id
+    `);
+
+    if (!updatedService) {
+      throw new HttpError(404, "Service not found.");
+    }
+
+    return updatedService;
+  });
 
   return { id: service.id.toString() };
+}
+
+export async function deleteService(actor: AuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const service = await prisma.service.findUnique({ where: { id }, select: { id: true } });
+
+  if (!service) {
+    throw new HttpError(404, "Service not found.");
+  }
+
+  const appointmentReferences = await prisma.appointmentService.count({ where: { serviceId: id } });
+
+  if (appointmentReferences > 0) {
+    throw new HttpError(409, "Service is used in appointments. Disable it instead to keep appointment history.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.employeeService.deleteMany({ where: { serviceId: id } });
+    await tx.service.delete({ where: { id } });
+  });
+
+  return { id: id.toString() };
 }
 
 export async function createServiceCategory(actor: AuthenticatedUser, input: z.infer<typeof createServiceCategorySchema>) {
@@ -509,11 +567,11 @@ export async function createProductSale(actor: AuthenticatedUser, input: z.infer
     const product = await transaction.product.findUnique({ where: { id: productId } });
 
     if (!product || !product.isActive) {
-      throw new HttpError(404, "Товар не знайдено.");
+      throw new HttpError(404, "Product not found.");
     }
 
     if (product.stockQuantity < quantity) {
-      throw new HttpError(400, "Недостатньо товару на складі для цього продажу.");
+      throw new HttpError(400, "Not enough stock for this sale.");
     }
 
     const totalAmount = Number(product.sellingPrice) * quantity;
@@ -544,7 +602,7 @@ export async function createProductSale(actor: AuthenticatedUser, input: z.infer
         productId,
         movementType: StockMovementType.SALE,
         quantity: -quantity,
-        reason: `Продаж #${createdSale.id.toString()}`
+        reason: `Sale #${createdSale.id.toString()}`
       }
     });
 
@@ -608,6 +666,53 @@ export async function updateSettings(actor: AuthenticatedUser, input: z.infer<ty
   return { id: settings.id.toString() };
 }
 
+function mapServiceEmployees(value: Prisma.JsonValue) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isJsonObject)
+    .map((employee) => ({
+      id: String(employee.id),
+      name: typeof employee.name === "string" && employee.name.trim() ? employee.name : "Unnamed employee",
+      specialization: typeof employee.specialization === "string" ? employee.specialization : null
+    }));
+}
+
+function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toUniqueBigIntIds(ids: string[] | undefined) {
+  return [...new Set(ids ?? [])].map((id) => BigInt(id));
+}
+
+async function ensureEmployeesExist(client: Prisma.TransactionClient, employeeIds: bigint[]) {
+  if (employeeIds.length === 0) {
+    return;
+  }
+
+  const count = await client.employee.count({ where: { id: { in: employeeIds } } });
+
+  if (count !== employeeIds.length) {
+    throw new HttpError(400, "One or more assigned employees do not exist.");
+  }
+}
+
+async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId: bigint, employeeIds: bigint[]) {
+  await client.employeeService.deleteMany({ where: { serviceId } });
+
+  if (employeeIds.length === 0) {
+    return;
+  }
+
+  await client.employeeService.createMany({
+    data: employeeIds.map((employeeId) => ({ employeeId, serviceId })),
+    skipDuplicates: true
+  });
+}
+
 function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>>[number]) {
   return {
     id: appointment.id.toString(),
@@ -645,7 +750,7 @@ async function ensureAppointmentSlotAvailable(input: {
   });
 
   if (conflict) {
-    throw new HttpError(409, "Цей час уже зайнятий іншим записом.");
+    throw new HttpError(409, "This time is already booked by another appointment.");
   }
 }
 
@@ -715,7 +820,7 @@ function employeeScope(actor: AuthenticatedUser) {
   }
 
   if (!actor.employeeId) {
-    throw new HttpError(403, "Профіль працівника не налаштовано.");
+    throw new HttpError(403, "Employee profile is not configured.");
   }
 
   return BigInt(actor.employeeId);
@@ -729,7 +834,7 @@ function assertOwnEmployee(actor: AuthenticatedUser, employeeId: bigint) {
   const scopedEmployeeId = employeeScope(actor);
 
   if (scopedEmployeeId !== employeeId) {
-    throw new HttpError(403, "Працівник має доступ тільки до своєї частини CRM.");
+    throw new HttpError(403, "Employees can access only their own CRM workspace.");
   }
 }
 
@@ -748,7 +853,7 @@ async function assertPaymentAccess(actor: AuthenticatedUser, paymentId: bigint) 
   });
 
   if (!payment) {
-    throw new HttpError(403, "Працівник має доступ тільки до своїх оплат.");
+    throw new HttpError(403, "Employees can access only their own payments.");
   }
 }
 

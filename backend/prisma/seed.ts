@@ -7,21 +7,21 @@ const employeePasswordHash = hashPassword("employee12345");
 
 async function main() {
   const serviceCategories = await Promise.all([
-    upsertServiceCategory(1n, "Стрижки", "Жіночі та чоловічі стрижки"),
-    upsertServiceCategory(2n, "Манікюр", "Догляд за нігтями та покриття"),
-    upsertServiceCategory(3n, "Фарбування", "Колористика, тонування та зміна кольору"),
-    upsertServiceCategory(4n, "Трихологія", "Діагностика та догляд за шкірою голови")
+    upsertServiceCategory(1n, "Haircuts", "Women and men haircuts"),
+    upsertServiceCategory(2n, "Manicure", "Nail care and polish"),
+    upsertServiceCategory(3n, "Coloring", "Coloring, toning, and color change"),
+    upsertServiceCategory(4n, "Trichology", "Scalp diagnostics and care")
   ]);
 
   const haircut = await prisma.service.upsert({
     where: { id: 1n },
     update: {
-      name: "Жіноча стрижка",
-      description: "Консультація, миття, стрижка та укладка."
+      name: "Women's haircut",
+      description: "Consultation, wash, haircut, and styling."
     },
     create: {
-      name: "Жіноча стрижка",
-      description: "Консультація, миття, стрижка та укладка.",
+      name: "Women's haircut",
+      description: "Consultation, wash, haircut, and styling.",
       durationMinutes: 60,
       price: "120.00"
     }
@@ -30,12 +30,12 @@ async function main() {
   const manicure = await prisma.service.upsert({
     where: { id: 2n },
     update: {
-      name: "Класичний манікюр",
-      description: "Форма, кутикула та покриття."
+      name: "Classic manicure",
+      description: "Nail shaping, cuticle care, and polish."
     },
     create: {
-      name: "Класичний манікюр",
-      description: "Форма, кутикула та покриття.",
+      name: "Classic manicure",
+      description: "Nail shaping, cuticle care, and polish.",
       durationMinutes: 45,
       price: "80.00"
     }
@@ -44,12 +44,12 @@ async function main() {
   const coloring = await prisma.service.upsert({
     where: { id: 3n },
     update: {
-      name: "Фарбування волосся",
-      description: "Консультація з кольору та повне фарбування."
+      name: "Hair coloring",
+      description: "Color consultation and full color service."
     },
     create: {
-      name: "Фарбування волосся",
-      description: "Консультація з кольору та повне фарбування.",
+      name: "Hair coloring",
+      description: "Color consultation and full color service.",
       durationMinutes: 120,
       price: "260.00"
     }
@@ -61,18 +61,20 @@ async function main() {
     assignServiceCategory(coloring.id, serviceCategories[2].id)
   ]);
 
+  await translateLegacyDemoServices();
+
   await prisma.user.upsert({
     where: { email: "admin@sl-color.local" },
     update: {
-      firstName: "Головний",
-      lastName: "Адмін",
+      firstName: "Main",
+      lastName: "Admin",
       phone: "+380500000000",
       passwordHash: adminPasswordHash,
       role: UserRole.ADMIN
     },
     create: {
-      firstName: "Головний",
-      lastName: "Адмін",
+      firstName: "Main",
+      lastName: "Admin",
       phone: "+380500000000",
       email: "admin@sl-color.local",
       passwordHash: adminPasswordHash,
@@ -115,26 +117,26 @@ async function main() {
   const anna = await prisma.employee.upsert({
     where: { userId: annaUser.id },
     update: {
-      specialization: "перукар-колорист",
-      description: "Стрижки, укладки та зміна кольору."
+      specialization: "hair stylist and colorist",
+      description: "Haircuts, styling, and color transformations."
     },
     create: {
       userId: annaUser.id,
-      specialization: "перукар-колорист",
-      description: "Стрижки, укладки та зміна кольору."
+      specialization: "hair stylist and colorist",
+      description: "Haircuts, styling, and color transformations."
     }
   });
 
   const maya = await prisma.employee.upsert({
     where: { userId: mayaUser.id },
     update: {
-      specialization: "майстер манікюру",
-      description: "Манікюр, гель-лак та догляд за нігтями."
+      specialization: "manicure specialist",
+      description: "Manicure, gel polish, and nail care."
     },
     create: {
       userId: mayaUser.id,
-      specialization: "майстер манікюру",
-      description: "Манікюр, гель-лак та догляд за нігтями."
+      specialization: "manicure specialist",
+      description: "Manicure, gel polish, and nail care."
     }
   });
 
@@ -172,8 +174,8 @@ async function main() {
       where: { email: "anna.koval@example.com" },
       update: {},
       create: {
-        firstName: "Анна",
-        lastName: "Коваль",
+        firstName: "Anna",
+        lastName: "Koval",
         phone: "+48501221003",
         email: "anna.koval@example.com"
       }
@@ -182,8 +184,8 @@ async function main() {
       where: { email: "olena.marchuk@example.com" },
       update: {},
       create: {
-        firstName: "Олена",
-        lastName: "Марчук",
+        firstName: "Olena",
+        lastName: "Marchuk",
         phone: "+48509771420",
         email: "olena.marchuk@example.com"
       }
@@ -192,8 +194,8 @@ async function main() {
       where: { email: "iryna.savchuk@example.com" },
       update: {},
       create: {
-        firstName: "Ірина",
-        lastName: "Савчук",
+        firstName: "Iryna",
+        lastName: "Savchuk",
         phone: "+48600118905",
         email: "iryna.savchuk@example.com"
       }
@@ -216,7 +218,7 @@ async function main() {
       startTime: atToday(10, 0),
       endTime: atToday(11, 0),
       status: AppointmentStatus.PENDING,
-      comment: "Просить легку укладку"
+      comment: "Requests light styling"
     },
     {
       id: 2n,
@@ -226,7 +228,7 @@ async function main() {
       startTime: atToday(12, 15),
       endTime: atToday(13, 0),
       status: AppointmentStatus.COMPLETED,
-      comment: "Класичний манікюр"
+      comment: "Classic manicure"
     },
     {
       id: 3n,
@@ -236,7 +238,7 @@ async function main() {
       startTime: atToday(14, 30),
       endTime: atToday(16, 30),
       status: AppointmentStatus.PENDING,
-      comment: "Фарбування, холодний відтінок"
+      comment: "Coloring, cool shade"
     }
   ];
 
@@ -304,18 +306,18 @@ async function main() {
   const categories = await Promise.all([
     prisma.productCategory.upsert({
       where: { id: 1n },
-      update: { name: "Шампуні", description: "Домашній догляд" },
-      create: { id: 1n, name: "Шампуні", description: "Домашній догляд" }
+      update: { name: "Shampoos", description: "Home care" },
+      create: { id: 1n, name: "Shampoos", description: "Home care" }
     }),
     prisma.productCategory.upsert({
       where: { id: 2n },
-      update: { name: "Маски", description: "Відновлення волосся" },
-      create: { id: 2n, name: "Маски", description: "Відновлення волосся" }
+      update: { name: "Masks", description: "Hair restoration" },
+      create: { id: 2n, name: "Masks", description: "Hair restoration" }
     }),
     prisma.productCategory.upsert({
       where: { id: 3n },
-      update: { name: "Стайлінг", description: "Фінішні засоби" },
-      create: { id: 3n, name: "Стайлінг", description: "Фінішні засоби" }
+      update: { name: "Styling", description: "Finishing products" },
+      create: { id: 3n, name: "Styling", description: "Finishing products" }
     })
   ]);
 
@@ -400,9 +402,9 @@ async function main() {
   });
 
   for (const movement of [
-    { id: 1n, productId: shampoo.id, movementType: StockMovementType.SALE, quantity: -2, reason: "Продаж клієнту" },
-    { id: 2n, productId: mask.id, movementType: StockMovementType.PURCHASE, quantity: 6, reason: "Поповнення складу" },
-    { id: 3n, productId: spray.id, movementType: StockMovementType.ADJUSTMENT, quantity: -1, reason: "Коригування залишку" }
+    { id: 1n, productId: shampoo.id, movementType: StockMovementType.SALE, quantity: -2, reason: "Client sale" },
+    { id: 2n, productId: mask.id, movementType: StockMovementType.PURCHASE, quantity: 6, reason: "Stock replenishment" },
+    { id: 3n, productId: spray.id, movementType: StockMovementType.ADJUSTMENT, quantity: -1, reason: "Stock adjustment" }
   ]) {
     await prisma.stockMovement.upsert({
       where: { id: movement.id },
@@ -413,42 +415,42 @@ async function main() {
 
   await prisma.portfolioPhoto.upsert({
     where: { id: 1n },
-    update: { description: "Холодний блонд", isVisible: true },
+    update: { description: "Cool blonde", isVisible: true },
     create: {
       id: 1n,
       employeeId: anna.id,
       imageUrl: "/uploads/portfolio/cold-blonde.jpg",
-      description: "Холодний блонд",
+      description: "Cool blonde",
       isVisible: true
     }
   });
 
   await prisma.portfolioPhoto.upsert({
     where: { id: 2n },
-    update: { description: "Відновлення довжини", isVisible: true },
+    update: { description: "Length restoration", isVisible: true },
     create: {
       id: 2n,
       employeeId: anna.id,
       imageUrl: "/uploads/portfolio/repair-length.jpg",
-      description: "Відновлення довжини",
+      description: "Length restoration",
       isVisible: true
     }
   });
 
   await prisma.review.upsert({
     where: { appointmentId: 2n },
-    update: { rating: 5, comment: "Дуже акуратна робота, колір тримається чудово." },
+    update: { rating: 5, comment: "Very neat work, the color holds beautifully." },
     create: {
       appointmentId: 2n,
       rating: 5,
-      comment: "Дуже акуратна робота, колір тримається чудово."
+      comment: "Very neat work, the color holds beautifully."
     }
   });
 
   await prisma.employeeTimeOff.upsert({
     where: { id: 1n },
-    update: { employeeId: anna.id, startTime: atToday(22, 0), endTime: atToday(23, 0), reason: "Вихідний" },
-    create: { id: 1n, employeeId: anna.id, startTime: atToday(22, 0), endTime: atToday(23, 0), reason: "Вихідний" }
+    update: { employeeId: anna.id, startTime: atToday(22, 0), endTime: atToday(23, 0), reason: "Day off" },
+    create: { id: 1n, employeeId: anna.id, startTime: atToday(22, 0), endTime: atToday(23, 0), reason: "Day off" }
   });
 
   await prisma.salonSetting.upsert({
@@ -457,7 +459,7 @@ async function main() {
       salonName: "SL Color Studio",
       phone: "+38 (050) 23 03 408",
       email: "sl.color.studio@example.com",
-      address: "м. Броди, вул. Стуса 2",
+      address: "Brody, Stusa St. 2",
       openingTime: "09:00",
       closingTime: "18:00"
     },
@@ -466,7 +468,7 @@ async function main() {
       salonName: "SL Color Studio",
       phone: "+38 (050) 23 03 408",
       email: "sl.color.studio@example.com",
-      address: "м. Броди, вул. Стуса 2",
+      address: "Brody, Stusa St. 2",
       openingTime: "09:00",
       closingTime: "18:00"
     }
@@ -518,6 +520,23 @@ async function assignServiceCategory(serviceId: bigint, categoryId: bigint) {
     UPDATE services
     SET category_id = ${categoryId}
     WHERE id = ${serviceId}
+  `;
+}
+
+async function translateLegacyDemoServices() {
+  const legacyPeelingName = "\u041f\u0456\u043b\u0456\u043d\u0433";
+  const legacyHaircutName = "\u0421\u0442\u0440\u0438\u0436\u043a\u0430";
+
+  await prisma.$executeRaw`
+    UPDATE services
+    SET name = 'Scalp peeling', description = 'Scalp peeling treatment.'
+    WHERE name = ${legacyPeelingName}
+  `;
+
+  await prisma.$executeRaw`
+    UPDATE services
+    SET name = 'Haircut', description = 'Short haircut service.'
+    WHERE name = ${legacyHaircutName}
   `;
 }
 

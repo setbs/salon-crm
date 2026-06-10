@@ -55,17 +55,17 @@ export function verifySessionToken(token: string) {
   const [encodedPayload, signature] = token.split(".");
 
   if (!encodedPayload || !signature || sign(encodedPayload) !== signature) {
-    throw new HttpError(401, "Сесія недійсна. Увійдіть ще раз.");
+    throw new HttpError(401, "Invalid session. Please sign in again.");
   }
 
   const payload = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload;
 
   if (payload.exp < Math.floor(Date.now() / 1000)) {
-    throw new HttpError(401, "Сесія завершилась. Увійдіть ще раз.");
+    throw new HttpError(401, "Session expired. Please sign in again.");
   }
 
   if (payload.role !== "ADMIN" && payload.role !== "EMPLOYEE") {
-    throw new HttpError(403, "Немає доступу до CRM.");
+    throw new HttpError(403, "You do not have access to CRM.");
   }
 
   return {

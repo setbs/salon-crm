@@ -115,16 +115,16 @@ Settings:
 
 ## Language Rule
 
-The public website and admin dashboard should use Ukrainian UI copy by default.
+The public website and admin dashboard should use English UI copy by default.
 
 ## Later, Not Current Implementation
 
 Public website sections to add later:
 
-* `Про салон`: salon information, portfolio, contacts, brand presentation.
-* `Послуги`: categorized services and booking.
-* `Товари`: public product catalog by categories with prices.
-* `Відгуки`: public reviews section.
+* `About salon`: salon information, portfolio, contacts, brand presentation.
+* `Services`: categorized services and booking.
+* `Products`: public product catalog by categories with prices.
+* `Reviews`: public reviews section.
 
 Inventory/service consumption to add later:
 

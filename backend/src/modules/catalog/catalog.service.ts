@@ -9,7 +9,7 @@ export async function getServices() {
     category: service.categoryId
       ? {
           id: service.categoryId.toString(),
-          name: service.categoryName ?? "Інші послуги",
+          name: service.categoryName ?? "Other services",
           description: service.categoryDescription
         }
       : null,

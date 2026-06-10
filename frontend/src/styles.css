@@ -849,6 +849,27 @@ textarea {
   color: #f5efe7;
 }
 
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.table-toolbar label {
+  display: grid;
+  gap: 7px;
+  min-width: min(260px, 100%);
+}
+
+.table-toolbar span {
+  color: #75695d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .admin-form {
   display: grid;
   gap: 12px;
@@ -886,6 +907,19 @@ textarea {
 .admin-submit {
   width: max-content;
   margin-top: 4px;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-note {
+  color: #8a3f2d;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .info-list {

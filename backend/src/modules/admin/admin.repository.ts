@@ -96,9 +96,24 @@ export function listServices() {
       s.is_active AS "isActive",
       sc.name AS "categoryName",
       sc.description AS "categoryDescription",
-      sc.is_active AS "categoryActive"
+      sc.is_active AS "categoryActive",
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', e.id::text,
+            'name', trim(concat_ws(' ', u.first_name, u.last_name)),
+            'specialization', e.specialization
+          )
+          ORDER BY u.first_name ASC, u.last_name ASC
+        ) FILTER (WHERE e.id IS NOT NULL),
+        '[]'::json
+      ) AS employees
     FROM services s
     LEFT JOIN service_categories sc ON sc.id = s.category_id
+    LEFT JOIN employee_services es ON es.service_id = s.id
+    LEFT JOIN employees e ON e.id = es.employee_id
+    LEFT JOIN users u ON u.id = e.user_id
+    GROUP BY s.id, sc.id
     ORDER BY sc.name ASC NULLS LAST, s.name ASC
   `;
 }
@@ -210,6 +225,7 @@ export type ServiceWithCategoryRow = {
   categoryName: string | null;
   categoryDescription: string | null;
   categoryActive: boolean | null;
+  employees: Prisma.JsonValue;
 };
 
 export type ServiceCategoryRow = {

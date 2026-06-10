@@ -83,6 +83,8 @@ export type AdminService = {
   duration: number;
   description: string | null;
   active: boolean;
+  employeeIds: string[];
+  employees: Array<{ id: string; name: string; specialization: string | null }>;
 };
 
 export type AdminServiceCategory = {
@@ -181,6 +183,7 @@ export type ServiceInput = {
   duration: number;
   description?: string;
   active: boolean;
+  employeeIds: string[];
 };
 
 export type ServiceCategoryInput = {
@@ -344,6 +347,10 @@ export async function createAdminService(payload: ServiceInput) {
 
 export async function updateAdminService(id: string, payload: Partial<ServiceInput>) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/services/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminService(id: string) {
+  return request<void>(`/api/admin/services/${id}`, { method: "DELETE" });
 }
 
 export async function createAdminServiceCategory(payload: ServiceCategoryInput) {

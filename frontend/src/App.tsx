@@ -31,6 +31,7 @@ import {
   createAdminSale,
   createAdminService,
   createAppointment,
+  deleteAdminService,
   fetchAdminData,
   fetchAvailability,
   fetchCurrentUser,
@@ -59,13 +60,13 @@ import {
   type Slot
 } from "./api";
 
-const bookingMoney = new Intl.NumberFormat("uk-UA", {
+const bookingMoney = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "UAH",
   maximumFractionDigits: 0
 });
 
-const adminMoney = new Intl.NumberFormat("uk-UA", {
+const adminMoney = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "UAH",
   maximumFractionDigits: 0
@@ -73,28 +74,16 @@ const adminMoney = new Intl.NumberFormat("uk-UA", {
 
 const serviceCopy: Record<string, { name: string; description: string }> = {
   "Women's haircut": {
-    name: "Жіноча стрижка",
-    description: "консультація / миття / укладка"
+    name: "Women's haircut",
+    description: "consultation / wash / styling"
   },
   "Classic manicure": {
-    name: "Класичний манікюр",
-    description: "форма / кутикула / покриття"
+    name: "Classic manicure",
+    description: "shape / cuticle care / polish"
   },
   "Hair coloring": {
-    name: "Фарбування волосся",
-    description: "консультація / повне фарбування"
-  },
-  "Жіноча стрижка": {
-    name: "Жіноча стрижка",
-    description: "консультація / миття / укладка"
-  },
-  "Класичний манікюр": {
-    name: "Класичний манікюр",
-    description: "форма / кутикула / покриття"
-  },
-  "Фарбування волосся": {
-    name: "Фарбування волосся",
-    description: "консультація / повне фарбування"
+    name: "Hair coloring",
+    description: "consultation / full color service"
   }
 };
 
@@ -129,17 +118,17 @@ type AdminSection =
   | "settings";
 
 const adminNav: Array<{ id: AdminSection; label: string; icon: typeof LayoutDashboard }> = [
-  { id: "dashboard", label: "Дашборд", icon: LayoutDashboard },
-  { id: "calendar", label: "Календар", icon: CalendarDays },
-  { id: "clients", label: "Клієнти", icon: UsersRound },
-  { id: "services", label: "Послуги", icon: Scissors },
-  { id: "employees", label: "Працівники", icon: UserRound },
-  { id: "portfolio", label: "Портфоліо", icon: Camera },
-  { id: "products", label: "Товари", icon: Package },
-  { id: "sales", label: "Продажі", icon: ShoppingCart },
-  { id: "payments", label: "Оплати", icon: CreditCard },
-  { id: "reviews", label: "Відгуки", icon: Star },
-  { id: "settings", label: "Налаштування", icon: Settings }
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "clients", label: "Clients", icon: UsersRound },
+  { id: "services", label: "Services", icon: Scissors },
+  { id: "employees", label: "Employees", icon: UserRound },
+  { id: "portfolio", label: "Portfolio", icon: Camera },
+  { id: "products", label: "Products", icon: Package },
+  { id: "sales", label: "Sales", icon: ShoppingCart },
+  { id: "payments", label: "Payments", icon: CreditCard },
+  { id: "reviews", label: "Reviews", icon: Star },
+  { id: "settings", label: "Settings", icon: Settings }
 ];
 
 const employeeSections: AdminSection[] = ["dashboard", "calendar", "clients", "employees", "portfolio", "payments", "reviews"];
@@ -221,7 +210,7 @@ function LoginView({
       const result = await loginCrm(form);
       onSuccess(result.user);
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Не вдалося увійти.");
+      setError(loginError instanceof Error ? loginError.message : "Could not sign in.");
     } finally {
       setIsSubmitting(false);
     }
@@ -235,8 +224,8 @@ function LoginView({
           <span>L</span>
         </div>
         <p className="eyebrow">SL Color Studio</p>
-        <h1>Вхід у CRM</h1>
-        {isCheckingAuth ? <div className="admin-panel">Перевірка сесії...</div> : null}
+        <h1>CRM Sign In</h1>
+        {isCheckingAuth ? <div className="admin-panel">Checking session...</div> : null}
         {error ? <div className="admin-alert">{error}</div> : null}
         <form className="admin-form" onSubmit={submit}>
           <label>
@@ -244,7 +233,7 @@ function LoginView({
             <input autoComplete="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
           </label>
           <label>
-            <span>Пароль</span>
+            <span>Password</span>
             <input
               autoComplete="current-password"
               type="password"
@@ -254,11 +243,11 @@ function LoginView({
             />
           </label>
           <button className="primary-button admin-submit" disabled={isSubmitting || isCheckingAuth} type="submit">
-            {isSubmitting ? "Вхід..." : "Увійти"}
+            {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
         <button className="booking-link light" onClick={onOpenBooking} type="button">
-          Перейти до онлайн-запису
+          Go to online booking
         </button>
       </section>
     </main>
@@ -280,7 +269,7 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
       setAdminData(data);
       setAdminError("");
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Невідома помилка адмінського API");
+      setAdminError(error instanceof Error ? error.message : "Unknown admin API error");
     } finally {
       setIsLoadingAdmin(false);
     }
@@ -303,9 +292,9 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
     try {
       await action();
       await loadAdminData();
-      setActionMessage("Зміни збережено.");
+      setActionMessage("Changes saved.");
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Не вдалося виконати дію.");
+      setAdminError(error instanceof Error ? error.message : "Could not complete the action.");
     }
   }
 
@@ -316,11 +305,11 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
           <div className="admin-logo">SL</div>
           <div>
             <strong>Color Studio</strong>
-            <span>{user.role === "ADMIN" ? "Головний адмін" : "Працівник CRM"}</span>
+            <span>{user.role === "ADMIN" ? "Main Admin" : "CRM Employee"}</span>
           </div>
         </div>
 
-        <nav className="admin-nav" aria-label="Адмін навігація">
+        <nav className="admin-nav" aria-label="Admin navigation">
           {visibleNav.map((item) => {
             const Icon = item.icon;
             return (
@@ -338,31 +327,31 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
         </nav>
 
         <button className="booking-link" onClick={onOpenBooking} type="button">
-          Відкрити онлайн-запис
+          Open online booking
         </button>
         <button className="booking-link" onClick={onLogout} type="button">
           <LogOut aria-hidden="true" size={16} />
-          Вийти
+          Sign out
         </button>
       </aside>
 
       <section className="admin-workspace">
         <header className="admin-topbar">
           <div>
-            <p className="admin-kicker">MVP адмінки</p>
+            <p className="admin-kicker">Admin MVP</p>
             <h1>{visibleNav.find((item) => item.id === activeSection)?.label}</h1>
             <span className="admin-userline">{user.name}</span>
           </div>
           <div className="admin-search">
             <Search aria-hidden="true" size={17} />
-            <input placeholder="Пошук у CRM" />
+            <input placeholder="Search CRM" />
           </div>
         </header>
 
-        {adminError ? <div className="admin-alert">Не вдалося виконати дію: {adminError}</div> : null}
+        {adminError ? <div className="admin-alert">Could not complete the action: {adminError}</div> : null}
         {actionMessage ? <div className="admin-success">{actionMessage}</div> : null}
         {isLoadingAdmin || !adminData ? (
-          <div className="admin-panel">Завантаження CRM даних...</div>
+          <div className="admin-panel">Loading CRM data...</div>
         ) : (
           <AdminContent section={activeSection} data={adminData} runAction={runAdminAction} user={user} />
         )}
@@ -407,7 +396,7 @@ function AdminContent({
   }
 
   if (section === "services") {
-    return <ServicesSection services={data.services} categories={data.serviceCategories} runAction={runAction} />;
+    return <ServicesSection services={data.services} categories={data.serviceCategories} employees={data.employees} runAction={runAction} />;
   }
 
   if (section === "employees") {
@@ -440,30 +429,30 @@ function AdminContent({
 function DashboardSection({ dashboard, appointments }: { dashboard: AdminData["dashboard"]; appointments: AdminData["appointments"] }) {
   return (
     <div className="admin-grid">
-      <MetricCard label="Сьогодні записів" value={String(dashboard.todayAppointments)} note="записи з PostgreSQL" />
-      <MetricCard label="Дохід за день" value={adminMoney.format(dashboard.dailyRevenue)} note="оплачені послуги + косметика" />
+      <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
+      <MetricCard label="Daily revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid services + products" />
       <MetricCard
-        label="Найближчий запис"
+        label="Next appointment"
         value={dashboard.nextAppointment?.time ?? "-"}
-        note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "немає майбутніх записів"}
+        note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
       />
-      <MetricCard label="Низький залишок" value={String(dashboard.lowStockProducts)} note="товари потребують закупівлі" />
+      <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
 
-      <Panel title="Сьогоднішні записи" action="Створити запис">
+      <Panel title="Today's appointments" action="Create appointment">
         <DataTable
-          columns={["Час", "Клієнт", "Послуга", "Майстер", "Статус"]}
+          columns={["Time", "Client", "Service", "Employee", "Status"]}
           rows={appointments.map((item) => [item.time, item.client, item.service, item.master, <StatusBadge status={item.status} />])}
         />
       </Panel>
 
-      <Panel title="Потрібно потім">
+      <Panel title="Later backlog">
         <div className="feature-list">
-          <span>сторінка "Про салон"</span>
-          <span>публічний каталог товарів</span>
-          <span>витрати продуктів на послуги</span>
-          <span>витратні матеріали тільки для адміна</span>
-          <span>відгуки у публічному меню</span>
-          <span>експорт записів у CSV</span>
+          <span>About salon page</span>
+          <span>public product catalog</span>
+          <span>product consumption per service</span>
+          <span>admin-only consumables</span>
+          <span>reviews in public navigation</span>
+          <span>CSV appointment export</span>
         </div>
       </Panel>
     </div>
@@ -485,16 +474,16 @@ function CalendarSection({
 }) {
   return (
     <div className="admin-grid">
-      <Panel title="Календар" action="Створити запис вручну">
-        <div className="segmented-control" aria-label="Перегляд календаря">
+      <Panel title="Calendar" action="Create appointment manually">
+        <div className="segmented-control" aria-label="Calendar view">
           <button className="active" type="button">
-            День
+            Day
           </button>
-          <button type="button">Тиждень</button>
-          <button type="button">Місяць</button>
+          <button type="button">Week</button>
+          <button type="button">Month</button>
         </div>
         <DataTable
-          columns={["Час", "Клієнт", "Послуга", "Майстер", "Коментар", "Дії", "Статус"]}
+          columns={["Time", "Client", "Service", "Employee", "Comment", "Actions", "Status"]}
           rows={appointments.map((item) => [
             item.time,
             item.client,
@@ -502,11 +491,11 @@ function CalendarSection({
             item.master,
             item.comment || "-",
             <InlineActions
-              labels={["Завершити", "Не прийшов", "Скасувати"]}
+              labels={["Complete", "No-show", "Cancel"]}
               onAction={(label) =>
                 runAction(() =>
                   updateAdminAppointment(item.id, {
-                    status: label === "Завершити" ? "completed" : label === "Не прийшов" ? "no_show" : "cancelled"
+                    status: label === "Complete" ? "completed" : label === "No-show" ? "no_show" : "cancelled"
                   })
                 )
               }
@@ -583,10 +572,10 @@ function AppointmentCreateForm({
   }
 
   return (
-    <Panel title="Новий запис">
+    <Panel title="New appointment">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Майстер</span>
+          <span>Employee</span>
           <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
@@ -596,30 +585,30 @@ function AppointmentCreateForm({
           </select>
         </label>
         <div className="checkbox-group">
-          <span>Послуги</span>
+          <span>Services</span>
           {activeServices.map((service) => (
             <label className="checkbox-line" key={service.id}>
               <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
               <span>
-                {service.name} · {service.duration} хв · {adminMoney.format(service.price)}
+                {service.name} · {service.duration} min · {adminMoney.format(service.price)}
               </span>
             </label>
           ))}
         </div>
         <div className="form-section">
           <label>
-            <span>Дата</span>
+            <span>Date</span>
             <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
           </label>
           <label>
-            <span>Час</span>
+            <span>Time</span>
             <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
           </label>
         </div>
         <label>
-          <span>Клієнт</span>
+          <span>Client</span>
           <select value={form.clientMode === "existing" ? form.clientId : "new"} onChange={(event) => setForm({ ...form, clientMode: event.target.value === "new" ? "new" : "existing", clientId: event.target.value })}>
-            <option value="new">Новий клієнт</option>
+            <option value="new">New client</option>
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name} · {client.phone}
@@ -630,15 +619,15 @@ function AppointmentCreateForm({
         {form.clientMode === "new" ? (
           <div className="client-grid">
             <label>
-              <span>Ім'я</span>
+              <span>First name</span>
               <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
             </label>
             <label>
-              <span>Прізвище</span>
+              <span>Last name</span>
               <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
             </label>
             <label>
-              <span>Телефон</span>
+              <span>Phone</span>
               <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
             </label>
             <label>
@@ -648,15 +637,15 @@ function AppointmentCreateForm({
           </div>
         ) : null}
         <label>
-          <span>Коментар клієнта</span>
+          <span>Client comment</span>
           <textarea value={form.clientComment} onChange={(event) => setForm({ ...form, clientComment: event.target.value })} rows={3} />
         </label>
         <label>
-          <span>Коментар до візиту</span>
+          <span>Visit comment</span>
           <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
         </label>
         <button className="primary-button admin-submit" disabled={serviceIds.length === 0 || !form.employeeId} type="submit">
-          Створити запис
+          Create appointment
         </button>
       </form>
     </Panel>
@@ -694,10 +683,10 @@ function AppointmentRescheduleForm({
   }
 
   return (
-    <Panel title="Перенести запис">
+    <Panel title="Reschedule appointment">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Запис</span>
+          <span>Appointment</span>
           <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
             {appointments.map((appointment) => (
               <option key={appointment.id} value={appointment.id}>
@@ -708,20 +697,20 @@ function AppointmentRescheduleForm({
         </label>
         <div className="form-section">
           <label>
-            <span>Нова дата</span>
+            <span>New date</span>
             <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
           </label>
           <label>
-            <span>Новий час</span>
+            <span>New time</span>
             <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
           </label>
         </div>
         <label>
-          <span>Коментар до перенесення</span>
+          <span>Reschedule comment</span>
           <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
         </label>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
-          Перенести
+          Reschedule
         </button>
       </form>
     </Panel>
@@ -752,10 +741,10 @@ function AppointmentCommentForm({
   }
 
   return (
-    <Panel title="Коментар до візиту">
+    <Panel title="Visit comment">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Запис</span>
+          <span>Appointment</span>
           <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
             {appointments.map((appointment) => (
               <option key={appointment.id} value={appointment.id}>
@@ -765,11 +754,11 @@ function AppointmentCommentForm({
           </select>
         </label>
         <label>
-          <span>Внутрішній коментар</span>
+          <span>Internal comment</span>
           <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
         </label>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
-          Зберегти коментар
+          Save comment
         </button>
       </form>
     </Panel>
@@ -779,22 +768,22 @@ function AppointmentCommentForm({
 function ClientsSection({ clients }: { clients: AdminData["clients"] }) {
   return (
     <div className="admin-grid">
-      <Panel title="Клієнти" action="Додати клієнта">
+      <Panel title="Clients" action="Add client">
         <div className="admin-search wide">
           <Search aria-hidden="true" size={17} />
-          <input placeholder="Ім'я, телефон або email" />
+          <input placeholder="Name, phone, or email" />
         </div>
         <DataTable
-          columns={["Клієнт", "Телефон", "Email", "Візити", "Витрачено"]}
+          columns={["Client", "Phone", "Email", "Visits", "Spent"]}
           rows={clients.map((item) => [item.name, item.phone, item.email, item.visits, adminMoney.format(item.spent)])}
         />
       </Panel>
-      <Panel title="Картка клієнта">
+      <Panel title="Client profile">
         <InfoList
           items={[
-            ["Історія відвідувань", "8 візитів"],
-            ["Коментарі", clients[0]?.comment || "немає коментарів"],
-            ["Історія покупок", clients[0] ? `${adminMoney.format(clients[0].spent)} загалом` : "немає даних"]
+            ["Visit history", "8 visits"],
+            ["Comments", clients[0]?.comment || "no comments"],
+            ["Purchase history", clients[0] ? `${adminMoney.format(clients[0].spent)} total` : "no data"]
           ]}
         />
       </Panel>
@@ -805,49 +794,118 @@ function ClientsSection({ clients }: { clients: AdminData["clients"] }) {
 function ServicesSection({
   services,
   categories,
+  employees,
   runAction
 }: {
   services: AdminData["services"];
   categories: AdminData["serviceCategories"];
+  employees: AdminData["employees"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const filteredServices = categoryFilter === "all" ? services : services.filter((service) => (service.categoryId ?? "") === categoryFilter);
+  const editingService = services.find((service) => service.id === editingServiceId) ?? null;
+  const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
+
   return (
     <div className="admin-grid">
-      <Panel title="Послуги" action="Додати послугу">
+      <Panel title="Services" action="Add service">
+        <div className="table-toolbar">
+          <label>
+            <span>Category filter</span>
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              <option value="">Uncategorized</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <DataTable
-          columns={["Категорія", "Назва", "Ціна", "Тривалість", "Опис", "Статус"]}
-          rows={services.map((item) => [
-            item.category?.name ?? "Без категорії",
+          columns={["Category", "Name", "Specialists", "Price", "Duration", "Description", "Status", "Actions"]}
+          rows={filteredServices.map((item) => [
+            item.category?.name ?? "Uncategorized",
             item.name,
+            item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
             adminMoney.format(item.price),
-            `${item.duration} хв`,
-            item.description,
+            `${item.duration} min`,
+            item.description || "no description",
+            item.active ? "active" : "disabled",
             <InlineActions
-              labels={[item.active ? "Вимкнути" : "Увімкнути"]}
-              onAction={() => runAction(() => updateAdminService(item.id, { active: !item.active }))}
+              labels={[item.active ? "Disable" : "Enable", "Edit", "Delete"]}
+              onAction={(label) => {
+                if (label === "Edit") {
+                  setEditingServiceId(item.id);
+                  return;
+                }
+
+                if (label === "Delete") {
+                  void runAction(() => deleteAdminService(item.id));
+                  return;
+                }
+
+                void runAction(() => updateAdminService(item.id, { active: !item.active }));
+              }}
             />
           ])}
         />
       </Panel>
-      <Panel title="Категорії послуг" action="Додати категорію">
-        <InfoList
-          items={categories.map((category) => [
+      <Panel title="Service categories" action="Add category">
+        <DataTable
+          columns={["Name", "Description", "Status", "Actions"]}
+          rows={categories.map((category) => [
             category.name,
-            `${category.description ?? "без опису"} · ${category.active ? "активна" : "вимкнена"}`
+            category.description ?? "no description",
+            category.active ? "active" : "disabled",
+            <InlineActions
+              labels={[category.active ? "Disable" : "Enable", "Edit"]}
+              onAction={(label) => {
+                if (label === "Edit") {
+                  setEditingCategoryId(category.id);
+                  return;
+                }
+
+                void runAction(() => updateAdminServiceCategory(category.id, { active: !category.active }));
+              }}
+            />
           ])}
         />
-        <div className="category-actions">
-          {categories.map((category) => (
-            <InlineActions
-              key={category.id}
-              labels={[category.active ? "Вимкнути" : "Увімкнути"]}
-              onAction={() => runAction(() => updateAdminServiceCategory(category.id, { active: !category.active }))}
-            />
-          ))}
-        </div>
       </Panel>
       <ServiceCategoryForm onSubmit={(payload) => runAction(() => createAdminServiceCategory(payload))} />
-      <ServiceForm categories={categories} onSubmit={(payload) => runAction(() => createAdminService(payload))} />
+      {editingCategory ? (
+        <ServiceCategoryEditForm
+          category={editingCategory}
+          key={editingCategory.id}
+          onCancel={() => setEditingCategoryId(null)}
+          onSubmit={(payload) =>
+            runAction(async () => {
+              await updateAdminServiceCategory(editingCategory.id, payload);
+              setEditingCategoryId(null);
+            })
+          }
+        />
+      ) : null}
+      <ServiceForm categories={categories} employees={employees} onSubmit={(payload) => runAction(() => createAdminService(payload))} />
+      {editingService ? (
+        <ServiceEditForm
+          categories={categories}
+          employees={employees}
+          key={editingService.id}
+          service={editingService}
+          onCancel={() => setEditingServiceId(null)}
+          onSubmit={(payload) =>
+            runAction(async () => {
+              await updateAdminService(editingService.id, payload);
+              setEditingServiceId(null);
+            })
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -855,13 +913,13 @@ function ServicesSection({
 function EmployeesSection({ employees }: { employees: AdminData["employees"] }) {
   return (
     <div className="admin-grid">
-      <Panel title="Працівники" action="Додати працівника">
+      <Panel title="Employees" action="Add employee">
         <DataTable
-          columns={["Ім'я", "Спеціалізація", "Робочі години", "Відпустка/вихідний", "Статус"]}
-          rows={employees.map((item) => [item.name, item.specialization, item.hours, item.timeOff, item.active ? "активний" : "вимкнений"])}
+          columns={["First name", "Specialization", "Working hours", "Time off/day off", "Status"]}
+          rows={employees.map((item) => [item.name, item.specialization, item.hours, item.timeOff, item.active ? "active" : "disabled"])}
         />
       </Panel>
-      <FormPanel title="Профіль працівника" fields={["Ім'я", "Спеціалізація", "Робочі години", "Відпустка/вихідний", "Увімкнути працівника"]} />
+      <FormPanel title="Employee profile" fields={["First name", "Specialization", "Working hours", "Time off/day off", "Enable employee"]} />
     </div>
   );
 }
@@ -869,7 +927,7 @@ function EmployeesSection({ employees }: { employees: AdminData["employees"] }) 
 function PortfolioSection({ portfolio }: { portfolio: AdminData["portfolio"] }) {
   return (
     <div className="admin-grid">
-      <Panel title="Портфоліо" action="Завантажити фото">
+      <Panel title="Portfolio" action="Upload photo">
         <div className="portfolio-grid">
           {portfolio.map((item) => (
             <article className="portfolio-card" key={item.title}>
@@ -878,12 +936,12 @@ function PortfolioSection({ portfolio }: { portfolio: AdminData["portfolio"] }) 
               </div>
               <strong>{item.title}</strong>
               <span>{item.master}</span>
-              <InlineActions labels={[item.visible ? "Сховати" : "Показати", "Видалити"]} />
+              <InlineActions labels={[item.visible ? "Hide" : "Show", "Delete"]} />
             </article>
           ))}
         </div>
       </Panel>
-      <FormPanel title="Опис роботи" fields={["Фото", "Опис", "Майстер", "Видимість"]} />
+      <FormPanel title="Work description" fields={["Photo", "Description", "Employee", "Visibility"]} />
     </div>
   );
 }
@@ -897,9 +955,9 @@ function ProductsSection({
 }) {
   return (
     <div className="admin-grid">
-      <Panel title="Косметика / склад" action="Додати товар">
+      <Panel title="Products / inventory" action="Add product">
         <DataTable
-          columns={["Категорія", "Товар", "Закупка", "Продаж", "Залишок", "Мін. залишок"]}
+          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Min. stock"]}
           rows={products.map((item) => [
             item.category,
             item.name,
@@ -911,7 +969,7 @@ function ProductsSection({
         />
       </Panel>
       <ProductForm onSubmit={(payload) => runAction(() => createAdminProduct(payload))} />
-      <Panel title="Історія руху складу">
+      <Panel title="Stock movement history">
         <InfoList
           items={products
             .flatMap((product) =>
@@ -942,9 +1000,9 @@ function SalesSection({
 }) {
   return (
     <div className="admin-grid">
-      <Panel title="Продажі косметики" action="Створити продаж">
+      <Panel title="Product sales" action="Create sale">
         <DataTable
-          columns={["Товар", "Кількість", "Клієнт", "Оплата", "Сума"]}
+          columns={["Product", "Quantity", "Client", "Payment", "Amount"]}
           rows={sales.map((item) => [item.product, item.qty, item.client, item.payment, adminMoney.format(item.total)])}
         />
       </Panel>
@@ -962,9 +1020,9 @@ function PaymentsSection({
 }) {
   return (
     <div className="admin-grid">
-      <Panel title="Оплати" action="Додати оплату">
+      <Panel title="Payments" action="Add payment">
         <DataTable
-          columns={["Джерело", "Клієнт", "Спосіб", "Статус", "Сума", "Дії"]}
+          columns={["Source", "Client", "Method", "Status", "Amount", "Actions"]}
           rows={payments.map((item) => [
             item.source,
             item.client,
@@ -975,7 +1033,7 @@ function PaymentsSection({
           ])}
         />
       </Panel>
-      <Panel title="Підтримувані способи">
+      <Panel title="Supported methods">
         <div className="feature-list">
           <span>cash</span>
           <span>card</span>
@@ -990,8 +1048,8 @@ function PaymentsSection({
 function ReviewsSection({ reviews }: { reviews: AdminData["reviews"] }) {
   return (
     <div className="admin-grid">
-      <Panel title="Відгуки">
-        <DataTable columns={["Клієнт", "Оцінка", "Коментар"]} rows={reviews.map((item) => [item.client, `${item.rating}/5`, item.text])} />
+      <Panel title="Reviews">
+        <DataTable columns={["Client", "Rating", "Comment"]} rows={reviews.map((item) => [item.client, `${item.rating}/5`, item.text])} />
       </Panel>
     </div>
   );
@@ -1007,14 +1065,14 @@ function SettingsSection({
   return (
     <div className="admin-grid">
       <SettingsForm settings={settings} onSubmit={(payload) => runAction(() => updateAdminSettings(payload))} />
-      <Panel title="Поточні дані">
+      <Panel title="Current data">
         <InfoList
           items={[
-            ["Назва", settings.salonName],
-            ["Телефон", settings.phone],
+            ["Name", settings.salonName],
+            ["Phone", settings.phone],
             ["Email", settings.email],
-            ["Адреса", settings.address],
-            ["Години", settings.hours]
+            ["Address", settings.address],
+            ["Hours", settings.hours]
           ]}
         />
       </Panel>
@@ -1035,23 +1093,75 @@ function ServiceCategoryForm({ onSubmit }: { onSubmit: (payload: ServiceCategory
   }
 
   return (
-    <Panel title="Нова категорія">
+    <Panel title="New category">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Назва</span>
+          <span>Name</span>
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
         </label>
         <label>
-          <span>Опис</span>
+          <span>Description</span>
           <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
         </label>
         <label className="checkbox-line">
           <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Активна категорія</span>
+          <span>Active category</span>
         </label>
         <button className="primary-button admin-submit" type="submit">
-          Додати категорію
+          Add category
         </button>
+      </form>
+    </Panel>
+  );
+}
+
+function ServiceCategoryEditForm({
+  category,
+  onCancel,
+  onSubmit
+}: {
+  category: AdminData["serviceCategories"][number];
+  onCancel: () => void;
+  onSubmit: (payload: ServiceCategoryInput) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    name: category.name,
+    description: category.description ?? "",
+    active: category.active
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onSubmit({
+      name: form.name,
+      description: form.description,
+      active: form.active
+    });
+  }
+
+  return (
+    <Panel title={`Edit category: ${category.name}`}>
+      <form className="admin-form" onSubmit={submit}>
+        <label>
+          <span>Name</span>
+          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+        </label>
+        <label className="checkbox-line">
+          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+          <span>Active category</span>
+        </label>
+        <div className="form-actions">
+          <button className="primary-button admin-submit" type="submit">
+            Save category
+          </button>
+          <button className="booking-link light" onClick={onCancel} type="button">
+            Cancel
+          </button>
+        </div>
       </form>
     </Panel>
   );
@@ -1059,12 +1169,22 @@ function ServiceCategoryForm({ onSubmit }: { onSubmit: (payload: ServiceCategory
 
 function ServiceForm({
   categories,
+  employees,
   onSubmit
 }: {
   categories: AdminData["serviceCategories"];
+  employees: AdminData["employees"];
   onSubmit: (payload: ServiceInput) => Promise<void>;
 }) {
-  const [form, setForm] = useState({ categoryId: categories[0]?.id ?? "", name: "", price: "0", duration: "60", description: "", active: true });
+  const [form, setForm] = useState({
+    categoryId: categories[0]?.id ?? "",
+    name: "",
+    price: "0",
+    duration: "60",
+    description: "",
+    active: true,
+    employeeIds: employees[0]?.id ? [employees[0].id] : []
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1074,17 +1194,18 @@ function ServiceForm({
       price: Number(form.price),
       duration: Number(form.duration),
       description: form.description,
-      active: form.active
+      active: form.active,
+      employeeIds: form.employeeIds
     });
   }
 
   return (
-    <Panel title="Нова послуга">
+    <Panel title="New service">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Категорія</span>
+          <span>Category</span>
           <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-            <option value="">Без категорії</option>
+            <option value="">Uncategorized</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
@@ -1093,30 +1214,155 @@ function ServiceForm({
           </select>
         </label>
         <label>
-          <span>Назва</span>
+          <span>Name</span>
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
         </label>
         <label>
-          <span>Ціна</span>
+          <span>Price</span>
           <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
         </label>
         <label>
-          <span>Тривалість, хв</span>
+          <span>Duration, min</span>
           <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
         </label>
         <label>
-          <span>Опис</span>
+          <span>Description</span>
           <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
         </label>
+        <EmployeeSelector
+          employees={employees}
+          selectedIds={form.employeeIds}
+          onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+        />
+        {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
         <label className="checkbox-line">
           <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Активна послуга</span>
+          <span>Active service</span>
         </label>
-        <button className="primary-button admin-submit" type="submit">
-          Додати послугу
+        <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
+          Add service
         </button>
       </form>
     </Panel>
+  );
+}
+
+function ServiceEditForm({
+  categories,
+  employees,
+  onCancel,
+  onSubmit,
+  service
+}: {
+  categories: AdminData["serviceCategories"];
+  employees: AdminData["employees"];
+  onCancel: () => void;
+  onSubmit: (payload: ServiceInput) => Promise<void>;
+  service: AdminData["services"][number];
+}) {
+  const [form, setForm] = useState({
+    categoryId: service.categoryId ?? "",
+    name: service.name,
+    price: String(service.price),
+    duration: String(service.duration),
+    description: service.description ?? "",
+    active: service.active,
+    employeeIds: service.employeeIds
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onSubmit({
+      categoryId: form.categoryId,
+      name: form.name,
+      price: Number(form.price),
+      duration: Number(form.duration),
+      description: form.description,
+      active: form.active,
+      employeeIds: form.employeeIds
+    });
+  }
+
+  return (
+    <Panel title={`Edit service: ${service.name}`}>
+      <form className="admin-form" onSubmit={submit}>
+        <label>
+          <span>Category</span>
+          <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
+            <option value="">Uncategorized</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Name</span>
+          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+        </label>
+        <label>
+          <span>Price</span>
+          <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
+        </label>
+        <label>
+          <span>Duration, min</span>
+          <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+        </label>
+        <EmployeeSelector
+          employees={employees}
+          selectedIds={form.employeeIds}
+          onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+        />
+        {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
+        <label className="checkbox-line">
+          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+          <span>Active service</span>
+        </label>
+        <div className="form-actions">
+          <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
+            Save service
+          </button>
+          <button className="booking-link light" onClick={onCancel} type="button">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
+function EmployeeSelector({
+  employees,
+  onChange,
+  selectedIds
+}: {
+  employees: AdminData["employees"];
+  onChange: (employeeIds: string[]) => void;
+  selectedIds: string[];
+}) {
+  function toggleEmployee(employeeId: string) {
+    onChange(selectedIds.includes(employeeId) ? selectedIds.filter((id) => id !== employeeId) : [...selectedIds, employeeId]);
+  }
+
+  return (
+    <div className="checkbox-group">
+      <span>Specialists</span>
+      {employees.length > 0 ? (
+        employees.map((employee) => (
+          <label className="checkbox-line" key={employee.id}>
+            <input checked={selectedIds.includes(employee.id)} onChange={() => toggleEmployee(employee.id)} type="checkbox" />
+            <span>{employee.specialization ? `${employee.name} · ${employee.specialization}` : employee.name}</span>
+          </label>
+        ))
+      ) : (
+        <small>No employees available. Add an employee before publishing the service.</small>
+      )}
+    </div>
   );
 }
 
@@ -1136,34 +1382,34 @@ function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promis
   }
 
   return (
-    <Panel title="Новий товар">
+    <Panel title="New product">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Категорія</span>
+          <span>Category</span>
           <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
         </label>
         <label>
-          <span>Товар</span>
+          <span>Product</span>
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
         </label>
         <label>
-          <span>Ціна закупки</span>
+          <span>Purchase price</span>
           <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
         </label>
         <label>
-          <span>Ціна продажу</span>
+          <span>Sale price</span>
           <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
         </label>
         <label>
-          <span>Залишок</span>
+          <span>Stock</span>
           <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
         </label>
         <label>
-          <span>Мінімальний залишок</span>
+          <span>Minimum stock</span>
           <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
         </label>
         <button className="primary-button admin-submit" type="submit">
-          Додати товар
+          Add product
         </button>
       </form>
     </Panel>
@@ -1195,26 +1441,26 @@ function SaleForm({
   }
 
   return (
-    <Panel title="Новий продаж">
+    <Panel title="New sale">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Товар</span>
+          <span>Product</span>
           <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
             {products.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name} · залишок {product.stock}
+                {product.name} · stock {product.stock}
               </option>
             ))}
           </select>
         </label>
         <label>
-          <span>Кількість</span>
+          <span>Quantity</span>
           <input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required />
         </label>
         <label>
-          <span>Клієнт</span>
+          <span>Client</span>
           <select value={form.clientId} onChange={(event) => setForm({ ...form, clientId: event.target.value })}>
-            <option value="">без клієнта</option>
+            <option value="">no client</option>
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
@@ -1223,9 +1469,9 @@ function SaleForm({
           </select>
         </label>
         <label>
-          <span>Працівник</span>
+          <span>Employee</span>
           <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })}>
-            <option value="">не вказано</option>
+            <option value="">not specified</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {employee.name}
@@ -1234,7 +1480,7 @@ function SaleForm({
           </select>
         </label>
         <label>
-          <span>Спосіб оплати</span>
+          <span>Payment method</span>
           <select value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })}>
             <option value="cash">cash</option>
             <option value="card">card</option>
@@ -1243,7 +1489,7 @@ function SaleForm({
           </select>
         </label>
         <button className="primary-button admin-submit" type="submit">
-          Створити продаж
+          Create sale
         </button>
       </form>
     </Panel>
@@ -1268,14 +1514,14 @@ function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"];
   }
 
   return (
-    <Panel title="Налаштування салону">
+    <Panel title="Salon settings">
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Назва салону</span>
+          <span>Salon name</span>
           <input value={form.salonName} onChange={(event) => setForm({ ...form, salonName: event.target.value })} required />
         </label>
         <label>
-          <span>Телефон</span>
+          <span>Phone</span>
           <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         </label>
         <label>
@@ -1283,23 +1529,23 @@ function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"];
           <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
         </label>
         <label>
-          <span>Адреса</span>
+          <span>Address</span>
           <input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
         </label>
         <label>
-          <span>Логотип</span>
+          <span>Logo</span>
           <input value={form.logoUrl} onChange={(event) => setForm({ ...form, logoUrl: event.target.value })} />
         </label>
         <label>
-          <span>Відкриття</span>
+          <span>Opening</span>
           <input value={form.openingTime} onChange={(event) => setForm({ ...form, openingTime: event.target.value })} />
         </label>
         <label>
-          <span>Закриття</span>
+          <span>Closing</span>
           <input value={form.closingTime} onChange={(event) => setForm({ ...form, closingTime: event.target.value })} />
         </label>
         <button className="primary-button admin-submit" type="submit">
-          Зберегти налаштування
+          Save settings
         </button>
       </form>
     </Panel>
@@ -1340,11 +1586,11 @@ function FormPanel({ title, fields }: { title: string; fields: string[] }) {
         {fields.map((field) => (
           <label key={field}>
             <span>{field}</span>
-            {field.toLowerCase().includes("коментар") || field.toLowerCase().includes("опис") ? <textarea rows={3} /> : <input />}
+            {field.toLowerCase().includes("comment") || field.toLowerCase().includes("description") ? <textarea rows={3} /> : <input />}
           </label>
         ))}
         <button className="primary-button admin-submit" type="button">
-          Зберегти
+          Save
         </button>
       </form>
     </Panel>
@@ -1393,7 +1639,7 @@ function InlineActions({ labels, onAction }: { labels: string[]; onAction?: (lab
   return (
     <div className="inline-actions">
       {labels.map((label) => {
-        const Icon = label === "Видалити" ? Trash2 : label === "Сховати" ? EyeOff : Edit3;
+        const Icon = label === "Delete" ? Trash2 : label === "Hide" ? EyeOff : Edit3;
         return (
           <button aria-label={label} key={label} onClick={() => onAction?.(label)} title={label} type="button">
             <Icon aria-hidden="true" size={15} />
@@ -1406,13 +1652,13 @@ function InlineActions({ labels, onAction }: { labels: string[]; onAction?: (lab
 
 function StatusBadge({ status }: { status: string }) {
   const statusLabels: Record<string, string> = {
-    scheduled: "заплановано",
-    completed: "завершено",
-    cancelled: "скасовано",
-    no_show: "не прийшов",
-    pending: "очікує",
-    paid: "оплачено",
-    refunded: "повернено"
+    scheduled: "scheduled",
+    completed: "completed",
+    cancelled: "cancelled",
+    no_show: "no-show",
+    pending: "pending",
+    paid: "paid",
+    refunded: "refunded"
   };
 
   return <span className={`status-badge ${status}`}>{statusLabels[status] ?? status}</span>;
@@ -1476,7 +1722,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
 
     for (const service of services) {
       const groupId = service.category?.id ?? "uncategorized";
-      const groupName = service.category?.name ?? "Інші послуги";
+      const groupName = service.category?.name ?? "Other services";
       const groupDescription = service.category?.description ?? null;
       const existing = groups.get(groupId);
 
@@ -1512,7 +1758,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
     setError("");
 
     if (!selectedSlot) {
-      setError("Оберіть доступний час.");
+      setError("Choose an available time.");
       return;
     }
 
@@ -1528,7 +1774,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
       });
       setStatus("success");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Не вдалося створити запис.");
+      setError(saveError instanceof Error ? saveError.message : "Could not create the appointment.");
       setStatus("idle");
     }
   }
@@ -1545,12 +1791,12 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
             <Check aria-hidden="true" size={30} />
           </div>
           <p className="eyebrow">SL Color Studio</p>
-          <h1>Запис підтверджено</h1>
+          <h1>Appointment confirmed</h1>
           <p>
-            {client.firstName}, ваш візит зарезервовано на {selectedSlot?.label}, {selectedDate}.
+            {client.firstName}, your visit is reserved for {selectedSlot?.label}, {selectedDate}.
           </p>
           <button type="button" onClick={() => window.location.reload()}>
-            Новий запис
+            New appointment
           </button>
         </section>
       </main>
@@ -1560,7 +1806,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   return (
     <main className="app-shell">
       <button className="mode-switch" onClick={onOpenAdmin} type="button">
-        Адмін CRM
+        Admin CRM
       </button>
       <section className="booking-document document-frame">
         <aside className="brand-column">
@@ -1582,7 +1828,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
             </div>
             <div className="contact-line">
               <MapPin aria-hidden="true" size={18} />
-              <span>м. Броди, вул. Стуса 2</span>
+              <span>Brody, Stusa St. 2</span>
             </div>
             <div className="contact-line">
               <Mail aria-hidden="true" size={18} />
@@ -1592,18 +1838,18 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
 
           <section className="price-list">
             <div className="section-heading">
-              <h1>Прайс</h1>
-              <span>Запис онлайн</span>
+              <h1>Price List</h1>
+              <span>Online booking</span>
             </div>
 
             <div className="price-box">
               <div className="price-title">
                 <Scissors aria-hidden="true" size={20} />
-                <h2>Послуги</h2>
+                <h2>Services</h2>
               </div>
 
               <div className="service-list">
-                {status === "loading" ? <p className="empty-state">Завантаження послуг...</p> : null}
+                {status === "loading" ? <p className="empty-state">Loading services...</p> : null}
                 {groupedServices.map((group) => (
                   <div className="service-category" key={group.id}>
                     <div className="service-category-heading">
@@ -1623,11 +1869,11 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                         >
                           <span className="service-text">
                             <strong>{copy?.name ?? service.name}</strong>
-                            <small>{copy?.description ?? service.description ?? "індивідуальна консультація"}</small>
+                            <small>{copy?.description ?? service.description ?? "individual consultation"}</small>
                           </span>
                           <span className="service-meta">
                             <strong>{bookingMoney.format(service.price)}</strong>
-                            <small>{service.durationMinutes} хв</small>
+                            <small>{service.durationMinutes} min</small>
                           </span>
                         </button>
                       );
@@ -1641,8 +1887,8 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
 
         <section className="form-column">
           <div className="form-heading">
-            <p className="eyebrow">Онлайн бронювання</p>
-            <h2>Оберіть майстра та час</h2>
+            <p className="eyebrow">Online booking</p>
+            <h2>Choose an employee and time</h2>
           </div>
 
           {error ? <div className="alert">{error}</div> : null}
@@ -1652,7 +1898,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
               <label>
                 <span className="field-label">
                   <UserRound aria-hidden="true" size={16} />
-                  Майстер
+                  Employee
                 </span>
                 <select
                   value={selectedEmployeeId}
@@ -1660,7 +1906,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                   disabled={selectedServiceIds.length === 0}
                   required
                 >
-                  <option value="">Оберіть майстра</option>
+                  <option value="">Choose an employee</option>
                   {employees.map((employee) => (
                     <option value={employee.id} key={employee.id}>
                       {employee.firstName} {employee.lastName} · {employee.specialization}
@@ -1672,7 +1918,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
               <label>
                 <span className="field-label">
                   <CalendarDays aria-hidden="true" size={16} />
-                  Дата
+                  Date
                 </span>
                 <input
                   type="date"
@@ -1687,7 +1933,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
             <section className="form-section">
               <div className="field-label">
                 <Clock aria-hidden="true" size={16} />
-                Доступний час
+                Available time
               </div>
               <div className="slot-grid">
                 {slots.map((slot) => (
@@ -1700,14 +1946,14 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                     {slot.label}
                   </button>
                 ))}
-                {selectedEmployeeId && slots.length === 0 ? <p className="empty-state">На цю дату вільних годин немає.</p> : null}
-                {!selectedEmployeeId ? <p className="empty-state">Спочатку оберіть послугу та майстра.</p> : null}
+                {selectedEmployeeId && slots.length === 0 ? <p className="empty-state">No available times for this date.</p> : null}
+                {!selectedEmployeeId ? <p className="empty-state">Choose a service and employee first.</p> : null}
               </div>
             </section>
 
             <section className="form-section client-grid">
               <label>
-                <span>Ім'я</span>
+                <span>First name</span>
                 <input
                   value={client.firstName}
                   onChange={(event) => setClient({ ...client, firstName: event.target.value })}
@@ -1715,7 +1961,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                 />
               </label>
               <label>
-                <span>Прізвище</span>
+                <span>Last name</span>
                 <input
                   value={client.lastName}
                   onChange={(event) => setClient({ ...client, lastName: event.target.value })}
@@ -1723,7 +1969,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                 />
               </label>
               <label>
-                <span>Телефон</span>
+                <span>Phone</span>
                 <input value={client.phone} onChange={(event) => setClient({ ...client, phone: event.target.value })} required />
               </label>
               <label>
@@ -1737,15 +1983,15 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
             </section>
 
             <label className="full-width">
-              <span>Коментар</span>
+              <span>Comment</span>
               <textarea value={clientComment} onChange={(event) => setClientComment(event.target.value)} rows={3} />
             </label>
 
             <footer className="booking-footer">
               <div className="summary">
-                <span>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Майстра не обрано"}</span>
-                <strong>{selectedServices.length > 0 ? bookingMoney.format(total.price) : "Оберіть послуги"}</strong>
-                <small>{total.duration > 0 ? `${total.duration} хв загалом` : "Прайс зліва активний"}</small>
+                <span>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "No employee selected"}</span>
+                <strong>{selectedServices.length > 0 ? bookingMoney.format(total.price) : "Choose services"}</strong>
+                <small>{total.duration > 0 ? `${total.duration} min total` : "Select services from the price list"}</small>
               </div>
               <button
                 className="primary-button"
@@ -1758,7 +2004,7 @@ function BookingView({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                   !selectedSlot
                 }
               >
-                {status === "saving" ? "Бронювання..." : "Підтвердити запис"}
+                {status === "saving" ? "Booking..." : "Confirm appointment"}
               </button>
             </footer>
           </form>

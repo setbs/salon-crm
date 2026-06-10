@@ -6,6 +6,7 @@ import {
   createAppointment,
   createService,
   createServiceCategory,
+  deleteService,
   getAppointments,
   getClients,
   getDashboard,
@@ -106,6 +107,15 @@ adminRouter.patch("/admin/services/:id", async (request, response, next) => {
   try {
     const body = updateServiceSchema.parse(request.body);
     response.json({ data: await updateService(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/services/:id", async (request, response, next) => {
+  try {
+    await deleteService(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }

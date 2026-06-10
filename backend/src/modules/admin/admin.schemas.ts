@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const idStringSchema = z.string().regex(/^\d+$/);
+const optionalCategoryIdSchema = idStringSchema.optional().or(z.literal(""));
+
 export const updateAppointmentSchema = z.object({
   status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).optional(),
   clientComment: z.string().trim().max(1000).optional(),
@@ -9,11 +12,11 @@ export const updateAppointmentSchema = z.object({
 });
 
 export const createAppointmentSchema = z.object({
-  employeeId: z.string().regex(/^\d+$/),
-  serviceIds: z.array(z.string().regex(/^\d+$/)).min(1),
+  employeeId: idStringSchema,
+  serviceIds: z.array(idStringSchema).min(1),
   startTime: z.string().datetime(),
   status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).default("scheduled"),
-  clientId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
+  clientId: idStringSchema.optional().or(z.literal("")),
   client: z
     .object({
       firstName: z.string().trim().min(1).max(100),
@@ -27,15 +30,24 @@ export const createAppointmentSchema = z.object({
 });
 
 export const createServiceSchema = z.object({
-  categoryId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
+  categoryId: optionalCategoryIdSchema,
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(1000).optional(),
   duration: z.coerce.number().int().positive(),
   price: z.coerce.number().nonnegative(),
-  active: z.boolean().default(true)
+  active: z.boolean().default(true),
+  employeeIds: z.array(idStringSchema).default([])
 });
 
-export const updateServiceSchema = createServiceSchema.partial();
+export const updateServiceSchema = z.object({
+  categoryId: optionalCategoryIdSchema.optional(),
+  name: z.string().trim().min(1).max(255).optional(),
+  description: z.string().trim().max(1000).optional(),
+  duration: z.coerce.number().int().positive().optional(),
+  price: z.coerce.number().nonnegative().optional(),
+  active: z.boolean().optional(),
+  employeeIds: z.array(idStringSchema).optional()
+});
 
 export const createServiceCategorySchema = z.object({
   name: z.string().trim().min(1).max(255),
@@ -59,10 +71,10 @@ export const createProductSchema = z.object({
 export const updateProductSchema = createProductSchema.partial();
 
 export const createSaleSchema = z.object({
-  productId: z.string().regex(/^\d+$/),
+  productId: idStringSchema,
   quantity: z.coerce.number().int().positive(),
-  clientId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
-  employeeId: z.string().regex(/^\d+$/).optional().or(z.literal("")),
+  clientId: idStringSchema.optional().or(z.literal("")),
+  employeeId: idStringSchema.optional().or(z.literal("")),
   paymentMethod: z.enum(["cash", "card", "blik", "transfer"])
 });
 

@@ -12,7 +12,7 @@ export function requireCrmUser(request: Request, _response: Response, next: Next
     const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
 
     if (!token) {
-      throw new HttpError(401, "Увійдіть у CRM.");
+      throw new HttpError(401, "Sign in to CRM.");
     }
 
     (request as AuthenticatedRequest).user = verifySessionToken(token);
@@ -26,7 +26,7 @@ export function getAuthenticatedUser(request: Request) {
   const user = (request as AuthenticatedRequest).user;
 
   if (!user) {
-    throw new HttpError(401, "Увійдіть у CRM.");
+    throw new HttpError(401, "Sign in to CRM.");
   }
 
   return user;
@@ -34,6 +34,6 @@ export function getAuthenticatedUser(request: Request) {
 
 export function assertAdmin(user: AuthenticatedUser) {
   if (user.role !== "ADMIN") {
-    throw new HttpError(403, "Ця дія доступна тільки головному адміну.");
+    throw new HttpError(403, "This action is available only to the main admin.");
   }
 }

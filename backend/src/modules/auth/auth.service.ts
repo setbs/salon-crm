@@ -12,15 +12,15 @@ export async function login(input: z.infer<typeof loginSchema>) {
   });
 
   if (!user || !verifyPassword(input.password, user.passwordHash)) {
-    throw new HttpError(401, "Невірний email або пароль.");
+    throw new HttpError(401, "Invalid email or password.");
   }
 
   if (user.role !== UserRole.ADMIN && user.role !== UserRole.EMPLOYEE) {
-    throw new HttpError(403, "Немає доступу до CRM.");
+    throw new HttpError(403, "You do not have access to CRM.");
   }
 
   if (user.role === UserRole.EMPLOYEE && !user.employeeProfile) {
-    throw new HttpError(403, "Профіль працівника не налаштовано.");
+    throw new HttpError(403, "Employee profile is not configured.");
   }
 
   const sessionUser: AuthenticatedUser = {
