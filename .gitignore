@@ -106,4 +106,3 @@ prompts/
 ai_notes/
 .env
 .env.local
-project_context.md

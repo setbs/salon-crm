@@ -1,5 +1,6 @@
-import { AppointmentStatus, type Prisma } from "@prisma/client";
+import { AppointmentStatus, UserRole, type Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
+import { HttpError } from "../../utils/http-error.js";
 
 export function findActiveServicesByIds(serviceIds: bigint[]) {
   return prisma.service.findMany({
@@ -58,14 +59,30 @@ export function createAppointmentWithClient(input: {
       return null;
     }
 
-    const client = await transaction.user.create({
-      data: {
-        firstName: input.client.firstName,
-        lastName: input.client.lastName,
-        phone: input.client.phone,
-        email: input.client.email || null
-      }
-    });
+    const email = input.client.email?.trim() || null;
+    const existingClient = email ? await transaction.user.findUnique({ where: { email } }) : null;
+
+    if (existingClient && existingClient.role !== UserRole.CLIENT) {
+      throw new HttpError(409, "This email is already used by a CRM account.");
+    }
+
+    const client = existingClient
+      ? await transaction.user.update({
+          where: { id: existingClient.id },
+          data: {
+            firstName: input.client.firstName,
+            lastName: input.client.lastName,
+            phone: input.client.phone
+          }
+        })
+      : await transaction.user.create({
+          data: {
+            firstName: input.client.firstName,
+            lastName: input.client.lastName,
+            phone: input.client.phone,
+            email
+          }
+        });
 
     return transaction.appointment.create({
       data: {
