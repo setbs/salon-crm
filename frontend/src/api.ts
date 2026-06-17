@@ -87,6 +87,8 @@ export type AdminService = {
   duration: number;
   description: string | null;
   active: boolean;
+  appointmentCount: number;
+  canDelete: boolean;
   consumables: AdminServiceConsumable[];
   employeeIds: string[];
   employees: Array<{ id: string; name: string; specialization: string | null }>;
@@ -138,6 +140,8 @@ export type AdminProduct = {
   min: number;
   contentAmount: number | null;
   contentUnit: MeasurementUnit | null;
+  stockContentAmount: number | null;
+  stockPackageEquivalent: number | null;
   movements: Array<{ type: string; quantity: number; reason: string | null; createdAt: string }>;
 };
 

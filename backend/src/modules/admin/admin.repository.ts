@@ -99,10 +99,16 @@ export function listServices() {
       sc.name AS "categoryName",
       sc.description AS "categoryDescription",
       sc.is_active AS "categoryActive",
+      COALESCE(service_usage."appointmentCount", 0) AS "appointmentCount",
       COALESCE(service_employees.employees, '[]'::json) AS employees,
       COALESCE(service_consumables.consumables, '[]'::json) AS consumables
     FROM services s
     LEFT JOIN service_categories sc ON sc.id = s.category_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS "appointmentCount"
+      FROM appointment_services appointment_service
+      WHERE appointment_service.service_id = s.id
+    ) service_usage ON TRUE
     LEFT JOIN LATERAL (
       SELECT json_agg(
         json_build_object(
@@ -248,6 +254,7 @@ export type ServiceWithCategoryRow = {
   categoryName: string | null;
   categoryDescription: string | null;
   categoryActive: boolean | null;
+  appointmentCount: number;
   employees: Prisma.JsonValue;
   consumables: Prisma.JsonValue;
 };

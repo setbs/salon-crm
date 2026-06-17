@@ -253,10 +253,30 @@ Table products {
   min_stock_quantity int [not null]
   content_amount decimal(10,2)
   content_unit ConsumableUnit
+  stock_content_amount decimal(10,2)
   is_active boolean [not null, default: true]
 
   created_at timestamp [not null]
   updated_at timestamp [not null]
+}
+
+Table service_consumption_logs {
+  id bigint [pk, increment]
+
+  appointment_id bigint [not null]
+  service_id bigint [not null]
+  product_id bigint [not null]
+  quantity decimal(10,2) [not null]
+  unit ConsumableUnit [not null]
+  stock_content_before decimal(10,2)
+  stock_content_after decimal(10,2)
+
+  created_at timestamp [not null]
+
+  indexes {
+    (appointment_id)
+    (product_id)
+  }
 }
 
 Table product_sales {
@@ -330,6 +350,9 @@ Ref: employee_services.service_id > services.id [delete: cascade]
 
 Ref: service_consumables.service_id > services.id [delete: cascade]
 Ref: service_consumables.product_id > products.id
+Ref: service_consumption_logs.appointment_id > appointments.id [delete: cascade]
+Ref: service_consumption_logs.service_id > services.id
+Ref: service_consumption_logs.product_id > products.id
 
 Ref: appointments.client_id > users.id
 Ref: appointments.employee_id > employees.id

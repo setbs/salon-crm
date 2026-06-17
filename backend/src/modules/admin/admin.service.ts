@@ -109,6 +109,8 @@ export async function getServices(_actor: CrmAuthenticatedUser) {
       duration: service.durationMinutes,
       description: service.description,
       active: service.isActive,
+      appointmentCount: service.appointmentCount,
+      canDelete: service.appointmentCount === 0,
       consumables,
       employees,
       employeeIds: employees.map((employee) => employee.id)
@@ -158,29 +160,43 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
   }
 
   const products = await listProducts();
-  const productContentRows = await prisma.$queryRaw<Array<{ id: bigint; contentAmount: Prisma.Decimal | null; contentUnit: string | null }>>`
-    SELECT id, content_amount AS "contentAmount", lower(content_unit::text) AS "contentUnit"
+  const productContentRows = await prisma.$queryRaw<
+    Array<{ id: bigint; contentAmount: Prisma.Decimal | null; contentUnit: string | null; stockContentAmount: Prisma.Decimal | null }>
+  >`
+    SELECT
+      id,
+      content_amount AS "contentAmount",
+      lower(content_unit::text) AS "contentUnit",
+      stock_content_amount AS "stockContentAmount"
     FROM products
   `;
   const productContent = new Map(productContentRows.map((row) => [row.id.toString(), row]));
 
-  return products.map((product) => ({
-    id: product.id.toString(),
-    category: product.category?.name ?? "Uncategorized",
-    name: product.name,
-    purchase: Number(product.purchasePrice ?? 0),
-    sale: Number(product.sellingPrice),
-    stock: product.stockQuantity,
-    min: product.minStockQuantity,
-    contentAmount: productContent.get(product.id.toString())?.contentAmount ? Number(productContent.get(product.id.toString())?.contentAmount) : null,
-    contentUnit: productContent.get(product.id.toString())?.contentUnit ?? null,
-    movements: product.stockMovements.map((movement) => ({
-      type: movement.movementType.toLowerCase(),
-      quantity: movement.quantity,
-      reason: movement.reason,
-      createdAt: movement.createdAt.toISOString()
-    }))
-  }));
+  return products.map((product) => {
+    const content = productContent.get(product.id.toString());
+    const contentAmount = content?.contentAmount ? Number(content.contentAmount) : null;
+    const stockContentAmount = content?.stockContentAmount ? Number(content.stockContentAmount) : null;
+
+    return {
+      id: product.id.toString(),
+      category: product.category?.name ?? "Uncategorized",
+      name: product.name,
+      purchase: Number(product.purchasePrice ?? 0),
+      sale: Number(product.sellingPrice),
+      stock: product.stockQuantity,
+      min: product.minStockQuantity,
+      contentAmount,
+      contentUnit: content?.contentUnit ?? null,
+      stockContentAmount,
+      stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
+      movements: product.stockMovements.map((movement) => ({
+        type: movement.movementType.toLowerCase(),
+        quantity: movement.quantity,
+        reason: movement.reason,
+        createdAt: movement.createdAt.toISOString()
+      }))
+    };
+  });
 }
 
 export async function getProductSales(actor: CrmAuthenticatedUser) {
@@ -245,7 +261,7 @@ export async function getSettings(_actor: CrmAuthenticatedUser) {
 export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateAppointmentSchema>) {
   const current = await prisma.appointment.findUnique({
     where: { id },
-    select: { employeeId: true, startTime: true, endTime: true }
+    select: { employeeId: true, startTime: true, endTime: true, status: true }
   });
 
   if (!current) {
@@ -272,15 +288,26 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
     excludeAppointmentId: id
   });
 
-  const appointment = await prisma.appointment.update({
-    where: { id },
-    data: {
-      status: input.status ? toAppointmentStatus(input.status) : undefined,
-      clientComment: input.clientComment,
-      employeeComment: input.employeeComment,
-      startTime,
-      endTime
+  const nextStatus = input.status ? toAppointmentStatus(input.status) : undefined;
+  const shouldApplyConsumables = nextStatus === AppointmentStatus.COMPLETED && current.status !== AppointmentStatus.COMPLETED;
+
+  const appointment = await prisma.$transaction(async (transaction) => {
+    const updatedAppointment = await transaction.appointment.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        clientComment: input.clientComment,
+        employeeComment: input.employeeComment,
+        startTime,
+        endTime
+      }
+    });
+
+    if (shouldApplyConsumables) {
+      await applyAppointmentConsumables(transaction, id);
     }
+
+    return updatedAppointment;
   });
 
   return { id: appointment.id.toString() };
@@ -342,13 +369,14 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
       }
     }
 
-    return transaction.appointment.create({
+    const appointmentStatus = toAppointmentStatus(input.status);
+    const createdAppointment = await transaction.appointment.create({
       data: {
         clientId,
         employeeId,
         startTime,
         endTime,
-        status: toAppointmentStatus(input.status),
+        status: appointmentStatus,
         clientComment: input.clientComment,
         employeeComment: input.employeeComment,
         services: {
@@ -356,6 +384,12 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
         }
       }
     });
+
+    if (appointmentStatus === AppointmentStatus.COMPLETED) {
+      await applyAppointmentConsumables(transaction, createdAppointment.id);
+    }
+
+    return createdAppointment;
   });
 
   return { id: appointment.id.toString() };
@@ -369,6 +403,7 @@ export async function createService(actor: CrmAuthenticatedUser, input: z.infer<
   const service = await prisma.$transaction(async (tx) => {
     await ensureEmployeesExist(tx, employeeIds);
     await ensureProductsExist(tx, consumables.map((consumable) => consumable.productId));
+    await ensureConsumableProductsConfigured(tx, consumables);
 
     const [createdService] = await tx.$queryRaw<{ id: bigint }[]>`
       INSERT INTO services (category_id, name, description, duration_minutes, price, price_from, price_to, is_active)
@@ -441,6 +476,7 @@ export async function updateService(actor: CrmAuthenticatedUser, id: bigint, inp
 
     if (shouldSyncConsumables) {
       await ensureProductsExist(tx, consumables.map((consumable) => consumable.productId));
+      await ensureConsumableProductsConfigured(tx, consumables);
       await syncServiceConsumables(tx, id, consumables);
     }
 
@@ -573,7 +609,10 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
   if (input.contentAmount) {
     await prisma.$executeRaw`
       UPDATE products
-      SET content_amount = ${input.contentAmount}, content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit"
+      SET
+        content_amount = ${input.contentAmount},
+        content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit",
+        stock_content_amount = ${input.contentAmount * input.stock}
       WHERE id = ${product.id}
     `;
   }
@@ -619,8 +658,18 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
   if (input.contentAmount !== undefined) {
     await prisma.$executeRaw`
       UPDATE products
-      SET content_amount = ${input.contentAmount}, content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit"
+      SET
+        content_amount = ${input.contentAmount},
+        content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit",
+        stock_content_amount = ${input.contentAmount * (input.stock ?? product.stockQuantity)}
       WHERE id = ${id}
+    `;
+  } else if (input.stock !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET stock_content_amount = ${input.stock} * content_amount
+      WHERE id = ${id}
+        AND content_amount IS NOT NULL
     `;
   }
 
@@ -640,7 +689,21 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
       throw new HttpError(404, "Product not found.");
     }
 
-    if (product.stockQuantity < quantity) {
+    const [inventory] = await transaction.$queryRaw<
+      Array<{ contentAmount: Prisma.Decimal | null; stockContentAmount: Prisma.Decimal | null }>
+    >`
+      SELECT content_amount AS "contentAmount", stock_content_amount AS "stockContentAmount"
+      FROM products
+      WHERE id = ${productId}
+    `;
+    const contentAmount = inventory?.contentAmount ? Number(inventory.contentAmount) : null;
+    const stockContentAmount = inventory?.stockContentAmount ? Number(inventory.stockContentAmount) : null;
+
+    if (stockContentAmount !== null && contentAmount !== null && contentAmount > 0 && stockContentAmount < quantity * contentAmount) {
+      throw new HttpError(400, "Not enough product content for this sale.");
+    }
+
+    if (stockContentAmount === null && product.stockQuantity < quantity) {
       throw new HttpError(400, "Not enough stock for this sale.");
     }
 
@@ -662,10 +725,22 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
       }
     });
 
-    await transaction.product.update({
-      where: { id: productId },
-      data: { stockQuantity: { decrement: quantity } }
-    });
+    if (stockContentAmount !== null && contentAmount !== null && contentAmount > 0) {
+      const nextStockContentAmount = Math.max(stockContentAmount - quantity * contentAmount, 0);
+
+      await transaction.$executeRaw`
+        UPDATE products
+        SET
+          stock_content_amount = ${nextStockContentAmount},
+          stock_quantity = floor(${nextStockContentAmount} / ${contentAmount})::int
+        WHERE id = ${productId}
+      `;
+    } else {
+      await transaction.product.update({
+        where: { id: productId },
+        data: { stockQuantity: { decrement: quantity } }
+      });
+    }
 
     await transaction.stockMovement.create({
       data: {
@@ -779,6 +854,10 @@ function toNumber(value: unknown) {
     return Number(value);
   }
 
+  if (typeof value === "object" && value !== null && "toString" in value) {
+    return Number(value.toString());
+  }
+
   return 0;
 }
 
@@ -824,6 +903,34 @@ async function ensureProductsExist(client: Prisma.TransactionClient, productIds:
   }
 }
 
+async function ensureConsumableProductsConfigured(
+  client: Prisma.TransactionClient,
+  consumables: Array<{ productId: bigint; quantity: number; unit: ConsumableUnitValue }>
+) {
+  if (consumables.length === 0) {
+    return;
+  }
+
+  const rows = await client.$queryRaw<Array<{ id: bigint; name: string; contentAmount: Prisma.Decimal | null; contentUnit: string | null }>>(Prisma.sql`
+    SELECT id, name, content_amount AS "contentAmount", lower(content_unit::text) AS "contentUnit"
+    FROM products
+    WHERE id IN (${Prisma.join(consumables.map((consumable) => consumable.productId))})
+  `);
+  const products = new Map(rows.map((row) => [row.id.toString(), row]));
+
+  for (const consumable of consumables) {
+    const product = products.get(consumable.productId.toString());
+
+    if (!product?.contentAmount || !product.contentUnit) {
+      throw new HttpError(400, "Consumable products must have package content configured.");
+    }
+
+    if (product.contentUnit !== toPublicUnit(consumable.unit)) {
+      throw new HttpError(400, `Consumable unit does not match product package unit for ${product.name}.`);
+    }
+  }
+}
+
 async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId: bigint, employeeIds: bigint[]) {
   await client.employeeService.deleteMany({ where: { serviceId } });
 
@@ -861,6 +968,110 @@ async function syncServiceConsumables(
 
 function toConsumableUnit(unit: "ml" | "gram") {
   return unit === "gram" ? "GRAM" : "ML";
+}
+
+function toPublicUnit(unit: ConsumableUnitValue) {
+  return unit === "GRAM" ? "gram" : "ml";
+}
+
+async function applyAppointmentConsumables(client: Prisma.TransactionClient, appointmentId: bigint) {
+  const [existingLog] = await client.$queryRaw<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS count
+    FROM service_consumption_logs
+    WHERE appointment_id = ${appointmentId}
+  `;
+
+  if ((existingLog?.count ?? 0) > 0) {
+    return;
+  }
+
+  const consumables = await client.$queryRaw<
+    Array<{
+      serviceId: bigint;
+      productId: bigint;
+      productName: string;
+      quantity: Prisma.Decimal;
+      unit: string;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      stockContentAmount: Prisma.Decimal | null;
+    }>
+  >`
+    SELECT
+      appointment_service.service_id AS "serviceId",
+      service_consumable.product_id AS "productId",
+      product.name AS "productName",
+      SUM(service_consumable.quantity) AS quantity,
+      lower(service_consumable.unit::text) AS unit,
+      product.content_amount AS "contentAmount",
+      lower(product.content_unit::text) AS "contentUnit",
+      product.stock_content_amount AS "stockContentAmount"
+    FROM appointment_services appointment_service
+    JOIN service_consumables service_consumable ON service_consumable.service_id = appointment_service.service_id
+    JOIN products product ON product.id = service_consumable.product_id
+    WHERE appointment_service.appointment_id = ${appointmentId}
+    GROUP BY appointment_service.service_id, service_consumable.product_id, service_consumable.unit, product.id
+    ORDER BY product.name ASC
+  `;
+
+  if (consumables.length === 0) {
+    return;
+  }
+
+  const stockByProduct = new Map<string, number>();
+
+  for (const consumable of consumables) {
+    const quantity = toNumber(consumable.quantity);
+    const contentAmount = consumable.contentAmount ? toNumber(consumable.contentAmount) : null;
+    const stockContentAmount = consumable.stockContentAmount ? toNumber(consumable.stockContentAmount) : null;
+    const productKey = consumable.productId.toString();
+
+    if (!contentAmount || !consumable.contentUnit || stockContentAmount === null) {
+      throw new HttpError(400, `Product ${consumable.productName} does not have package content configured.`);
+    }
+
+    if (consumable.contentUnit !== consumable.unit) {
+      throw new HttpError(400, `Consumable unit does not match product package unit for ${consumable.productName}.`);
+    }
+
+    const currentStockContentAmount = stockByProduct.get(productKey) ?? stockContentAmount;
+
+    if (currentStockContentAmount < quantity) {
+      throw new HttpError(400, `Not enough consumable stock for ${consumable.productName}.`);
+    }
+
+    const nextStockContentAmount = Math.max(currentStockContentAmount - quantity, 0);
+    stockByProduct.set(productKey, nextStockContentAmount);
+
+    await client.$executeRaw`
+      UPDATE products
+      SET
+        stock_content_amount = ${nextStockContentAmount},
+        stock_quantity = floor(${nextStockContentAmount} / ${contentAmount})::int
+      WHERE id = ${consumable.productId}
+    `;
+
+    await client.$executeRaw`
+      INSERT INTO service_consumption_logs (
+        appointment_id,
+        service_id,
+        product_id,
+        quantity,
+        unit,
+        stock_content_before,
+        stock_content_after
+      )
+      VALUES (
+        ${appointmentId},
+        ${consumable.serviceId},
+        ${consumable.productId},
+        ${quantity},
+        ${toConsumableUnit(consumable.unit === "gram" ? "gram" : "ml")}::"ConsumableUnit",
+        ${currentStockContentAmount},
+        ${nextStockContentAmount}
+      )
+    `;
+  }
 }
 
 function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>>[number]) {

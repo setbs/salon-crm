@@ -1130,7 +1130,7 @@ function ServicesSection({
           </label>
         </div>
         <DataTable
-          columns={["Category", "Name", "Specialists", "Price", "Duration", "Consumables", "Status", "Actions"]}
+          columns={["Category", "Name", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
           rows={filteredServices.map((item) => [
             item.category?.name ?? "Uncategorized",
             item.name,
@@ -1138,9 +1138,10 @@ function ServicesSection({
             formatServicePrice(item),
             `${item.duration} min`,
             formatConsumables(item.consumables),
+            item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
             item.active ? "active" : "disabled",
             <InlineActions
-              labels={[item.active ? "Disable" : "Enable", "Edit", "Delete"]}
+              labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
               onAction={(label) => {
                 if (label === "Edit") {
                   setEditingServiceId(item.id);
@@ -1272,8 +1273,8 @@ function ProductsSection({
             item.name,
             adminMoney.format(item.purchase),
             adminMoney.format(item.sale),
-            item.stock <= item.min ? <span className="danger-text">{item.stock}</span> : item.stock,
-            item.contentAmount ? `${item.contentAmount} ${formatUnit(item.contentUnit)}` : "not set",
+            item.stock <= item.min ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
+            item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
             item.min
           ])}
         />
@@ -1827,8 +1828,23 @@ function formatConsumables(consumables: AdminData["services"][number]["consumabl
 }
 
 function formatProductOption(product: AdminData["products"][number]) {
-  const content = product.contentAmount ? ` · ${product.contentAmount} ${formatUnit(product.contentUnit)}/pack` : "";
-  return `${product.name}${content} · stock ${product.stock}`;
+  const content = product.contentAmount ? ` · ${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}/pack` : "";
+  return `${product.name}${content} · stock ${formatProductStock(product)}`;
+}
+
+function formatProductStock(product: AdminData["products"][number]) {
+  if (product.stockContentAmount !== null && product.stockPackageEquivalent !== null && product.contentUnit) {
+    return `${formatPlainNumber(product.stockPackageEquivalent)} packs · ${formatPlainNumber(product.stockContentAmount)} ${formatUnit(product.contentUnit)}`;
+  }
+
+  return String(product.stock);
+}
+
+function formatPlainNumber(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0
+  }).format(value);
 }
 
 function formatUnit(unit: MeasurementUnit | null | undefined) {

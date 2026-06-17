@@ -45,6 +45,7 @@ The project is built as a diploma and portfolio application with a practical bus
   - internal consumable cosmetics.
 - Products support package content amount, for example `60 ml`.
 - Services can define consumable products and usage amount, for example `20 ml` of a peeling product.
+- Completing an appointment writes off configured service consumables from product stock and stores the write-off in `service_consumption_logs`.
 - Consumables are internal CRM data and are not shown to public booking users.
 
 ## Technology Stack
@@ -179,7 +180,8 @@ npm run prisma:seed
 - Docker is used locally for PostgreSQL.
 - The frontend talks to the backend through Vite `/api` proxy in development.
 - Public service data does not expose internal consumable cosmetics.
-- Automatic stock deduction for service consumables is prepared at the data-model level, but the final write-off logic should be implemented as a separate workflow when an appointment is completed.
+- Consumable stock is tracked in ml/g and shown as package-equivalent stock in the CRM inventory.
+- Consumable write-off is idempotent: moving an already completed appointment through updates does not subtract the same materials twice.
 
 ## License
 
