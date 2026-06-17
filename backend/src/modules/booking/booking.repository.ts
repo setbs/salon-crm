@@ -32,6 +32,17 @@ export function findAppointmentsForDay(employeeId: bigint, dayStart: Date, dayEn
   });
 }
 
+export function findTimeOffForRange(employeeId: bigint, startTime: Date, endTime: Date) {
+  return prisma.employeeTimeOff.findMany({
+    where: {
+      employeeId,
+      startTime: { lt: endTime },
+      endTime: { gt: startTime }
+    },
+    select: { startTime: true, endTime: true }
+  });
+}
+
 export function createAppointmentWithClient(input: {
   employeeId: bigint;
   serviceIds: bigint[];

@@ -3,6 +3,7 @@ import { z } from "zod";
 const idStringSchema = z.string().regex(/^\d+$/);
 const optionalCategoryIdSchema = idStringSchema.optional().or(z.literal(""));
 const optionalDisplayPriceSchema = z.preprocess((value) => (value === "" ? null : value), z.coerce.number().nonnegative().nullable()).optional();
+const timeStringSchema = z.string().regex(/^\d{2}:\d{2}$/);
 const consumableUnitSchema = z.enum(["ml", "gram"]);
 const serviceConsumableSchema = z.object({
   productId: idStringSchema,
@@ -83,6 +84,65 @@ export const createServiceCategorySchema = z.object({
 });
 
 export const updateServiceCategorySchema = createServiceCategorySchema.partial();
+
+export const createEmployeeSchema = z.object({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  phone: z.string().trim().min(1).max(20),
+  email: z.string().trim().email(),
+  password: z.string().min(8).max(100),
+  specialization: z.string().trim().max(255).optional(),
+  description: z.string().trim().max(1000).optional(),
+  active: z.boolean().default(true),
+  serviceIds: z.array(idStringSchema).default([])
+});
+
+export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
+  serviceIds: z.array(idStringSchema).optional()
+});
+
+const workingHourSchema = z
+  .object({
+    dayOfWeek: z.coerce.number().int().min(0).max(6),
+    startTime: timeStringSchema,
+    endTime: timeStringSchema
+  })
+  .refine((input) => input.endTime > input.startTime, {
+    message: "End time must be later than start time.",
+    path: ["endTime"]
+  });
+
+export const updateEmployeeWorkingHoursSchema = z
+  .object({
+    hours: z.array(workingHourSchema).max(7)
+  })
+  .superRefine((input, context) => {
+    const days = new Set<number>();
+
+    for (const hour of input.hours) {
+      if (days.has(hour.dayOfWeek)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Each weekday can be configured only once.",
+          path: ["hours"]
+        });
+        return;
+      }
+
+      days.add(hour.dayOfWeek);
+    }
+  });
+
+export const createEmployeeTimeOffSchema = z
+  .object({
+    startTime: z.string().datetime(),
+    endTime: z.string().datetime(),
+    reason: z.string().trim().max(500).optional()
+  })
+  .refine((input) => new Date(input.endTime) > new Date(input.startTime), {
+    message: "End time must be later than start time.",
+    path: ["endTime"]
+  });
 
 export const createProductSchema = z.object({
   category: z.string().trim().min(1).max(255),

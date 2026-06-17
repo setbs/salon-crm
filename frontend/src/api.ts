@@ -172,11 +172,39 @@ export type AdminServiceCategory = {
   active: boolean;
 };
 
+export type AdminWorkingHour = {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+};
+
+export type AdminTimeOff = {
+  id: string;
+  startTime: string;
+  endTime: string;
+  reason: string | null;
+};
+
 export type AdminEmployee = {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
+  phone: string;
+  email: string | null;
   specialization: string | null;
+  description: string | null;
   active: boolean;
+  serviceIds: string[];
+  services: Array<{
+    id: string;
+    name: string;
+    categoryId: string | null;
+    categoryName: string | null;
+  }>;
+  workingHours: AdminWorkingHour[];
+  timeOffItems: AdminTimeOff[];
   hours: string;
   timeOff: string;
 };
@@ -290,6 +318,32 @@ export type ServiceCategoryInput = {
   name: string;
   description?: string;
   active: boolean;
+};
+
+export type EmployeeInput = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password?: string;
+  specialization?: string;
+  description?: string;
+  active: boolean;
+  serviceIds: string[];
+};
+
+export type EmployeeWorkingHoursInput = {
+  hours: Array<{
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+  }>;
+};
+
+export type EmployeeTimeOffInput = {
+  startTime: string;
+  endTime: string;
+  reason?: string;
 };
 
 export type AdminAppointmentInput = {
@@ -480,6 +534,26 @@ export async function updateAdminServiceCategory(id: string, payload: Partial<Se
 
 export async function deleteAdminServiceCategory(id: string) {
   return request<void>(`/api/admin/service-categories/${id}`, { method: "DELETE" });
+}
+
+export async function createAdminEmployee(payload: EmployeeInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/employees", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminEmployee(id: string, payload: Partial<EmployeeInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/employees/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function updateAdminEmployeeWorkingHours(id: string, payload: EmployeeWorkingHoursInput) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/employees/${id}/working-hours`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function createAdminEmployeeTimeOff(id: string, payload: EmployeeTimeOffInput) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/employees/${id}/time-off`, jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminEmployeeTimeOff(employeeId: string, timeOffId: string) {
+  return request<void>(`/api/admin/employees/${employeeId}/time-off/${timeOffId}`, { method: "DELETE" });
 }
 
 export async function createAdminProduct(payload: ProductInput) {

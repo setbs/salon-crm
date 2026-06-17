@@ -30,6 +30,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createAdminServiceCategory,
   createAdminAppointment,
+  createAdminEmployee,
+  createAdminEmployeeTimeOff,
   createAdminProduct,
   createAdminSale,
   createAdminService,
@@ -37,6 +39,7 @@ import {
   createAppointment,
   deleteAdminService,
   deleteAdminServiceCategory,
+  deleteAdminEmployeeTimeOff,
   fetchAdminData,
   fetchAvailability,
   fetchAppointmentConsumablePreview,
@@ -49,6 +52,8 @@ import {
   updateAdminAppointment,
   rescheduleAdminAppointment,
   updateAdminAppointmentComment,
+  updateAdminEmployee,
+  updateAdminEmployeeWorkingHours,
   updateAdminPayment,
   updateAdminProduct,
   updateAdminService,
@@ -59,6 +64,9 @@ import {
   type AppointmentConsumablePreview,
   type AuthUser,
   type Employee,
+  type EmployeeInput,
+  type EmployeeTimeOffInput,
+  type EmployeeWorkingHoursInput,
   type MeasurementUnit,
   type ProductInput,
   type SaleInput,
@@ -148,6 +156,72 @@ function toDateTimeFields(value: string) {
   };
 }
 
+type SuggestedSlot = {
+  date: string;
+  slot: Slot;
+};
+
+type SuggestedDay = {
+  date: string;
+  firstSlot: Slot;
+  slotCount: number;
+};
+
+async function fetchNearestAvailabilitySuggestions(employeeId: string, serviceIds: string[], startDate: string, slotLimit = 3, dayLimit = 2) {
+  const slots: SuggestedSlot[] = [];
+  const days: SuggestedDay[] = [];
+
+  for (let offset = 0; offset <= 30 && (slots.length < slotLimit || days.length < dayLimit); offset += 1) {
+    const date = addDaysToDateString(startDate, offset);
+    const daySlots = await fetchAvailability(employeeId, serviceIds, date);
+
+    if (daySlots.length > 0 && days.length < dayLimit) {
+      days.push({ date, firstSlot: daySlots[0], slotCount: daySlots.length });
+    }
+
+    for (const slot of daySlots) {
+      if (slots.length >= slotLimit) {
+        break;
+      }
+
+      slots.push({ date, slot });
+    }
+  }
+
+  return {
+    days,
+    slots
+  };
+}
+
+function formatSlotCount(value: number) {
+  if (value === 1) {
+    return "1 time";
+  }
+
+  return `${value} times`;
+}
+
+function addDaysToDateString(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function formatSuggestedDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short"
+  }).format(new Date(`${value}T00:00:00`));
+}
+
 type AppMode = "home" | "admin" | "booking";
 type AdminSection =
   | "dashboard"
@@ -177,6 +251,15 @@ const adminNav: Array<{ id: AdminSection; label: string; icon: typeof LayoutDash
 ];
 
 const employeeSections: AdminSection[] = ["dashboard", "calendar", "clients", "employees", "portfolio", "payments", "reviews"];
+const weekDays = [
+  { value: 0, short: "Sun", label: "Sunday" },
+  { value: 1, short: "Mon", label: "Monday" },
+  { value: 2, short: "Tue", label: "Tuesday" },
+  { value: 3, short: "Wed", label: "Wednesday" },
+  { value: 4, short: "Thu", label: "Thursday" },
+  { value: 5, short: "Fri", label: "Friday" },
+  { value: 6, short: "Sat", label: "Saturday" }
+];
 
 function getVisibleAdminNav(user: AuthUser) {
   if (user.role === "ADMIN") {
@@ -707,7 +790,15 @@ function AdminContent({
   }
 
   if (section === "employees") {
-    return <EmployeesSection employees={data.employees} />;
+    return (
+      <EmployeesSection
+        canManage={user.role === "ADMIN"}
+        currentEmployeeId={user.employeeId}
+        employees={data.employees}
+        runAction={runAction}
+        services={data.services}
+      />
+    );
   }
 
   if (section === "portfolio") {
@@ -807,6 +898,10 @@ function CalendarSection({
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [calendarView, setCalendarView] = useState<"day" | "week">("day");
+  const [calendarAnchorDate, setCalendarAnchorDate] = useState(today);
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
   const [reschedulingAppointmentId, setReschedulingAppointmentId] = useState<string | null>(null);
   const [commentingAppointmentId, setCommentingAppointmentId] = useState<string | null>(null);
@@ -816,6 +911,21 @@ function CalendarSection({
   const [completionPreview, setCompletionPreview] = useState<AppointmentConsumablePreview | null>(null);
   const reschedulingAppointment = appointments.find((appointment) => appointment.id === reschedulingAppointmentId) ?? null;
   const commentingAppointment = appointments.find((appointment) => appointment.id === commentingAppointmentId) ?? null;
+  const rangeStart = calendarView === "week" ? getWeekStartDateString(calendarAnchorDate) : calendarAnchorDate;
+  const rangeEnd = addDaysToDateString(rangeStart, calendarView === "week" ? 6 : 0);
+  const visibleAppointments = appointments
+    .filter((appointment) => {
+      const appointmentDate = toLocalDateKey(appointment.date);
+      const matchesDate = appointmentDate >= rangeStart && appointmentDate <= rangeEnd;
+      const matchesEmployee = employeeFilter === "all" || appointment.employeeId === employeeFilter;
+      const matchesStatus = statusFilter === "all" || appointment.status === statusFilter;
+
+      return matchesDate && matchesEmployee && matchesStatus;
+    })
+    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+  const groupedAppointments = buildCalendarGroups(visibleAppointments, rangeStart, rangeEnd);
+  const periodLabel = calendarView === "week" ? `${formatCalendarDate(rangeStart)} - ${formatCalendarDate(rangeEnd)}` : formatCalendarDate(rangeStart);
+  const scheduledCount = visibleAppointments.filter((appointment) => appointment.status === "scheduled").length;
 
   async function openCompletionPreview(appointmentId: string) {
     setIsCompletionOpen(true);
@@ -838,52 +948,137 @@ function CalendarSection({
     setPreviewError("");
   }
 
+  function selectQuickDate(nextView: "day" | "week", date: string) {
+    setCalendarView(nextView);
+    setCalendarAnchorDate(date);
+  }
+
+  function renderAppointmentActions(item: AdminData["appointments"][number]) {
+    return (
+      <InlineActions
+        labels={item.status === "scheduled" ? ["Complete", "Reschedule", "Comment", "No-show", "Cancel"] : ["Comment"]}
+        onAction={(label) => {
+          if (label === "Complete") {
+            void openCompletionPreview(item.id);
+            return;
+          }
+
+          if (label === "Reschedule") {
+            setReschedulingAppointmentId(item.id);
+            return;
+          }
+
+          if (label === "Comment") {
+            setCommentingAppointmentId(item.id);
+            return;
+          }
+
+          void runAction(() =>
+            updateAdminAppointment(item.id, {
+              status: label === "No-show" ? "no_show" : "cancelled"
+            })
+          );
+        }}
+      />
+    );
+  }
+
   return (
     <div className="admin-grid">
       <Panel title="Calendar" action="Create appointment manually" onAction={() => setIsCreatingAppointment(true)} wide>
-        <div className="segmented-control" aria-label="Calendar view">
-          <button className="active" type="button">
-            Day
-          </button>
-          <button type="button">Week</button>
-          <button type="button">Month</button>
+        <div className="calendar-toolbar">
+          <div className="segmented-control calendar-view-toggle" aria-label="Calendar view">
+            <button className={calendarView === "day" ? "active" : ""} onClick={() => setCalendarView("day")} type="button">
+              Day
+            </button>
+            <button className={calendarView === "week" ? "active" : ""} onClick={() => setCalendarView("week")} type="button">
+              Week
+            </button>
+          </div>
+          <div className="calendar-shortcuts" aria-label="Calendar shortcuts">
+            <button onClick={() => selectQuickDate("day", today)} type="button">
+              Today
+            </button>
+            <button onClick={() => selectQuickDate("day", addDaysToDateString(today, 1))} type="button">
+              Tomorrow
+            </button>
+            <button onClick={() => selectQuickDate("week", today)} type="button">
+              This week
+            </button>
+          </div>
+          <div className="calendar-filter-grid">
+            <label>
+              <span>Date</span>
+              <input type="date" value={calendarAnchorDate} onChange={(event) => setCalendarAnchorDate(event.target.value)} />
+            </label>
+            <label>
+              <span>Employee</span>
+              <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
+                <option value="all">All employees</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Status</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="no_show">No-show</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <DataTable
-          columns={["Time", "Client", "Service", "Employee", "Comment", "Actions", "Status"]}
-          rows={appointments.map((item) => [
-            item.time,
-            item.client,
-            item.service,
-            item.master,
-            item.comment || "-",
-            <InlineActions
-              labels={item.status === "scheduled" ? ["Complete", "Reschedule", "Comment", "No-show", "Cancel"] : ["Comment"]}
-              onAction={(label) => {
-                if (label === "Complete") {
-                  void openCompletionPreview(item.id);
-                  return;
-                }
 
-                if (label === "Reschedule") {
-                  setReschedulingAppointmentId(item.id);
-                  return;
-                }
+        <div className="calendar-summary-strip">
+          <div>
+            <span>Period</span>
+            <strong>{periodLabel}</strong>
+          </div>
+          <div>
+            <span>Appointments</span>
+            <strong>{visibleAppointments.length}</strong>
+          </div>
+          <div>
+            <span>Scheduled</span>
+            <strong>{scheduledCount}</strong>
+          </div>
+        </div>
 
-                if (label === "Comment") {
-                  setCommentingAppointmentId(item.id);
-                  return;
-                }
-
-                void runAction(() =>
-                  updateAdminAppointment(item.id, {
-                    status: label === "No-show" ? "no_show" : "cancelled"
-                  })
-                );
-              }}
-            />,
-            <StatusBadge status={item.status} />
-          ])}
-        />
+        <div className="calendar-day-groups">
+          {groupedAppointments.map((group) => (
+            <section className="calendar-day-group" key={group.date}>
+              <header className="calendar-day-header">
+                <div>
+                  <span>{formatCalendarWeekday(group.date)}</span>
+                  <strong>{formatCalendarDate(group.date)}</strong>
+                </div>
+                <small>{group.appointments.length} appointments</small>
+              </header>
+              {group.appointments.length > 0 ? (
+                <DataTable
+                  columns={["Time", "Client", "Service", "Employee", "Comment", "Actions", "Status"]}
+                  rows={group.appointments.map((item) => [
+                    item.time,
+                    item.client,
+                    item.service,
+                    item.master,
+                    item.comment || "-",
+                    renderAppointmentActions(item),
+                    <StatusBadge status={item.status} />
+                  ])}
+                />
+              ) : (
+                <div className="empty-state">No appointments match these filters.</div>
+              )}
+            </section>
+          ))}
+        </div>
       </Panel>
       {isCreatingAppointment ? (
         <AdminModal title="New appointment" onClose={() => setIsCreatingAppointment(false)}>
@@ -1663,16 +1858,435 @@ function buildServiceGroups(
   return groups;
 }
 
-function EmployeesSection({ employees }: { employees: AdminData["employees"] }) {
+function EmployeesSection({
+  canManage,
+  currentEmployeeId,
+  employees,
+  runAction,
+  services
+}: {
+  canManage: boolean;
+  currentEmployeeId: string | null;
+  employees: AdminData["employees"];
+  runAction: (action: () => Promise<unknown>) => Promise<void>;
+  services: AdminData["services"];
+}) {
+  const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [schedulingEmployeeId, setSchedulingEmployeeId] = useState<string | null>(null);
+  const editingEmployee = employees.find((employee) => employee.id === editingEmployeeId) ?? null;
+  const schedulingEmployee = employees.find((employee) => employee.id === schedulingEmployeeId) ?? null;
+
   return (
     <div className="admin-grid">
-      <Panel title="Employees" action="Add employee">
+      <Panel action={canManage ? "Add employee" : undefined} onAction={() => setIsCreatingEmployee(true)} title="Employees" wide>
         <DataTable
-          columns={["First name", "Specialization", "Working hours", "Time off/day off", "Status"]}
-          rows={employees.map((item) => [item.name, item.specialization, item.hours, item.timeOff, item.active ? "active" : "disabled"])}
+          columns={["Employee", "Contact", "Description", "Specialization", "Services", "Working hours", "Time off", "Status", "Actions"]}
+          rows={
+            employees.length > 0
+              ? employees.map((item) => [
+                  item.name,
+                  <>
+                    {item.email ?? "no email"}
+                    <br />
+                    {item.phone}
+                  </>,
+                  item.description || "-",
+                  item.specialization || "-",
+                  item.services.length > 0 ? item.services.map((service) => service.name).join(", ") : "not assigned",
+                  item.hours,
+                  item.timeOff,
+                  item.active ? "active" : "disabled",
+                  canManage || item.id === currentEmployeeId ? (
+                    <InlineActions
+                      labels={[...(canManage ? [item.active ? "Disable" : "Enable", "Edit"] : []), "Schedule"]}
+                      onAction={(label) => {
+                        if (label === "Edit") {
+                          setEditingEmployeeId(item.id);
+                          return;
+                        }
+
+                        if (label === "Schedule") {
+                          setSchedulingEmployeeId(item.id);
+                          return;
+                        }
+
+                        void runAction(() => updateAdminEmployee(item.id, { active: !item.active }));
+                      }}
+                    />
+                  ) : (
+                    "-"
+                  )
+                ])
+              : [["No employees yet", "-", "-", "-", "-", "-", "-", "-", "-"]]
+          }
         />
       </Panel>
-      <FormPanel title="Employee profile" fields={["First name", "Specialization", "Working hours", "Time off/day off", "Enable employee"]} />
+      {isCreatingEmployee ? (
+        <AdminModal title="New employee" onClose={() => setIsCreatingEmployee(false)}>
+          <EmployeeForm
+            onCancel={() => setIsCreatingEmployee(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminEmployee(payload);
+                setIsCreatingEmployee(false);
+              })
+            }
+            services={services}
+          />
+        </AdminModal>
+      ) : null}
+      {editingEmployee ? (
+        <AdminModal title={`Edit employee: ${editingEmployee.name}`} onClose={() => setEditingEmployeeId(null)}>
+          <EmployeeForm
+            employee={editingEmployee}
+            key={editingEmployee.id}
+            onCancel={() => setEditingEmployeeId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminEmployee(editingEmployee.id, payload);
+                setEditingEmployeeId(null);
+              })
+            }
+            services={services}
+          />
+        </AdminModal>
+      ) : null}
+      {schedulingEmployee ? (
+        <AdminModal title={`Schedule: ${schedulingEmployee.name}`} onClose={() => setSchedulingEmployeeId(null)}>
+          <EmployeeScheduleForm
+            employee={schedulingEmployee}
+            onCancel={() => setSchedulingEmployeeId(null)}
+            onCreateTimeOff={(payload) => runAction(() => createAdminEmployeeTimeOff(schedulingEmployee.id, payload))}
+            onDeleteTimeOff={(timeOffId) => runAction(() => deleteAdminEmployeeTimeOff(schedulingEmployee.id, timeOffId))}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminEmployeeWorkingHours(schedulingEmployee.id, payload);
+                setSchedulingEmployeeId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+    </div>
+  );
+}
+
+function EmployeeForm({
+  employee,
+  onCancel,
+  onSubmit,
+  services
+}: {
+  employee?: AdminData["employees"][number];
+  onCancel: () => void;
+  onSubmit: (payload: EmployeeInput) => Promise<void>;
+  services: AdminData["services"];
+}) {
+  const serviceGroups = buildAppointmentServiceGroups(services);
+  const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
+  const [form, setForm] = useState({
+    firstName: employee?.firstName ?? "",
+    lastName: employee?.lastName ?? "",
+    phone: employee?.phone ?? "",
+    email: employee?.email ?? "",
+    password: "",
+    specialization: employee?.specialization ?? "",
+    description: employee?.description ?? "",
+    active: employee?.active ?? true
+  });
+  const [serviceIds, setServiceIds] = useState<string[]>(employee?.serviceIds ?? []);
+  const isEditing = Boolean(employee);
+
+  function toggleService(id: string) {
+    setServiceIds((current) => (current.includes(id) ? current.filter((serviceId) => serviceId !== id) : [...current, id]));
+  }
+
+  function toggleServiceGroup(groupId: string) {
+    setCollapsedServiceGroups((current) => (current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      firstName: form.firstName,
+      lastName: form.lastName,
+      phone: form.phone,
+      email: form.email,
+      password: form.password || undefined,
+      specialization: form.specialization || undefined,
+      description: form.description || undefined,
+      active: form.active,
+      serviceIds
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <div className="form-section">
+        <label>
+          <span>First name</span>
+          <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
+        </label>
+        <label>
+          <span>Last name</span>
+          <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
+        </label>
+      </div>
+      <div className="form-section">
+        <label>
+          <span>Phone</span>
+          <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
+        </label>
+        <label>
+          <span>Email</span>
+          <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+        </label>
+      </div>
+      <div className="form-section">
+        <label>
+          <span>Password</span>
+          <input
+            minLength={8}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            placeholder={isEditing ? "Leave empty to keep current password" : ""}
+            required={!isEditing}
+            type="password"
+            value={form.password}
+          />
+        </label>
+        <label>
+          <span>Specialization</span>
+          <input value={form.specialization} onChange={(event) => setForm({ ...form, specialization: event.target.value })} />
+        </label>
+      </div>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <label className="checkbox-line">
+        <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+        <span>Employee is active</span>
+      </label>
+      <div className="appointment-service-picker">
+        <span>Assigned services</span>
+        <div className="service-groups compact">
+          {serviceGroups.length > 0 ? (
+            serviceGroups.map((group) => {
+              const isOpen = !collapsedServiceGroups.includes(group.id);
+              const selectedCount = group.services.filter((service) => serviceIds.includes(service.id)).length;
+
+              return (
+                <section className="service-group" key={group.id}>
+                  <button aria-expanded={isOpen} className="service-group-toggle" onClick={() => toggleServiceGroup(group.id)} type="button">
+                    <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
+                      <ArrowRight aria-hidden="true" size={16} />
+                    </span>
+                    <strong>{group.name}</strong>
+                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} selected` : `${group.services.length} services`}</span>
+                  </button>
+                  {isOpen ? (
+                    <div className="appointment-service-list">
+                      {group.services.map((service) => (
+                        <label className="appointment-service-option" key={service.id}>
+                          <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
+                          <span>
+                            <strong>{service.name}</strong>
+                            <small>
+                              {service.duration} min · {formatServicePrice(service)} · {service.active ? "active" : "disabled"}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })
+          ) : (
+            <div className="empty-state">No services available.</div>
+          )}
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" type="submit">
+          {isEditing ? "Save employee" : "Create employee"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EmployeeScheduleForm({
+  employee,
+  onCancel,
+  onCreateTimeOff,
+  onDeleteTimeOff,
+  onSubmit
+}: {
+  employee: AdminData["employees"][number];
+  onCancel: () => void;
+  onCreateTimeOff: (payload: EmployeeTimeOffInput) => Promise<void>;
+  onDeleteTimeOff: (timeOffId: string) => Promise<void>;
+  onSubmit: (payload: EmployeeWorkingHoursInput) => Promise<void>;
+}) {
+  const [days, setDays] = useState(() =>
+    weekDays.reduce<Record<number, { enabled: boolean; startTime: string; endTime: string }>>((acc, day) => {
+      const hour = employee.workingHours.find((item) => item.dayOfWeek === day.value);
+      acc[day.value] = {
+        enabled: Boolean(hour),
+        startTime: hour?.startTime ?? "09:00",
+        endTime: hour?.endTime ?? "18:00"
+      };
+      return acc;
+    }, {})
+  );
+  const [timeOffForm, setTimeOffForm] = useState({
+    startDate: today,
+    startTime: "09:00",
+    endDate: today,
+    endTime: "18:00",
+    reason: ""
+  });
+
+  function updateDay(dayOfWeek: number, patch: Partial<{ enabled: boolean; startTime: string; endTime: string }>) {
+    setDays((current) => ({
+      ...current,
+      [dayOfWeek]: {
+        ...current[dayOfWeek],
+        ...patch
+      }
+    }));
+  }
+
+  function submitHours(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      hours: weekDays
+        .filter((day) => days[day.value].enabled)
+        .map((day) => ({
+          dayOfWeek: day.value,
+          startTime: days[day.value].startTime,
+          endTime: days[day.value].endTime
+        }))
+    });
+  }
+
+  function submitTimeOff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onCreateTimeOff({
+      startTime: toIsoDateTime(timeOffForm.startDate, timeOffForm.startTime),
+      endTime: toIsoDateTime(timeOffForm.endDate, timeOffForm.endTime),
+      reason: timeOffForm.reason || undefined
+    });
+  }
+
+  return (
+    <div className="employee-schedule">
+      <form className="admin-form" onSubmit={submitHours}>
+        <div className="schedule-week">
+          {weekDays.map((day) => (
+            <section className={days[day.value].enabled ? "schedule-day active" : "schedule-day"} key={day.value}>
+              <label className="checkbox-line">
+                <input checked={days[day.value].enabled} onChange={(event) => updateDay(day.value, { enabled: event.target.checked })} type="checkbox" />
+                <span>{day.label}</span>
+              </label>
+              <div className="form-section">
+                <label>
+                  <span>Start</span>
+                  <input
+                    disabled={!days[day.value].enabled}
+                    onChange={(event) => updateDay(day.value, { startTime: event.target.value })}
+                    type="time"
+                    value={days[day.value].startTime}
+                  />
+                </label>
+                <label>
+                  <span>End</span>
+                  <input
+                    disabled={!days[day.value].enabled}
+                    onChange={(event) => updateDay(day.value, { endTime: event.target.value })}
+                    type="time"
+                    value={days[day.value].endTime}
+                  />
+                </label>
+              </div>
+            </section>
+          ))}
+        </div>
+        <div className="form-actions">
+          <button className="secondary-button compact-button" onClick={onCancel} type="button">
+            Close
+          </button>
+          <button className="primary-button admin-submit" type="submit">
+            Save weekly schedule
+          </button>
+        </div>
+      </form>
+
+      <div className="schedule-divider" />
+
+      <section className="schedule-timeoff">
+        <div>
+          <p className="admin-kicker">Time off</p>
+          <DataTable
+            columns={["Period", "Reason", "Actions"]}
+            rows={
+              employee.timeOffItems.length > 0
+                ? employee.timeOffItems.map((item) => [
+                    `${formatShortDate(item.startTime)} - ${formatShortDate(item.endTime)}`,
+                    item.reason || "-",
+                    <InlineActions labels={["Delete"]} onAction={() => void onDeleteTimeOff(item.id)} />
+                  ])
+                : [["No blocked periods", "-", "-"]]
+            }
+          />
+        </div>
+
+        <form className="admin-form" onSubmit={submitTimeOff}>
+          <div className="form-section">
+            <label>
+              <span>Start date</span>
+              <input
+                onChange={(event) => setTimeOffForm({ ...timeOffForm, startDate: event.target.value })}
+                type="date"
+                value={timeOffForm.startDate}
+              />
+            </label>
+            <label>
+              <span>Start time</span>
+              <input
+                onChange={(event) => setTimeOffForm({ ...timeOffForm, startTime: event.target.value })}
+                type="time"
+                value={timeOffForm.startTime}
+              />
+            </label>
+          </div>
+          <div className="form-section">
+            <label>
+              <span>End date</span>
+              <input onChange={(event) => setTimeOffForm({ ...timeOffForm, endDate: event.target.value })} type="date" value={timeOffForm.endDate} />
+            </label>
+            <label>
+              <span>End time</span>
+              <input onChange={(event) => setTimeOffForm({ ...timeOffForm, endTime: event.target.value })} type="time" value={timeOffForm.endTime} />
+            </label>
+          </div>
+          <label>
+            <span>Reason</span>
+            <input value={timeOffForm.reason} onChange={(event) => setTimeOffForm({ ...timeOffForm, reason: event.target.value })} />
+          </label>
+          <button className="secondary-button compact-button" type="submit">
+            Add time off
+          </button>
+        </form>
+      </section>
     </div>
   );
 }
@@ -2390,6 +3004,59 @@ function formatShortDate(value: string) {
   }).format(new Date(value));
 }
 
+function toLocalDateKey(value: string) {
+  return toDateTimeFields(value).date;
+}
+
+function getWeekStartDateString(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const weekday = date.getDay();
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  date.setDate(date.getDate() + mondayOffset);
+
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function formatCalendarDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short"
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatCalendarWeekday(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long"
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function buildCalendarGroups(appointments: AdminData["appointments"], startDate: string, endDate: string) {
+  const appointmentsByDate = new Map<string, AdminData["appointments"]>();
+
+  for (const appointment of appointments) {
+    const date = toLocalDateKey(appointment.date);
+    const group = appointmentsByDate.get(date) ?? [];
+    group.push(appointment);
+    appointmentsByDate.set(date, group);
+  }
+
+  const groups: Array<{ date: string; appointments: AdminData["appointments"] }> = [];
+
+  for (let date = startDate; date <= endDate; date = addDaysToDateString(date, 1)) {
+    groups.push({
+      date,
+      appointments: appointmentsByDate.get(date) ?? []
+    });
+  }
+
+  return groups;
+}
+
 function formatPlainNumber(value: number) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
@@ -2904,8 +3571,12 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [loadedSlotsDate, setLoadedSlotsDate] = useState("");
+  const [nearestSlots, setNearestSlots] = useState<SuggestedSlot[]>([]);
+  const [nearestDays, setNearestDays] = useState<SuggestedDay[]>([]);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [isLoadingNearestSlots, setIsLoadingNearestSlots] = useState(false);
   const [activeStep, setActiveStep] = useState<BookingStep>("services");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
@@ -2932,6 +3603,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
     setSelectedEmployeeId("");
     setSelectedSlot(null);
     setSlots([]);
+    setLoadedSlotsDate("");
     setError("");
 
     if (selectedServiceIds.length === 0) {
@@ -2950,26 +3622,29 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
   useEffect(() => {
     let cancelled = false;
 
-    setSelectedSlot(null);
     setError("");
 
     if (!selectedEmployeeId || selectedServiceIds.length === 0 || !selectedDate) {
       setSlots([]);
+      setLoadedSlotsDate("");
       setIsLoadingSlots(false);
       return;
     }
 
     setIsLoadingSlots(true);
+    setLoadedSlotsDate("");
     fetchAvailability(selectedEmployeeId, selectedServiceIds, selectedDate)
       .then((data) => {
         if (!cancelled) {
           setSlots(data);
+          setLoadedSlotsDate(selectedDate);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setError("Could not load available times. Try another date or refresh the page.");
           setSlots([]);
+          setLoadedSlotsDate("");
         }
       })
       .finally(() => {
@@ -2982,6 +3657,46 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
       cancelled = true;
     };
   }, [selectedEmployeeId, selectedServiceIds, selectedDate]);
+
+  const shouldShowAvailabilitySuggestions = Boolean(
+    selectedEmployeeId && selectedServiceIds.length > 0 && selectedDate && loadedSlotsDate === selectedDate && !isLoadingSlots && slots.length === 0
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setNearestDays([]);
+    setNearestSlots([]);
+
+    if (!shouldShowAvailabilitySuggestions) {
+      setIsLoadingNearestSlots(false);
+      return;
+    }
+
+    setIsLoadingNearestSlots(true);
+    fetchNearestAvailabilitySuggestions(selectedEmployeeId, selectedServiceIds, today)
+      .then((data) => {
+        if (!cancelled) {
+          setNearestDays(data.days);
+          setNearestSlots(data.slots);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNearestDays([]);
+          setNearestSlots([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingNearestSlots(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEmployeeId, selectedServiceIds, shouldShowAvailabilitySuggestions]);
 
   const selectedServices = useMemo(
     () => services.filter((service) => selectedServiceIds.includes(service.id)),
@@ -3091,6 +3806,9 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
     setSelectedDate(today);
     setSelectedSlot(null);
     setSlots([]);
+    setLoadedSlotsDate("");
+    setNearestDays([]);
+    setNearestSlots([]);
     setClient({ firstName: "", lastName: "", phone: "", email: "" });
     setClientComment("");
     setError("");
@@ -3367,6 +4085,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                     value={selectedDate}
                     onChange={(event) => {
                       setSelectedDate(event.target.value);
+                      setSelectedSlot(null);
                       setError("");
                     }}
                     required
@@ -3398,6 +4117,69 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                     <p className="empty-state">No available times for this date. Try another date or employee.</p>
                   ) : null}
                 </div>
+
+                {shouldShowAvailabilitySuggestions ? (
+                  <div className="nearest-suggestions-grid">
+                    <div className="nearest-slots">
+                      <div className="field-label">
+                        <CalendarDays aria-hidden="true" size={16} />
+                        Nearest days
+                      </div>
+                      <div className="nearest-day-list">
+                        {isLoadingNearestSlots ? <p className="empty-state">Looking for available days...</p> : null}
+                        {!isLoadingNearestSlots && nearestDays.length > 0
+                          ? nearestDays.map((suggestion) => (
+                              <button
+                                className={selectedDate === suggestion.date ? "nearest-day selected" : "nearest-day"}
+                                key={suggestion.date}
+                                onClick={() => {
+                                  setSelectedDate(suggestion.date);
+                                  setSelectedSlot(null);
+                                  setError("");
+                                }}
+                                type="button"
+                              >
+                                <strong>{formatSuggestedDate(suggestion.date)}</strong>
+                                <span>
+                                  {formatSlotCount(suggestion.slotCount)} · from {suggestion.firstSlot.label}
+                                </span>
+                              </button>
+                            ))
+                          : null}
+                        {!isLoadingNearestSlots && nearestDays.length === 0 ? <p className="empty-state">No available days found in the next 30 days.</p> : null}
+                      </div>
+                    </div>
+
+                    <div className="nearest-slots">
+                      <div className="field-label">
+                        <CalendarDays aria-hidden="true" size={16} />
+                        Nearest terms
+                      </div>
+                      <div className="nearest-slot-list">
+                        {isLoadingNearestSlots ? <p className="empty-state">Looking for the nearest available terms...</p> : null}
+                        {!isLoadingNearestSlots && nearestSlots.length > 0
+                          ? nearestSlots.map((suggestion) => (
+                              <button
+                                className={selectedSlot?.startTime === suggestion.slot.startTime ? "nearest-slot selected" : "nearest-slot"}
+                                key={`${suggestion.date}-${suggestion.slot.startTime}`}
+                                onClick={() => {
+                                  setSelectedDate(suggestion.date);
+                                  setSelectedSlot(suggestion.slot);
+                                  setError("");
+                                }}
+                                type="button"
+                              >
+                                <strong>{formatSuggestedDate(suggestion.date)}</strong>
+                                <span>{suggestion.slot.label}</span>
+                              </button>
+                            ))
+                          : null}
+                        {!isLoadingNearestSlots && nearestSlots.length === 0 ? <p className="empty-state">No available terms found in the next 30 days.</p> : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
               </div>
             </div>
 

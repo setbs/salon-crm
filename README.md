@@ -20,6 +20,7 @@ The project is built as a diploma and portfolio application with a practical bus
   - employee selection, skipped automatically when only one employee fits;
   - date and time selection;
   - contact details step.
+- Public availability respects employee working hours, existing appointments, and time off.
 
 ### CRM panel
 
@@ -28,6 +29,8 @@ The project is built as a diploma and portfolio application with a practical bus
 - Admin dashboard.
 - Appointment management.
 - Client database.
+- Employee profiles with service assignment and activation control.
+- Employee weekly schedules and time-off blocks.
 - Service and service category management.
 - Product inventory and product sales.
 - Product editing and manual stock movements.
@@ -171,6 +174,7 @@ npm run build
 npm run typecheck
 npm run db:up
 npm run db:down
+npm run prisma:generate
 npm run prisma:seed
 ```
 

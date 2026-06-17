@@ -1,8 +1,8 @@
-import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType } from "@prisma/client";
+import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, UserRole } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/http-error.js";
 import { assertAdmin } from "../auth/auth.middleware.js";
-import type { CrmAuthenticatedUser } from "../auth/auth.crypto.js";
+import { hashPassword, type CrmAuthenticatedUser } from "../auth/auth.crypto.js";
 import {
   countLowStockProducts,
   countTodayAppointments,
@@ -22,12 +22,16 @@ import {
 } from "./admin.repository.js";
 import type {
   createAppointmentSchema,
+  createEmployeeSchema,
+  createEmployeeTimeOffSchema,
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
   createStockMovementSchema,
   createSaleSchema,
   updateAppointmentSchema,
+  updateEmployeeSchema,
+  updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
   updateProductSchema,
   updateServiceCategorySchema,
@@ -320,12 +324,203 @@ export async function getEmployees(actor: CrmAuthenticatedUser) {
 
   return employees.map((employee) => ({
     id: employee.id.toString(),
+    firstName: employee.user.firstName,
+    lastName: employee.user.lastName,
     name: `${employee.user.firstName} ${employee.user.lastName}`,
+    phone: employee.user.phone,
+    email: employee.user.email,
     specialization: employee.specialization,
+    description: employee.description,
     active: employee.isActive,
+    serviceIds: employee.services.map(({ service }) => service.id.toString()),
+    services: employee.services.map(({ service }) => ({
+      id: service.id.toString(),
+      name: service.name,
+      categoryId: null,
+      categoryName: null
+    })),
+    workingHours: employee.workingHours.map((hour) => ({
+      id: hour.id.toString(),
+      dayOfWeek: hour.dayOfWeek,
+      startTime: hour.startTime,
+      endTime: hour.endTime
+    })),
+    timeOffItems: employee.timeOff.map((timeOff) => ({
+      id: timeOff.id.toString(),
+      startTime: timeOff.startTime.toISOString(),
+      endTime: timeOff.endTime.toISOString(),
+      reason: timeOff.reason
+    })),
     hours: formatWorkingHours(employee.workingHours),
-    timeOff: employee.timeOff[0] ? `${formatDate(employee.timeOff[0].startTime)} - ${formatDate(employee.timeOff[0].endTime)}` : "-"
+    timeOff: formatTimeOffSummary(employee.timeOff)
   }));
+}
+
+export async function createEmployee(actor: CrmAuthenticatedUser, input: z.infer<typeof createEmployeeSchema>) {
+  assertAdmin(actor);
+  const serviceIds = toUniqueBigIntIds(input.serviceIds);
+
+  const employee = await prisma.$transaction(async (tx) => {
+    await ensureServicesExist(tx, serviceIds);
+
+    const user = await tx.user.create({
+      data: {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone,
+        email: input.email,
+        passwordHash: hashPassword(input.password),
+        role: UserRole.EMPLOYEE
+      }
+    });
+
+    const createdEmployee = await tx.employee.create({
+      data: {
+        userId: user.id,
+        specialization: input.specialization || null,
+        description: input.description || null,
+        isActive: input.active
+      }
+    });
+
+    await syncEmployeeServices(tx, createdEmployee.id, serviceIds);
+    return createdEmployee;
+  });
+
+  return { id: employee.id.toString() };
+}
+
+export async function updateEmployee(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateEmployeeSchema>) {
+  assertAdmin(actor);
+  const shouldSyncServices = input.serviceIds !== undefined;
+  const serviceIds = shouldSyncServices ? toUniqueBigIntIds(input.serviceIds) : [];
+
+  const employee = await prisma.$transaction(async (tx) => {
+    const existingEmployee = await tx.employee.findUnique({ where: { id }, include: { user: true } });
+
+    if (!existingEmployee) {
+      throw new HttpError(404, "Employee not found.");
+    }
+
+    if (shouldSyncServices) {
+      await ensureServicesExist(tx, serviceIds);
+      await syncEmployeeServices(tx, id, serviceIds);
+    }
+
+    const userData: Prisma.UserUpdateInput = {};
+
+    if (input.firstName !== undefined) {
+      userData.firstName = input.firstName;
+    }
+
+    if (input.lastName !== undefined) {
+      userData.lastName = input.lastName;
+    }
+
+    if (input.phone !== undefined) {
+      userData.phone = input.phone;
+    }
+
+    if (input.email !== undefined) {
+      userData.email = input.email;
+    }
+
+    if (input.password) {
+      userData.passwordHash = hashPassword(input.password);
+    }
+
+    if (Object.keys(userData).length > 0) {
+      await tx.user.update({
+        where: { id: existingEmployee.userId },
+        data: userData
+      });
+    }
+
+    const employeeData: Prisma.EmployeeUpdateInput = {};
+
+    if (input.specialization !== undefined) {
+      employeeData.specialization = input.specialization || null;
+    }
+
+    if (input.description !== undefined) {
+      employeeData.description = input.description || null;
+    }
+
+    if (input.active !== undefined) {
+      employeeData.isActive = input.active;
+    }
+
+    if (Object.keys(employeeData).length > 0) {
+      return tx.employee.update({
+        where: { id },
+        data: employeeData
+      });
+    }
+
+    return existingEmployee;
+  });
+
+  return { id: employee.id.toString() };
+}
+
+export async function updateEmployeeWorkingHours(
+  actor: CrmAuthenticatedUser,
+  id: bigint,
+  input: z.infer<typeof updateEmployeeWorkingHoursSchema>
+) {
+  assertOwnEmployee(actor, id);
+
+  await prisma.$transaction(async (tx) => {
+    await ensureEmployeesExist(tx, [id]);
+    await tx.workingHour.deleteMany({ where: { employeeId: id } });
+
+    if (input.hours.length > 0) {
+      await tx.workingHour.createMany({
+        data: input.hours.map((hour) => ({
+          employeeId: id,
+          dayOfWeek: hour.dayOfWeek,
+          startTime: hour.startTime,
+          endTime: hour.endTime
+        }))
+      });
+    }
+  });
+
+  return { id: id.toString() };
+}
+
+export async function createEmployeeTimeOff(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof createEmployeeTimeOffSchema>) {
+  assertOwnEmployee(actor, id);
+
+  const timeOff = await prisma.$transaction(async (tx) => {
+    await ensureEmployeesExist(tx, [id]);
+
+    return tx.employeeTimeOff.create({
+      data: {
+        employeeId: id,
+        startTime: new Date(input.startTime),
+        endTime: new Date(input.endTime),
+        reason: input.reason || null
+      }
+    });
+  });
+
+  return { id: timeOff.id.toString() };
+}
+
+export async function deleteEmployeeTimeOff(actor: CrmAuthenticatedUser, employeeId: bigint, timeOffId: bigint) {
+  assertOwnEmployee(actor, employeeId);
+
+  const result = await prisma.employeeTimeOff.deleteMany({
+    where: {
+      id: timeOffId,
+      employeeId
+    }
+  });
+
+  if (result.count === 0) {
+    throw new HttpError(404, "Time off entry not found.");
+  }
 }
 
 export async function getPortfolio(actor: CrmAuthenticatedUser) {
@@ -491,12 +686,14 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
     throw new HttpError(400, "End time must be later than start time.");
   }
 
-  await ensureAppointmentSlotAvailable({
-    employeeId: current.employeeId,
-    startTime,
-    endTime,
-    excludeAppointmentId: id
-  });
+  if (input.startTime || input.endTime) {
+    await ensureAppointmentSlotAvailable({
+      employeeId: current.employeeId,
+      startTime,
+      endTime,
+      excludeAppointmentId: id
+    });
+  }
 
   const nextStatus = input.status ? toAppointmentStatus(input.status) : undefined;
 
@@ -1248,6 +1445,18 @@ async function ensureEmployeesExist(client: Prisma.TransactionClient, employeeId
   }
 }
 
+async function ensureServicesExist(client: Prisma.TransactionClient, serviceIds: bigint[]) {
+  if (serviceIds.length === 0) {
+    return;
+  }
+
+  const count = await client.service.count({ where: { id: { in: serviceIds } } });
+
+  if (count !== serviceIds.length) {
+    throw new HttpError(400, "One or more assigned services do not exist.");
+  }
+}
+
 async function ensureProductsExist(client: Prisma.TransactionClient, productIds: bigint[]) {
   if (productIds.length === 0) {
     return;
@@ -1331,6 +1540,19 @@ async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId:
 
   await client.employeeService.createMany({
     data: employeeIds.map((employeeId) => ({ employeeId, serviceId })),
+    skipDuplicates: true
+  });
+}
+
+async function syncEmployeeServices(client: Prisma.TransactionClient, employeeId: bigint, serviceIds: bigint[]) {
+  await client.employeeService.deleteMany({ where: { employeeId } });
+
+  if (serviceIds.length === 0) {
+    return;
+  }
+
+  await client.employeeService.createMany({
+    data: serviceIds.map((serviceId) => ({ employeeId, serviceId })),
     skipDuplicates: true
   });
 }
@@ -1576,6 +1798,8 @@ async function ensureAppointmentSlotAvailable(input: {
   endTime: Date;
   excludeAppointmentId?: bigint;
 }) {
+  await ensureSlotWithinEmployeeSchedule(input.employeeId, input.startTime, input.endTime);
+
   const conflict = await prisma.appointment.findFirst({
     where: {
       employeeId: input.employeeId,
@@ -1589,6 +1813,45 @@ async function ensureAppointmentSlotAvailable(input: {
 
   if (conflict) {
     throw new HttpError(409, "This time is already booked by another appointment.");
+  }
+}
+
+async function ensureSlotWithinEmployeeSchedule(employeeId: bigint, startTime: Date, endTime: Date) {
+  if (!isSameLocalDay(startTime, endTime)) {
+    throw new HttpError(409, "Appointments must fit within one working day.");
+  }
+
+  const workingHour = await prisma.workingHour.findUnique({
+    where: {
+      employeeId_dayOfWeek: {
+        employeeId,
+        dayOfWeek: startTime.getDay()
+      }
+    }
+  });
+
+  if (!workingHour) {
+    throw new HttpError(409, "The selected employee is not working at this time.");
+  }
+
+  const startClock = toClockTime(startTime);
+  const endClock = toClockTime(endTime);
+
+  if (startClock < workingHour.startTime || endClock > workingHour.endTime) {
+    throw new HttpError(409, "The selected time is outside the employee working hours.");
+  }
+
+  const timeOff = await prisma.employeeTimeOff.findFirst({
+    where: {
+      employeeId,
+      startTime: { lt: endTime },
+      endTime: { gt: startTime }
+    },
+    select: { id: true }
+  });
+
+  if (timeOff) {
+    throw new HttpError(409, "The selected employee has time off during this period.");
   }
 }
 
@@ -1695,14 +1958,39 @@ async function assertPaymentAccess(actor: CrmAuthenticatedUser, paymentId: bigin
   }
 }
 
-function formatWorkingHours(hours: Array<{ startTime: string; endTime: string }>) {
+const shortWeekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function formatWorkingHours(hours: Array<{ dayOfWeek: number; startTime: string; endTime: string }>) {
   if (hours.length === 0) {
     return "-";
   }
 
-  return `${hours[0].startTime}-${hours[0].endTime}`;
+  return hours.map((hour) => `${shortWeekdayLabels[hour.dayOfWeek]} ${hour.startTime}-${hour.endTime}`).join(", ");
+}
+
+function formatTimeOffSummary(timeOff: Array<{ startTime: Date; endTime: Date }>) {
+  if (timeOff.length === 0) {
+    return "-";
+  }
+
+  if (timeOff.length === 1) {
+    return `${formatDate(timeOff[0].startTime)} - ${formatDate(timeOff[0].endTime)}`;
+  }
+
+  return `${timeOff.length} blocked periods`;
 }
 
 function formatDate(date: Date) {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+function isSameLocalDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+}
+
+function toClockTime(date: Date) {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${hours}:${minutes}`;
 }

@@ -174,6 +174,7 @@ export function listEmployees(employeeId?: bigint) {
     where: { id: employeeId },
     include: {
       user: true,
+      services: { include: { service: true } },
       workingHours: { orderBy: { dayOfWeek: "asc" } },
       timeOff: { orderBy: { startTime: "asc" } }
     },

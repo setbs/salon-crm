@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { getAuthenticatedUser, requireCrmUser } from "../auth/auth.middleware.js";
 import {
+  createEmployee,
+  createEmployeeTimeOff,
   createProduct,
   createProductSale,
   createAppointment,
@@ -9,6 +11,7 @@ import {
   createStockMovement,
   deleteService,
   deleteServiceCategory,
+  deleteEmployeeTimeOff,
   getAppointmentConsumablePreview,
   getAppointments,
   getClients,
@@ -24,6 +27,8 @@ import {
   getServices,
   getSettings,
   updateAppointment,
+  updateEmployee,
+  updateEmployeeWorkingHours,
   updatePayment,
   updateProduct,
   updateService,
@@ -31,6 +36,8 @@ import {
   updateSettings
 } from "./admin.service.js";
 import {
+  createEmployeeSchema,
+  createEmployeeTimeOffSchema,
   createProductSchema,
   createAppointmentSchema,
   createSaleSchema,
@@ -38,6 +45,8 @@ import {
   createServiceCategorySchema,
   createStockMovementSchema,
   updateAppointmentSchema,
+  updateEmployeeSchema,
+  updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
   updateProductSchema,
   updateServiceCategorySchema,
@@ -180,6 +189,51 @@ adminRouter.delete("/admin/service-categories/:id", async (request, response, ne
 adminRouter.get("/admin/employees", async (request, response, next) => {
   try {
     response.json({ data: await getEmployees(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/employees", async (request, response, next) => {
+  try {
+    const body = createEmployeeSchema.parse(request.body);
+    response.status(201).json({ data: await createEmployee(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/employees/:id", async (request, response, next) => {
+  try {
+    const body = updateEmployeeSchema.parse(request.body);
+    response.json({ data: await updateEmployee(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/employees/:id/working-hours", async (request, response, next) => {
+  try {
+    const body = updateEmployeeWorkingHoursSchema.parse(request.body);
+    response.json({ data: await updateEmployeeWorkingHours(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/employees/:id/time-off", async (request, response, next) => {
+  try {
+    const body = createEmployeeTimeOffSchema.parse(request.body);
+    response.status(201).json({ data: await createEmployeeTimeOff(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/employees/:employeeId/time-off/:timeOffId", async (request, response, next) => {
+  try {
+    await deleteEmployeeTimeOff(getAuthenticatedUser(request), BigInt(request.params.employeeId), BigInt(request.params.timeOffId));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }
