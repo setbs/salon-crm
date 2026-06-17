@@ -13,6 +13,7 @@ import {
   deleteServiceCategory,
   deleteEmployeeTimeOff,
   getAppointmentConsumablePreview,
+  getClientProfile,
   getAppointments,
   getClients,
   getConsumableAnalytics,
@@ -111,6 +112,14 @@ adminRouter.patch("/admin/appointments/:id", async (request, response, next) => 
 adminRouter.get("/admin/clients", async (request, response, next) => {
   try {
     response.json({ data: await getClients(getAuthenticatedUser(request), typeof request.query.search === "string" ? request.query.search : undefined) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/admin/clients/:id", async (request, response, next) => {
+  try {
+    response.json({ data: await getClientProfile(getAuthenticatedUser(request), BigInt(request.params.id)) });
   } catch (error) {
     next(error);
   }

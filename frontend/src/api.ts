@@ -135,6 +135,34 @@ export type AdminClient = {
   comment: string;
 };
 
+export type AdminClientProfile = AdminClient & {
+  firstName: string;
+  lastName: string;
+  appointments: Array<{
+    id: string;
+    date: string;
+    time: string;
+    service: string;
+    employee: string;
+    status: string;
+    amount: number;
+    paymentStatus: string;
+    clientComment: string;
+    employeeComment: string;
+    rating: number | null;
+  }>;
+  sales: Array<{
+    id: string;
+    saleDate: string;
+    products: string;
+    quantity: number;
+    employee: string | null;
+    paymentStatus: string;
+    paymentMethod: string;
+    total: number;
+  }>;
+};
+
 export type AdminService = {
   id: string;
   categoryId: string | null;
@@ -510,6 +538,10 @@ export async function updateAdminAppointmentComment(id: string, payload: { emplo
 
 export async function fetchAppointmentConsumablePreview(id: string) {
   return request<ApiResponse<AppointmentConsumablePreview>>(`/api/admin/appointments/${id}/consumables-preview`).then((response) => response.data);
+}
+
+export async function fetchAdminClientProfile(id: string) {
+  return request<ApiResponse<AdminClientProfile>>(`/api/admin/clients/${id}`).then((response) => response.data);
 }
 
 export async function createAdminService(payload: ServiceInput) {

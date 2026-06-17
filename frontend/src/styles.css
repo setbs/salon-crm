@@ -1844,6 +1844,18 @@ textarea {
   font-size: 0.92rem;
 }
 
+.table-link-button {
+  border: 0;
+  background: transparent;
+  color: #302820;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -2353,6 +2365,61 @@ textarea {
   line-height: 1.5;
 }
 
+.client-profile {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: #d8cec1;
+}
+
+.profile-summary-grid div {
+  display: grid;
+  gap: 5px;
+  background: rgba(246, 241, 232, 0.52);
+  padding: 12px;
+}
+
+.profile-summary-grid span,
+.profile-section-heading span {
+  color: #75695d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.profile-summary-grid strong {
+  color: #302820;
+  font-size: 1.2rem;
+}
+
+.profile-section {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #d8cec1;
+  padding-bottom: 8px;
+}
+
+.profile-section-heading h3 {
+  color: #302820;
+  font-size: 1rem;
+}
+
 .employee-schedule {
   display: grid;
   gap: 16px;
@@ -2579,11 +2646,13 @@ textarea {
   }
 
   .calendar-filter-grid,
-  .calendar-summary-strip {
+  .calendar-summary-strip,
+  .profile-summary-grid {
     grid-template-columns: 1fr;
   }
 
-  .calendar-day-header {
+  .calendar-day-header,
+  .profile-section-heading {
     align-items: flex-start;
     flex-direction: column;
   }

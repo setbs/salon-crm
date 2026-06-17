@@ -28,7 +28,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Role-based access for admins and employees.
 - Admin dashboard.
 - Appointment management.
-- Client database.
+- Client database with search and client profiles.
 - Employee profiles with service assignment and activation control.
 - Employee weekly schedules and time-off blocks.
 - Service and service category management.

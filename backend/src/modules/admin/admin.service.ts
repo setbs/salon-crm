@@ -274,6 +274,84 @@ export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
   });
 }
 
+export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) {
+  const scopedEmployeeId = employeeScope(actor);
+  const client = await prisma.user.findFirst({
+    where: {
+      id,
+      role: UserRole.CLIENT,
+      ...(scopedEmployeeId
+        ? {
+            OR: [{ clientAppointments: { some: { employeeId: scopedEmployeeId } } }, { productSales: { some: { employeeId: scopedEmployeeId } } }]
+          }
+        : {})
+    },
+    include: {
+      clientAppointments: {
+        where: scopedEmployeeId ? { employeeId: scopedEmployeeId } : undefined,
+        include: {
+          employee: { include: { user: true } },
+          services: { include: { service: true } },
+          payment: true,
+          review: true
+        },
+        orderBy: { startTime: "desc" }
+      },
+      productSales: {
+        where: scopedEmployeeId ? { employeeId: scopedEmployeeId } : undefined,
+        include: {
+          employee: { include: { user: true } },
+          items: { include: { product: true } },
+          payment: true
+        },
+        orderBy: { saleDate: "desc" }
+      }
+    }
+  });
+
+  if (!client) {
+    throw new HttpError(404, "Client not found.");
+  }
+
+  const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + Number(appointment.payment?.amount ?? 0), 0);
+  const productSpend = client.productSales.reduce((sum, sale) => sum + Number(sale.totalAmount), 0);
+
+  return {
+    id: client.id.toString(),
+    name: `${client.firstName} ${client.lastName}`,
+    firstName: client.firstName,
+    lastName: client.lastName,
+    phone: client.phone,
+    email: client.email,
+    visits: client.clientAppointments.length,
+    spent: appointmentSpend + productSpend,
+    comment: client.clientAppointments.find((appointment) => appointment.clientComment)?.clientComment ?? "",
+    appointments: client.clientAppointments.map((appointment) => ({
+      id: appointment.id.toString(),
+      date: appointment.startTime.toISOString(),
+      time: appointment.startTime.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      service: appointment.services.map(({ service }) => service.name).join(", "),
+      employee: `${appointment.employee.user.firstName} ${appointment.employee.user.lastName}`,
+      status: mapAppointmentStatus(appointment.status),
+      amount: Number(appointment.payment?.amount ?? 0),
+      paymentStatus: appointment.payment?.paymentStatus.toLowerCase() ?? "pending",
+      clientComment: appointment.clientComment ?? "",
+      employeeComment: appointment.employeeComment ?? "",
+      rating: appointment.review?.rating ?? null
+    })),
+    sales: client.productSales.map((sale) => ({
+      id: sale.id.toString(),
+      saleDate: sale.saleDate.toISOString(),
+      products: sale.items.map((item) => item.product.name).join(", "),
+      quantity: sale.items.reduce((sum, item) => sum + item.quantity, 0),
+      employee: sale.employee ? `${sale.employee.user.firstName} ${sale.employee.user.lastName}` : null,
+      paymentStatus: sale.payment?.paymentStatus.toLowerCase() ?? "pending",
+      paymentMethod: sale.payment?.paymentMethod.toLowerCase() ?? "cash",
+      total: Number(sale.totalAmount)
+    }))
+  };
+}
+
 export async function getServices(_actor: CrmAuthenticatedUser) {
   const services = await listServices();
 
