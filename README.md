@@ -30,6 +30,8 @@ The project is built as a diploma and portfolio application with a practical bus
 - Client database.
 - Service and service category management.
 - Product inventory and product sales.
+- Appointment completion workflow with consumable write-off preview.
+- Consumable analytics for the last 30 days.
 - Payments and reviews overview.
 - Salon settings.
 
@@ -46,6 +48,8 @@ The project is built as a diploma and portfolio application with a practical bus
 - Products support package content amount, for example `60 ml`.
 - Services can define consumable products and usage amount, for example `20 ml` of a peeling product.
 - Completing an appointment writes off configured service consumables from product stock and stores the write-off in `service_consumption_logs`.
+- Before completing an appointment, CRM users can preview the exact consumables to be written off and whether stock is sufficient.
+- The dashboard shows recent consumable write-offs and top used products for the last 30 days.
 - Consumables are internal CRM data and are not shown to public booking users.
 
 ## Technology Stack

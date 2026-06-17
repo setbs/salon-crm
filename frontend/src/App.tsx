@@ -23,7 +23,8 @@ import {
   Star,
   Trash2,
   UserRound,
-  UsersRound
+  UsersRound,
+  X
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -37,6 +38,7 @@ import {
   deleteAdminServiceCategory,
   fetchAdminData,
   fetchAvailability,
+  fetchAppointmentConsumablePreview,
   fetchCurrentUser,
   fetchEmployees,
   fetchServices,
@@ -52,6 +54,7 @@ import {
   updateAdminSettings,
   type AdminData,
   type AdminAppointmentInput,
+  type AppointmentConsumablePreview,
   type AuthUser,
   type Employee,
   type MeasurementUnit,
@@ -665,11 +668,11 @@ function AdminContent({
   user: AuthUser;
 }) {
   if (user.role !== "ADMIN" && !employeeSections.includes(section)) {
-    return <DashboardSection dashboard={data.dashboard} appointments={data.appointments} />;
+    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} appointments={data.appointments} />;
   }
 
   if (section === "dashboard") {
-    return <DashboardSection dashboard={data.dashboard} appointments={data.appointments} />;
+    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} appointments={data.appointments} />;
   }
 
   if (section === "calendar") {
@@ -727,7 +730,15 @@ function AdminContent({
   return <SettingsSection settings={data.settings} runAction={runAction} />;
 }
 
-function DashboardSection({ dashboard, appointments }: { dashboard: AdminData["dashboard"]; appointments: AdminData["appointments"] }) {
+function DashboardSection({
+  dashboard,
+  analytics,
+  appointments
+}: {
+  dashboard: AdminData["dashboard"];
+  analytics: AdminData["consumableAnalytics"];
+  appointments: AdminData["appointments"];
+}) {
   return (
     <div className="admin-grid">
       <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
@@ -738,6 +749,8 @@ function DashboardSection({ dashboard, appointments }: { dashboard: AdminData["d
         note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
       />
       <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
+      <MetricCard label="Consumables used" value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} write-offs · ${analytics.periodLabel.toLowerCase()}`} />
+      <MetricCard label="Low consumables" value={String(analytics.lowConsumableProducts)} note="package-content stock alerts" />
 
       <Panel title="Today's appointments" action="Create appointment">
         <DataTable
@@ -746,15 +759,33 @@ function DashboardSection({ dashboard, appointments }: { dashboard: AdminData["d
         />
       </Panel>
 
-      <Panel title="Later backlog">
-        <div className="feature-list">
-          <span>About salon page</span>
-          <span>public product catalog</span>
-          <span>product consumption per service</span>
-          <span>admin-only consumables</span>
-          <span>reviews in public navigation</span>
-          <span>CSV appointment export</span>
-        </div>
+      <Panel title="Consumable analytics">
+        <DataTable
+          columns={["Product", "Used", "Appointments", "Current stock"]}
+          rows={
+            analytics.products.length > 0
+              ? analytics.products.map((item) => [
+                  item.productCategory ? `${item.productName} · ${item.productCategory}` : item.productName,
+                  `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)}`,
+                  `${item.appointmentCount} appointments`,
+                  formatAnalyticsStock(item)
+                ])
+              : [["No write-offs yet", "-", "-", "-"]]
+          }
+        />
+      </Panel>
+
+      <Panel title="Recent write-offs">
+        <InfoList
+          items={
+            analytics.recentLogs.length > 0
+              ? analytics.recentLogs.map((log) => [
+                  `${formatShortDate(log.createdAt)} · ${log.productName}`,
+                  `${formatPlainNumber(log.quantity)} ${formatUnit(log.unit)} · ${log.serviceName} · ${log.clientName}`
+                ])
+              : [["No data", "Complete an appointment with consumables to see write-offs here."]]
+          }
+        />
       </Panel>
     </div>
   );
@@ -773,6 +804,32 @@ function CalendarSection({
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [isCompletionOpen, setIsCompletionOpen] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [completionPreview, setCompletionPreview] = useState<AppointmentConsumablePreview | null>(null);
+
+  async function openCompletionPreview(appointmentId: string) {
+    setIsCompletionOpen(true);
+    setIsPreviewLoading(true);
+    setPreviewError("");
+    setCompletionPreview(null);
+
+    try {
+      setCompletionPreview(await fetchAppointmentConsumablePreview(appointmentId));
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not load consumable preview.");
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }
+
+  function closeCompletionPreview() {
+    setIsCompletionOpen(false);
+    setCompletionPreview(null);
+    setPreviewError("");
+  }
+
   return (
     <div className="admin-grid">
       <Panel title="Calendar" action="Create appointment manually">
@@ -791,16 +848,25 @@ function CalendarSection({
             item.service,
             item.master,
             item.comment || "-",
-            <InlineActions
-              labels={["Complete", "No-show", "Cancel"]}
-              onAction={(label) =>
-                runAction(() =>
-                  updateAdminAppointment(item.id, {
-                    status: label === "Complete" ? "completed" : label === "No-show" ? "no_show" : "cancelled"
-                  })
-                )
-              }
-            />,
+            item.status === "scheduled" ? (
+              <InlineActions
+                labels={["Complete", "No-show", "Cancel"]}
+                onAction={(label) => {
+                  if (label === "Complete") {
+                    void openCompletionPreview(item.id);
+                    return;
+                  }
+
+                  void runAction(() =>
+                    updateAdminAppointment(item.id, {
+                      status: label === "No-show" ? "no_show" : "cancelled"
+                    })
+                  );
+                }}
+              />
+            ) : (
+              "-"
+            ),
             <StatusBadge status={item.status} />
           ])}
         />
@@ -813,6 +879,109 @@ function CalendarSection({
       />
       <AppointmentRescheduleForm appointments={appointments} onSubmit={(id, payload) => runAction(() => rescheduleAdminAppointment(id, payload))} />
       <AppointmentCommentForm appointments={appointments} onSubmit={(id, employeeComment) => runAction(() => updateAdminAppointmentComment(id, { employeeComment }))} />
+      {isCompletionOpen ? (
+        <CompletionPreviewDialog
+          error={previewError}
+          isLoading={isPreviewLoading}
+          onClose={closeCompletionPreview}
+          onConfirm={(appointmentId) =>
+            runAction(async () => {
+              await updateAdminAppointment(appointmentId, { status: "completed" });
+              closeCompletionPreview();
+            })
+          }
+          preview={completionPreview}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CompletionPreviewDialog({
+  error,
+  isLoading,
+  onClose,
+  onConfirm,
+  preview
+}: {
+  error: string;
+  isLoading: boolean;
+  onClose: () => void;
+  onConfirm: (appointmentId: string) => Promise<void>;
+  preview: AppointmentConsumablePreview | null;
+}) {
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <section aria-modal="true" className="admin-modal" role="dialog">
+        <div className="panel-header">
+          <div>
+            <p className="admin-kicker">Completion workflow</p>
+            <h2>Complete appointment</h2>
+          </div>
+          <button aria-label="Close completion preview" className="icon-only-button" onClick={onClose} title="Close" type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+
+        {isLoading ? <div className="modal-state">Loading consumables...</div> : null}
+        {error ? <div className="admin-alert">{error}</div> : null}
+
+        {preview ? (
+          <>
+            <InfoList
+              items={[
+                ["Client", preview.appointment.client],
+                ["Service", preview.appointment.service || "-"],
+                ["Employee", preview.appointment.master],
+                ["Time", formatShortDate(preview.appointment.time)]
+              ]}
+            />
+
+            {preview.warnings.length > 0 ? (
+              <div className="preview-warning-list">
+                {preview.warnings.map((warning) => (
+                  <span key={warning}>{warning}</span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="consumable-preview-list">
+              {preview.items.length > 0 ? (
+                preview.items.map((item) => (
+                  <article className={item.enough ? "consumable-preview-row" : "consumable-preview-row warning"} key={item.productId}>
+                    <div>
+                      <strong>{item.productName}</strong>
+                      <span>{item.services}</span>
+                    </div>
+                    <div>
+                      <small>will use</small>
+                      <strong>
+                        {formatPlainNumber(item.quantity)} {formatUnit(item.unit)}
+                      </strong>
+                    </div>
+                    <div>
+                      <small>stock after</small>
+                      <strong>{formatPreviewStock(item)}</strong>
+                    </div>
+                    <StatusBadge status={item.enough ? "ready" : "blocked"} />
+                  </article>
+                ))
+              ) : (
+                <div className="modal-state">No internal consumables are configured for this appointment.</div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button className="secondary-button compact-button" onClick={onClose} type="button">
+                Close
+              </button>
+              <button className="primary-button compact-button" disabled={!preview.canComplete} onClick={() => void onConfirm(preview.appointment.id)} type="button">
+                Confirm completion
+              </button>
+            </div>
+          </>
+        ) : null}
+      </section>
     </div>
   );
 }
@@ -1840,6 +2009,46 @@ function formatProductStock(product: AdminData["products"][number]) {
   return String(product.stock);
 }
 
+function formatAnalyticsTotals(analytics: AdminData["consumableAnalytics"]) {
+  const parts = [];
+
+  if (analytics.totalMl > 0) {
+    parts.push(`${formatPlainNumber(analytics.totalMl)} ml`);
+  }
+
+  if (analytics.totalGram > 0) {
+    parts.push(`${formatPlainNumber(analytics.totalGram)} g`);
+  }
+
+  return parts.length > 0 ? parts.join(" / ") : "0";
+}
+
+function formatAnalyticsStock(item: AdminData["consumableAnalytics"]["products"][number]) {
+  if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null) {
+    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`;
+  }
+
+  return "not tracked";
+}
+
+function formatPreviewStock(item: AppointmentConsumablePreview["items"][number]) {
+  if (item.stockAfter === null) {
+    return "not tracked";
+  }
+
+  const packagePart = item.packageEquivalentAfter !== null ? `${formatPlainNumber(item.packageEquivalentAfter)} packs · ` : "";
+  return `${packagePart}${formatPlainNumber(item.stockAfter)} ${formatUnit(item.unit)}`;
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function formatPlainNumber(value: number) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
@@ -2153,7 +2362,14 @@ function InlineActions({ labels, onAction }: { labels: string[]; onAction?: (lab
   return (
     <div className="inline-actions">
       {labels.map((label) => {
-        const Icon = label === "Delete" ? Trash2 : label === "Hide" ? EyeOff : Edit3;
+        const Icon =
+          label === "Complete" || label === "paid"
+            ? Check
+            : label === "Delete" || label === "Cancel"
+              ? Trash2
+              : label === "Hide" || label === "No-show"
+                ? EyeOff
+                : Edit3;
         return (
           <button aria-label={label} key={label} onClick={() => onAction?.(label)} title={label} type="button">
             <Icon aria-hidden="true" size={15} />
@@ -2172,7 +2388,9 @@ function StatusBadge({ status }: { status: string }) {
     no_show: "no-show",
     pending: "pending",
     paid: "paid",
-    refunded: "refunded"
+    refunded: "refunded",
+    ready: "ready",
+    blocked: "blocked"
   };
 
   return <span className={`status-badge ${status}`}>{statusLabels[status] ?? status}</span>;

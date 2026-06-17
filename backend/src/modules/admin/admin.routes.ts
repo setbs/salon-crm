@@ -8,8 +8,10 @@ import {
   createServiceCategory,
   deleteService,
   deleteServiceCategory,
+  getAppointmentConsumablePreview,
   getAppointments,
   getClients,
+  getConsumableAnalytics,
   getDashboard,
   getEmployees,
   getPayments,
@@ -53,6 +55,14 @@ adminRouter.get("/admin/dashboard", async (request, response, next) => {
   }
 });
 
+adminRouter.get("/admin/consumable-analytics", async (request, response, next) => {
+  try {
+    response.json({ data: await getConsumableAnalytics(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.get("/admin/appointments", async (request, response, next) => {
   try {
     response.json({ data: await getAppointments(getAuthenticatedUser(request)) });
@@ -65,6 +75,14 @@ adminRouter.post("/admin/appointments", async (request, response, next) => {
   try {
     const body = createAppointmentSchema.parse(request.body);
     response.status(201).json({ data: await createAppointment(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/admin/appointments/:id/consumables-preview", async (request, response, next) => {
+  try {
+    response.json({ data: await getAppointmentConsumablePreview(getAuthenticatedUser(request), BigInt(request.params.id)) });
   } catch (error) {
     next(error);
   }

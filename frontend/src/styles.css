@@ -1791,7 +1791,8 @@ textarea {
 }
 
 .status-badge.completed,
-.status-badge.paid {
+.status-badge.paid,
+.status-badge.ready {
   border-color: #98ad89;
   background: #e3eadb;
   color: #4a6940;
@@ -1799,7 +1800,8 @@ textarea {
 
 .status-badge.cancelled,
 .status-badge.refunded,
-.status-badge.no_show {
+.status-badge.no_show,
+.status-badge.blocked {
   border-color: #c59b8c;
   background: #f1ddd6;
   color: #8a4937;
@@ -1826,6 +1828,96 @@ textarea {
   border-radius: 5px;
   background: transparent;
   color: #4b4038;
+}
+
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(48, 40, 32, 0.42);
+  padding: 24px;
+}
+
+.admin-modal {
+  display: grid;
+  gap: 16px;
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #8c7d6c;
+  border-radius: 6px;
+  background: #f5efe7;
+  box-shadow: 0 22px 70px rgba(48, 40, 32, 0.28);
+  padding: 18px;
+}
+
+.preview-warning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.preview-warning-list span {
+  border: 1px solid #c59b8c;
+  border-radius: 5px;
+  background: #f1ddd6;
+  color: #8a4937;
+  padding: 10px 12px;
+}
+
+.modal-state {
+  border: 1px solid #d8cec1;
+  border-radius: 5px;
+  background: rgba(246, 241, 232, 0.42);
+  color: #75695d;
+  padding: 10px 12px;
+}
+
+.consumable-preview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.consumable-preview-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(110px, 0.34fr) minmax(140px, 0.5fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.42);
+  padding: 12px;
+}
+
+.consumable-preview-row.warning {
+  border-color: #c59b8c;
+  background: #f1ddd6;
+}
+
+.consumable-preview-row div {
+  display: grid;
+  gap: 4px;
+}
+
+.consumable-preview-row span,
+.consumable-preview-row small {
+  color: #75695d;
+}
+
+.consumable-preview-row small {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #ddd4c8;
+  padding-top: 14px;
 }
 
 

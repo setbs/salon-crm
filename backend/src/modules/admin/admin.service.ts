@@ -60,9 +60,194 @@ export async function getDashboard(actor: CrmAuthenticatedUser) {
   };
 }
 
+export async function getConsumableAnalytics(actor: CrmAuthenticatedUser) {
+  const scopedEmployeeId = employeeScope(actor);
+  const employeeFilter = scopedEmployeeId ? Prisma.sql`AND appointment.employee_id = ${scopedEmployeeId}` : Prisma.empty;
+
+  const [summary] = await prisma.$queryRaw<
+    Array<{ logsCount: number; totalMl: Prisma.Decimal | null; totalGram: Prisma.Decimal | null }>
+  >(Prisma.sql`
+    SELECT
+      COUNT(*)::int AS "logsCount",
+      COALESCE(SUM(consumption.quantity) FILTER (WHERE consumption.unit = 'ML'::"ConsumableUnit"), 0) AS "totalMl",
+      COALESCE(SUM(consumption.quantity) FILTER (WHERE consumption.unit = 'GRAM'::"ConsumableUnit"), 0) AS "totalGram"
+    FROM service_consumption_logs consumption
+    JOIN appointments appointment ON appointment.id = consumption.appointment_id
+    WHERE consumption.created_at >= now() - interval '30 days'
+    ${employeeFilter}
+  `);
+
+  const productRows = await prisma.$queryRaw<
+    Array<{
+      productId: bigint;
+      productName: string;
+      productCategory: string | null;
+      unit: string;
+      usedQuantity: Prisma.Decimal;
+      appointmentCount: number;
+      serviceCount: number;
+      stockContentAmount: Prisma.Decimal | null;
+      contentAmount: Prisma.Decimal | null;
+    }>
+  >(Prisma.sql`
+    SELECT
+      product.id AS "productId",
+      product.name AS "productName",
+      product_category.name AS "productCategory",
+      lower(consumption.unit::text) AS unit,
+      SUM(consumption.quantity) AS "usedQuantity",
+      COUNT(DISTINCT consumption.appointment_id)::int AS "appointmentCount",
+      COUNT(DISTINCT consumption.service_id)::int AS "serviceCount",
+      product.stock_content_amount AS "stockContentAmount",
+      product.content_amount AS "contentAmount"
+    FROM service_consumption_logs consumption
+    JOIN appointments appointment ON appointment.id = consumption.appointment_id
+    JOIN products product ON product.id = consumption.product_id
+    LEFT JOIN product_categories product_category ON product_category.id = product.category_id
+    WHERE consumption.created_at >= now() - interval '30 days'
+    ${employeeFilter}
+    GROUP BY product.id, product_category.name, consumption.unit
+    ORDER BY SUM(consumption.quantity) DESC, product.name ASC
+    LIMIT 8
+  `);
+
+  const recentRows = await prisma.$queryRaw<
+    Array<{
+      id: bigint;
+      createdAt: Date;
+      productName: string;
+      serviceName: string;
+      clientName: string;
+      quantity: Prisma.Decimal;
+      unit: string;
+    }>
+  >(Prisma.sql`
+    SELECT
+      consumption.id,
+      consumption.created_at AS "createdAt",
+      product.name AS "productName",
+      service.name AS "serviceName",
+      trim(concat_ws(' ', client.first_name, client.last_name)) AS "clientName",
+      consumption.quantity,
+      lower(consumption.unit::text) AS unit
+    FROM service_consumption_logs consumption
+    JOIN appointments appointment ON appointment.id = consumption.appointment_id
+    JOIN users client ON client.id = appointment.client_id
+    JOIN services service ON service.id = consumption.service_id
+    JOIN products product ON product.id = consumption.product_id
+    WHERE consumption.created_at >= now() - interval '30 days'
+    ${employeeFilter}
+    ORDER BY consumption.created_at DESC
+    LIMIT 8
+  `);
+
+  const [lowStock] = await prisma.$queryRaw<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS count
+    FROM products
+    WHERE is_active = true
+      AND content_amount IS NOT NULL
+      AND stock_content_amount IS NOT NULL
+      AND stock_content_amount <= min_stock_quantity * content_amount
+  `;
+
+  return {
+    periodLabel: "Last 30 days",
+    logsCount: summary?.logsCount ?? 0,
+    totalMl: summary?.totalMl ? toNumber(summary.totalMl) : 0,
+    totalGram: summary?.totalGram ? toNumber(summary.totalGram) : 0,
+    lowConsumableProducts: actor.role === "ADMIN" ? (lowStock?.count ?? 0) : 0,
+    products: productRows.map((row) => {
+      const stockContentAmount = row.stockContentAmount ? toNumber(row.stockContentAmount) : null;
+      const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
+
+      return {
+        productId: row.productId.toString(),
+        productName: row.productName,
+        productCategory: row.productCategory,
+        usedQuantity: toNumber(row.usedQuantity),
+        unit: toPublicMeasurementUnit(row.unit),
+        appointmentCount: row.appointmentCount,
+        serviceCount: row.serviceCount,
+        stockContentAmount,
+        stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null
+      };
+    }),
+    recentLogs: recentRows.map((row) => ({
+      id: row.id.toString(),
+      createdAt: row.createdAt.toISOString(),
+      productName: row.productName,
+      serviceName: row.serviceName,
+      clientName: row.clientName,
+      quantity: toNumber(row.quantity),
+      unit: toPublicMeasurementUnit(row.unit)
+    }))
+  };
+}
+
 export async function getAppointments(actor: CrmAuthenticatedUser) {
   const appointments = await listAppointments(employeeScope(actor));
   return appointments.map(mapAppointment);
+}
+
+export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUser, id: bigint) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      client: true,
+      employee: { include: { user: true } },
+      services: { include: { service: true } }
+    }
+  });
+
+  if (!appointment) {
+    throw new HttpError(404, "Appointment not found.");
+  }
+
+  assertOwnEmployee(actor, appointment.employeeId);
+
+  const items = await buildAppointmentConsumablePreviewItems(prisma, id);
+  const alreadyWrittenOff = await hasAppointmentConsumptionLogs(prisma, id);
+  const warnings: string[] = [];
+
+  if (appointment.status === AppointmentStatus.COMPLETED) {
+    warnings.push("This appointment is already completed.");
+  }
+
+  if (appointment.status === AppointmentStatus.CANCELLED || appointment.status === AppointmentStatus.NO_SHOW) {
+    warnings.push("Only scheduled appointments can be completed.");
+  }
+
+  if (alreadyWrittenOff) {
+    warnings.push("Consumables have already been written off. Completing now will only update the appointment status.");
+  }
+
+  if (items.length === 0) {
+    warnings.push("No consumables are configured for the selected services.");
+  }
+
+  for (const item of items) {
+    if (item.issue) {
+      warnings.push(item.issue);
+    }
+  }
+
+  const hasBlockingIssue = !alreadyWrittenOff && items.some((item) => !item.enough);
+  const isScheduled = appointment.status === AppointmentStatus.PENDING;
+
+  return {
+    appointment: {
+      id: appointment.id.toString(),
+      client: `${appointment.client.firstName} ${appointment.client.lastName}`,
+      service: appointment.services.map(({ service }) => service.name).join(", "),
+      master: `${appointment.employee.user.firstName} ${appointment.employee.user.lastName}`,
+      time: appointment.startTime.toISOString()
+    },
+    status: mapAppointmentStatus(appointment.status),
+    alreadyWrittenOff,
+    canComplete: isScheduled && !hasBlockingIssue,
+    warnings: [...new Set(warnings)],
+    items
+  };
 }
 
 export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
@@ -289,6 +474,15 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
   });
 
   const nextStatus = input.status ? toAppointmentStatus(input.status) : undefined;
+
+  if (
+    nextStatus === AppointmentStatus.COMPLETED &&
+    current.status !== AppointmentStatus.PENDING &&
+    current.status !== AppointmentStatus.COMPLETED
+  ) {
+    throw new HttpError(409, "Only scheduled appointments can be completed.");
+  }
+
   const shouldApplyConsumables = nextStatus === AppointmentStatus.COMPLETED && current.status !== AppointmentStatus.COMPLETED;
 
   const appointment = await prisma.$transaction(async (transaction) => {
@@ -974,14 +1168,91 @@ function toPublicUnit(unit: ConsumableUnitValue) {
   return unit === "GRAM" ? "gram" : "ml";
 }
 
-async function applyAppointmentConsumables(client: Prisma.TransactionClient, appointmentId: bigint) {
+function toPublicMeasurementUnit(unit: string) {
+  return unit === "gram" ? "gram" : "ml";
+}
+
+async function hasAppointmentConsumptionLogs(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
   const [existingLog] = await client.$queryRaw<Array<{ count: number }>>`
     SELECT COUNT(*)::int AS count
     FROM service_consumption_logs
     WHERE appointment_id = ${appointmentId}
   `;
 
-  if ((existingLog?.count ?? 0) > 0) {
+  return (existingLog?.count ?? 0) > 0;
+}
+
+async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
+  const rows = await client.$queryRaw<
+    Array<{
+      productId: bigint;
+      productName: string;
+      productCategory: string | null;
+      services: string;
+      quantity: Prisma.Decimal;
+      unit: string;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      stockContentAmount: Prisma.Decimal | null;
+    }>
+  >`
+    SELECT
+      service_consumable.product_id AS "productId",
+      product.name AS "productName",
+      product_category.name AS "productCategory",
+      string_agg(DISTINCT service.name, ', ') AS services,
+      SUM(service_consumable.quantity) AS quantity,
+      lower(service_consumable.unit::text) AS unit,
+      product.content_amount AS "contentAmount",
+      lower(product.content_unit::text) AS "contentUnit",
+      product.stock_content_amount AS "stockContentAmount"
+    FROM appointment_services appointment_service
+    JOIN services service ON service.id = appointment_service.service_id
+    JOIN service_consumables service_consumable ON service_consumable.service_id = appointment_service.service_id
+    JOIN products product ON product.id = service_consumable.product_id
+    LEFT JOIN product_categories product_category ON product_category.id = product.category_id
+    WHERE appointment_service.appointment_id = ${appointmentId}
+    GROUP BY service_consumable.product_id, product.name, product_category.name, service_consumable.unit, product.content_amount, product.content_unit, product.stock_content_amount
+    ORDER BY product.name ASC
+  `;
+
+  return rows.map((row) => {
+    const quantity = toNumber(row.quantity);
+    const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
+    const stockContentAmount = row.stockContentAmount ? toNumber(row.stockContentAmount) : null;
+    const unit = toPublicMeasurementUnit(row.unit);
+    const unitMatches = row.contentUnit === unit;
+    const stockAfter = stockContentAmount !== null ? Math.max(stockContentAmount - quantity, 0) : null;
+    let issue: string | null = null;
+
+    if (!contentAmount || !row.contentUnit || stockContentAmount === null) {
+      issue = `Product ${row.productName} does not have package content configured.`;
+    } else if (!unitMatches) {
+      issue = `Consumable unit does not match product package unit for ${row.productName}.`;
+    } else if (stockContentAmount < quantity) {
+      issue = `Not enough consumable stock for ${row.productName}.`;
+    }
+
+    return {
+      productId: row.productId.toString(),
+      productName: row.productName,
+      productCategory: row.productCategory,
+      services: row.services,
+      quantity,
+      unit,
+      contentAmount,
+      stockContentAmount,
+      stockAfter,
+      packageEquivalentBefore: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
+      packageEquivalentAfter: contentAmount && stockAfter !== null ? stockAfter / contentAmount : null,
+      enough: !issue,
+      issue
+    };
+  });
+}
+
+async function applyAppointmentConsumables(client: Prisma.TransactionClient, appointmentId: bigint) {
+  if (await hasAppointmentConsumptionLogs(client, appointmentId)) {
     return;
   }
 

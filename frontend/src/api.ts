@@ -49,6 +49,65 @@ export type AdminDashboard = {
   lowStockProducts: number;
 };
 
+export type AppointmentConsumablePreviewItem = {
+  productId: string;
+  productName: string;
+  productCategory: string | null;
+  services: string;
+  quantity: number;
+  unit: MeasurementUnit;
+  contentAmount: number | null;
+  stockContentAmount: number | null;
+  stockAfter: number | null;
+  packageEquivalentBefore: number | null;
+  packageEquivalentAfter: number | null;
+  enough: boolean;
+  issue: string | null;
+};
+
+export type AppointmentConsumablePreview = {
+  appointment: {
+    id: string;
+    client: string;
+    service: string;
+    master: string;
+    time: string;
+  };
+  status: string;
+  alreadyWrittenOff: boolean;
+  canComplete: boolean;
+  warnings: string[];
+  items: AppointmentConsumablePreviewItem[];
+};
+
+export type AdminConsumableAnalytics = {
+  periodLabel: string;
+  logsCount: number;
+  totalMl: number;
+  totalGram: number;
+  lowConsumableProducts: number;
+  products: Array<{
+    productId: string;
+    productName: string;
+    productCategory: string | null;
+    usedQuantity: number;
+    unit: MeasurementUnit;
+    appointmentCount: number;
+    serviceCount: number;
+    stockContentAmount: number | null;
+    stockPackageEquivalent: number | null;
+  }>;
+  recentLogs: Array<{
+    id: string;
+    createdAt: string;
+    productName: string;
+    serviceName: string;
+    clientName: string;
+    quantity: number;
+    unit: MeasurementUnit;
+  }>;
+};
+
 export type AdminAppointment = {
   id: string;
   time: string;
@@ -186,6 +245,7 @@ export type AdminSettings = {
 
 export type AdminData = {
   dashboard: AdminDashboard;
+  consumableAnalytics: AdminConsumableAnalytics;
   appointments: AdminAppointment[];
   clients: AdminClient[];
   serviceCategories: AdminServiceCategory[];
@@ -335,8 +395,9 @@ export async function createAppointment(payload: AppointmentPayload) {
 }
 
 export async function fetchAdminData(): Promise<AdminData> {
-  const [dashboard, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings] = await Promise.all([
+  const [dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings] = await Promise.all([
     getAdmin<AdminDashboard>("dashboard"),
+    getAdmin<AdminConsumableAnalytics>("consumable-analytics"),
     getAdmin<AdminAppointment[]>("appointments"),
     getAdmin<AdminClient[]>("clients"),
     getAdmin<AdminServiceCategory[]>("service-categories"),
@@ -350,7 +411,7 @@ export async function fetchAdminData(): Promise<AdminData> {
     getAdmin<AdminSettings>("settings")
   ]);
 
-  return { dashboard, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings };
+  return { dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings };
 }
 
 async function getAdmin<T>(resource: string) {
@@ -371,6 +432,10 @@ export async function rescheduleAdminAppointment(id: string, payload: { startTim
 
 export async function updateAdminAppointmentComment(id: string, payload: { employeeComment: string }) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/appointments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function fetchAppointmentConsumablePreview(id: string) {
+  return request<ApiResponse<AppointmentConsumablePreview>>(`/api/admin/appointments/${id}/consumables-preview`).then((response) => response.data);
 }
 
 export async function createAdminService(payload: ServiceInput) {
