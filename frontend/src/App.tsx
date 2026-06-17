@@ -807,10 +807,15 @@ function CalendarSection({
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+  const [reschedulingAppointmentId, setReschedulingAppointmentId] = useState<string | null>(null);
+  const [commentingAppointmentId, setCommentingAppointmentId] = useState<string | null>(null);
   const [isCompletionOpen, setIsCompletionOpen] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [completionPreview, setCompletionPreview] = useState<AppointmentConsumablePreview | null>(null);
+  const reschedulingAppointment = appointments.find((appointment) => appointment.id === reschedulingAppointmentId) ?? null;
+  const commentingAppointment = appointments.find((appointment) => appointment.id === commentingAppointmentId) ?? null;
 
   async function openCompletionPreview(appointmentId: string) {
     setIsCompletionOpen(true);
@@ -835,7 +840,7 @@ function CalendarSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Calendar" action="Create appointment manually">
+      <Panel title="Calendar" action="Create appointment manually" onAction={() => setIsCreatingAppointment(true)} wide>
         <div className="segmented-control" aria-label="Calendar view">
           <button className="active" type="button">
             Day
@@ -851,37 +856,83 @@ function CalendarSection({
             item.service,
             item.master,
             item.comment || "-",
-            item.status === "scheduled" ? (
-              <InlineActions
-                labels={["Complete", "No-show", "Cancel"]}
-                onAction={(label) => {
-                  if (label === "Complete") {
-                    void openCompletionPreview(item.id);
-                    return;
-                  }
+            <InlineActions
+              labels={item.status === "scheduled" ? ["Complete", "Reschedule", "Comment", "No-show", "Cancel"] : ["Comment"]}
+              onAction={(label) => {
+                if (label === "Complete") {
+                  void openCompletionPreview(item.id);
+                  return;
+                }
 
-                  void runAction(() =>
-                    updateAdminAppointment(item.id, {
-                      status: label === "No-show" ? "no_show" : "cancelled"
-                    })
-                  );
-                }}
-              />
-            ) : (
-              "-"
-            ),
+                if (label === "Reschedule") {
+                  setReschedulingAppointmentId(item.id);
+                  return;
+                }
+
+                if (label === "Comment") {
+                  setCommentingAppointmentId(item.id);
+                  return;
+                }
+
+                void runAction(() =>
+                  updateAdminAppointment(item.id, {
+                    status: label === "No-show" ? "no_show" : "cancelled"
+                  })
+                );
+              }}
+            />,
             <StatusBadge status={item.status} />
           ])}
         />
       </Panel>
-      <AppointmentCreateForm
-        clients={clients}
-        employees={employees}
-        services={services}
-        onSubmit={(payload) => runAction(() => createAdminAppointment(payload))}
-      />
-      <AppointmentRescheduleForm appointments={appointments} onSubmit={(id, payload) => runAction(() => rescheduleAdminAppointment(id, payload))} />
-      <AppointmentCommentForm appointments={appointments} onSubmit={(id, employeeComment) => runAction(() => updateAdminAppointmentComment(id, { employeeComment }))} />
+      {isCreatingAppointment ? (
+        <AdminModal title="New appointment" onClose={() => setIsCreatingAppointment(false)}>
+          <AppointmentCreateForm
+            clients={clients}
+            employees={employees}
+            onCancel={() => setIsCreatingAppointment(false)}
+            services={services}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminAppointment(payload);
+                setIsCreatingAppointment(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {reschedulingAppointment ? (
+        <AdminModal title="Reschedule appointment" onClose={() => setReschedulingAppointmentId(null)}>
+          <AppointmentRescheduleForm
+            appointments={appointments}
+            initialAppointmentId={reschedulingAppointment.id}
+            key={reschedulingAppointment.id}
+            onCancel={() => setReschedulingAppointmentId(null)}
+            onSubmit={(id, payload) =>
+              runAction(async () => {
+                await rescheduleAdminAppointment(id, payload);
+                setReschedulingAppointmentId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {commentingAppointment ? (
+        <AdminModal title="Visit comment" onClose={() => setCommentingAppointmentId(null)}>
+          <AppointmentCommentForm
+            appointments={appointments}
+            initialAppointmentId={commentingAppointment.id}
+            key={commentingAppointment.id}
+            onCancel={() => setCommentingAppointmentId(null)}
+            onSubmit={(id, employeeComment) =>
+              runAction(async () => {
+                await updateAdminAppointmentComment(id, { employeeComment });
+                setCommentingAppointmentId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
       {isCompletionOpen ? (
         <CompletionPreviewDialog
           error={previewError}
@@ -992,15 +1043,19 @@ function CompletionPreviewDialog({
 function AppointmentCreateForm({
   clients,
   employees,
+  onCancel,
   services,
   onSubmit
 }: {
   clients: AdminData["clients"];
   employees: AdminData["employees"];
+  onCancel: () => void;
   services: AdminData["services"];
   onSubmit: (payload: AdminAppointmentInput) => Promise<void>;
 }) {
   const activeServices = services.filter((service) => service.active);
+  const serviceGroups = buildAppointmentServiceGroups(activeServices);
+  const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
   const [form, setForm] = useState({
     employeeId: employees[0]?.id ?? "",
     clientMode: clients.length > 0 ? "existing" : "new",
@@ -1019,6 +1074,10 @@ function AppointmentCreateForm({
 
   function toggleService(id: string) {
     setServiceIds((current) => (current.includes(id) ? current.filter((serviceId) => serviceId !== id) : [...current, id]));
+  }
+
+  function toggleServiceGroup(groupId: string) {
+    setCollapsedServiceGroups((current) => (current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]));
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -1045,97 +1104,171 @@ function AppointmentCreateForm({
   }
 
   return (
-    <Panel title="New appointment">
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Employee</span>
-          <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="checkbox-group">
-          <span>Services</span>
-          {activeServices.map((service) => (
-            <label className="checkbox-line" key={service.id}>
-              <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
-              <span>
-                {service.name} · {service.duration} min · {formatServicePrice(service)}
-              </span>
-            </label>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Employee</span>
+        <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
+          {employees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.name}
+            </option>
           ))}
+        </select>
+      </label>
+      <div className="appointment-service-picker">
+        <span>Services</span>
+        <div className="service-groups compact">
+          {serviceGroups.length > 0 ? (
+            serviceGroups.map((group) => {
+              const isOpen = !collapsedServiceGroups.includes(group.id);
+              const selectedCount = group.services.filter((service) => serviceIds.includes(service.id)).length;
+
+              return (
+                <section className="service-group" key={group.id}>
+                  <button
+                    aria-expanded={isOpen}
+                    className="service-group-toggle"
+                    onClick={() => toggleServiceGroup(group.id)}
+                    type="button"
+                  >
+                    <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
+                      <ArrowRight aria-hidden="true" size={16} />
+                    </span>
+                    <strong>{group.name}</strong>
+                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} selected` : `${group.services.length} services`}</span>
+                  </button>
+                  {isOpen ? (
+                    <div className="appointment-service-list">
+                      {group.services.map((service) => (
+                        <label className="appointment-service-option" key={service.id}>
+                          <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
+                          <span>
+                            <strong>{service.name}</strong>
+                            <small>
+                              {service.duration} min · {formatServicePrice(service)}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })
+          ) : (
+            <div className="empty-state">No active services available.</div>
+          )}
         </div>
-        <div className="form-section">
+      </div>
+      <div className="form-section">
+        <label>
+          <span>Date</span>
+          <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
+        </label>
+        <label>
+          <span>Time</span>
+          <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
+        </label>
+      </div>
+      <label>
+        <span>Client</span>
+        <select value={form.clientMode === "existing" ? form.clientId : "new"} onChange={(event) => setForm({ ...form, clientMode: event.target.value === "new" ? "new" : "existing", clientId: event.target.value })}>
+          <option value="new">New client</option>
+          {clients.map((client) => (
+            <option key={client.id} value={client.id}>
+              {client.name} · {client.phone}
+            </option>
+          ))}
+        </select>
+      </label>
+      {form.clientMode === "new" ? (
+        <div className="client-grid">
           <label>
-            <span>Date</span>
-            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
+            <span>First name</span>
+            <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
           </label>
           <label>
-            <span>Time</span>
-            <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
+            <span>Last name</span>
+            <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
+          </label>
+          <label>
+            <span>Phone</span>
+            <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
+          </label>
+          <label>
+            <span>Email</span>
+            <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           </label>
         </div>
-        <label>
-          <span>Client</span>
-          <select value={form.clientMode === "existing" ? form.clientId : "new"} onChange={(event) => setForm({ ...form, clientMode: event.target.value === "new" ? "new" : "existing", clientId: event.target.value })}>
-            <option value="new">New client</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name} · {client.phone}
-              </option>
-            ))}
-          </select>
-        </label>
-        {form.clientMode === "new" ? (
-          <div className="client-grid">
-            <label>
-              <span>First name</span>
-              <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
-            </label>
-            <label>
-              <span>Last name</span>
-              <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
-            </label>
-            <label>
-              <span>Phone</span>
-              <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
-            </label>
-            <label>
-              <span>Email</span>
-              <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-            </label>
-          </div>
-        ) : null}
-        <label>
-          <span>Client comment</span>
-          <textarea value={form.clientComment} onChange={(event) => setForm({ ...form, clientComment: event.target.value })} rows={3} />
-        </label>
-        <label>
-          <span>Visit comment</span>
-          <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
-        </label>
+      ) : null}
+      <label>
+        <span>Client comment</span>
+        <textarea value={form.clientComment} onChange={(event) => setForm({ ...form, clientComment: event.target.value })} rows={3} />
+      </label>
+      <label>
+        <span>Visit comment</span>
+        <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
         <button className="primary-button admin-submit" disabled={serviceIds.length === 0 || !form.employeeId} type="submit">
           Create appointment
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
+}
+
+function buildAppointmentServiceGroups(services: AdminData["services"]) {
+  const groups = new Map<string, { id: string; name: string; services: AdminData["services"] }>();
+
+  for (const service of services) {
+    const groupId = service.categoryId ?? "uncategorized";
+    const groupName = service.category?.name ?? "Uncategorized";
+    const group = groups.get(groupId) ?? { id: groupId, name: groupName, services: [] };
+    group.services.push(service);
+    groups.set(groupId, group);
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    if (left.id === "uncategorized") {
+      return 1;
+    }
+
+    if (right.id === "uncategorized") {
+      return -1;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function AppointmentRescheduleForm({
   appointments,
+  initialAppointmentId,
+  onCancel,
   onSubmit
 }: {
   appointments: AdminData["appointments"];
+  initialAppointmentId?: string;
+  onCancel: () => void;
   onSubmit: (id: string, payload: { startTime: string; endTime: string; employeeComment?: string }) => Promise<void>;
 }) {
-  const [appointmentId, setAppointmentId] = useState(appointments[0]?.id ?? "");
+  const [appointmentId, setAppointmentId] = useState(initialAppointmentId ?? appointments[0]?.id ?? "");
   const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
   const initial = selected ? toDateTimeFields(selected.date) : { date: today, time: "09:00" };
   const [form, setForm] = useState({ date: initial.date, time: initial.time, employeeComment: "" });
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+
+    const next = toDateTimeFields(selected.date);
+    setForm({ date: next.date, time: next.time, employeeComment: selected.employeeComment });
+  }, [selected?.id]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1156,48 +1289,55 @@ function AppointmentRescheduleForm({
   }
 
   return (
-    <Panel title="Reschedule appointment">
-      <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Appointment</span>
+        <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
+          {appointments.map((appointment) => (
+            <option key={appointment.id} value={appointment.id}>
+              {appointment.time} · {appointment.client} · {appointment.service}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="form-section">
         <label>
-          <span>Appointment</span>
-          <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
-            {appointments.map((appointment) => (
-              <option key={appointment.id} value={appointment.id}>
-                {appointment.time} · {appointment.client} · {appointment.service}
-              </option>
-            ))}
-          </select>
+          <span>New date</span>
+          <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
         </label>
-        <div className="form-section">
-          <label>
-            <span>New date</span>
-            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
-          </label>
-          <label>
-            <span>New time</span>
-            <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
-          </label>
-        </div>
         <label>
-          <span>Reschedule comment</span>
-          <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
+          <span>New time</span>
+          <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
         </label>
+      </div>
+      <label>
+        <span>Reschedule comment</span>
+        <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
           Reschedule
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
 }
 
 function AppointmentCommentForm({
   appointments,
+  initialAppointmentId,
+  onCancel,
   onSubmit
 }: {
   appointments: AdminData["appointments"];
+  initialAppointmentId?: string;
+  onCancel: () => void;
   onSubmit: (id: string, employeeComment: string) => Promise<void>;
 }) {
-  const [appointmentId, setAppointmentId] = useState(appointments[0]?.id ?? "");
+  const [appointmentId, setAppointmentId] = useState(initialAppointmentId ?? appointments[0]?.id ?? "");
   const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
   const [comment, setComment] = useState(selected?.employeeComment ?? "");
 
@@ -1214,27 +1354,30 @@ function AppointmentCommentForm({
   }
 
   return (
-    <Panel title="Visit comment">
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Appointment</span>
-          <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
-            {appointments.map((appointment) => (
-              <option key={appointment.id} value={appointment.id}>
-                {appointment.time} · {appointment.client}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Internal comment</span>
-          <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
-        </label>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Appointment</span>
+        <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
+          {appointments.map((appointment) => (
+            <option key={appointment.id} value={appointment.id}>
+              {appointment.time} · {appointment.client}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Internal comment</span>
+        <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
           Save comment
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
 }
 
@@ -1282,9 +1425,35 @@ function ServicesSection({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const filteredServices = categoryFilter === "all" ? services : services.filter((service) => (service.categoryId ?? "") === categoryFilter);
+  const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
   const editingService = services.find((service) => service.id === editingServiceId) ?? null;
   const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
+  const serviceGroups = buildServiceGroups(services, categories, categoryFilter);
+
+  function toggleServiceGroup(groupId: string) {
+    setCollapsedServiceGroups((current) => (current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]));
+  }
+
+  function renderServiceActions(item: AdminData["services"][number]) {
+    return (
+      <InlineActions
+        labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
+        onAction={(label) => {
+          if (label === "Edit") {
+            setEditingServiceId(item.id);
+            return;
+          }
+
+          if (label === "Delete") {
+            void runAction(() => deleteAdminService(item.id));
+            return;
+          }
+
+          void runAction(() => updateAdminService(item.id, { active: !item.active }));
+        }}
+      />
+    );
+  }
 
   return (
     <div className="admin-grid">
@@ -1329,36 +1498,52 @@ function ServicesSection({
             </select>
           </label>
         </div>
-        <DataTable
-          columns={["Category", "Name", "Description", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
-          rows={filteredServices.map((item) => [
-            item.category?.name ?? "Uncategorized",
-            item.name,
-            item.description || "-",
-            item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
-            formatServicePrice(item),
-            `${item.duration} min`,
-            formatConsumables(item.consumables),
-            item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
-            item.active ? "active" : "disabled",
-            <InlineActions
-              labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
-              onAction={(label) => {
-                if (label === "Edit") {
-                  setEditingServiceId(item.id);
-                  return;
-                }
+        <div className="service-groups">
+          {serviceGroups.length > 0 ? (
+            serviceGroups.map((group) => {
+              const isOpen = !collapsedServiceGroups.includes(group.id);
 
-                if (label === "Delete") {
-                  void runAction(() => deleteAdminService(item.id));
-                  return;
-                }
-
-                void runAction(() => updateAdminService(item.id, { active: !item.active }));
-              }}
-            />
-          ])}
-        />
+              return (
+                <section className="service-group" key={group.id}>
+                  <button
+                    aria-expanded={isOpen}
+                    className="service-group-toggle"
+                    onClick={() => toggleServiceGroup(group.id)}
+                    type="button"
+                  >
+                    <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
+                      <ArrowRight aria-hidden="true" size={16} />
+                    </span>
+                    <strong>{group.name}</strong>
+                    <span>{group.services.length} services</span>
+                  </button>
+                  {isOpen ? (
+                    group.services.length > 0 ? (
+                      <DataTable
+                        columns={["Name", "Description", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
+                        rows={group.services.map((item) => [
+                          item.name,
+                          item.description || "-",
+                          item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
+                          formatServicePrice(item),
+                          `${item.duration} min`,
+                          formatConsumables(item.consumables),
+                          item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
+                          item.active ? "active" : "disabled",
+                          renderServiceActions(item)
+                        ])}
+                      />
+                    ) : (
+                      <div className="empty-state">No services in this category.</div>
+                    )
+                  ) : null}
+                </section>
+              );
+            })
+          ) : (
+            <div className="empty-state">No services match this category filter.</div>
+          )}
+        </div>
       </Panel>
       {isCreatingCategory ? (
         <AdminModal title="New category" onClose={() => setIsCreatingCategory(false)}>
@@ -1424,6 +1609,58 @@ function ServicesSection({
       ) : null}
     </div>
   );
+}
+
+function buildServiceGroups(
+  services: AdminData["services"],
+  categories: AdminData["serviceCategories"],
+  categoryFilter: string
+) {
+  const uncategorizedServices = services.filter((service) => !service.categoryId);
+
+  if (categoryFilter === "") {
+    return [
+      {
+        id: "uncategorized",
+        name: "Uncategorized",
+        services: uncategorizedServices
+      }
+    ];
+  }
+
+  if (categoryFilter !== "all") {
+    const selectedCategory = categories.find((category) => category.id === categoryFilter);
+
+    if (!selectedCategory) {
+      return [];
+    }
+
+    return [
+      {
+        id: selectedCategory.id,
+        name: selectedCategory.name,
+        services: services.filter((service) => service.categoryId === selectedCategory.id)
+      }
+    ];
+  }
+
+  const groups = categories
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      services: services.filter((service) => service.categoryId === category.id)
+    }))
+    .filter((group) => group.services.length > 0);
+
+  if (uncategorizedServices.length > 0) {
+    groups.push({
+      id: "uncategorized",
+      name: "Uncategorized",
+      services: uncategorizedServices
+    });
+  }
+
+  return groups;
 }
 
 function EmployeesSection({ employees }: { employees: AdminData["employees"] }) {

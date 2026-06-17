@@ -1837,6 +1837,122 @@ textarea {
   color: #4b4038;
 }
 
+.service-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.service-groups.compact {
+  gap: 8px;
+}
+
+.service-group {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.34);
+  padding: 10px;
+}
+
+.service-groups.compact .service-group {
+  padding: 8px;
+}
+
+.service-group-toggle {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  color: #302820;
+  text-align: left;
+}
+
+.service-group-toggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-group-toggle span:last-child {
+  color: #75695d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.service-group-arrow {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #c8beb0;
+  border-radius: 5px;
+  color: #4b4038;
+  transition: transform 160ms ease;
+}
+
+.service-group-arrow.open {
+  transform: rotate(90deg);
+}
+
+.empty-state {
+  border: 1px solid #d8cec1;
+  border-radius: 5px;
+  background: rgba(246, 241, 232, 0.42);
+  color: #75695d;
+  padding: 10px 12px;
+}
+
+.appointment-service-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.appointment-service-picker > span {
+  color: #75695d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointment-service-list {
+  display: grid;
+  gap: 8px;
+}
+
+.appointment-service-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid #d8cec1;
+  border-radius: 5px;
+  background: rgba(246, 241, 232, 0.36);
+  padding: 9px;
+}
+
+.appointment-service-option input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.appointment-service-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.appointment-service-option small {
+  color: #75695d;
+}
+
 .admin-modal-backdrop {
   position: fixed;
   inset: 0;
