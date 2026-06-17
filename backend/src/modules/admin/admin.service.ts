@@ -1,4 +1,7 @@
 import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, UserRole } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/http-error.js";
 import { assertAdmin } from "../auth/auth.middleware.js";
@@ -24,6 +27,7 @@ import type {
   createAppointmentSchema,
   createEmployeeSchema,
   createEmployeeTimeOffSchema,
+  createPortfolioPhotoSchema,
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
@@ -33,6 +37,7 @@ import type {
   updateEmployeeSchema,
   updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
+  updatePortfolioPhotoSchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
@@ -41,6 +46,32 @@ import type {
 import type { z } from "zod";
 
 type ConsumableUnitValue = "ML" | "GRAM";
+type AppointmentServiceLine = {
+  id: string;
+  name: string;
+  duration: number;
+  price: number;
+  priceFrom: number | null;
+  priceTo: number | null;
+};
+type AppointmentFinancialSummary = {
+  revenueFrom: number;
+  revenueTo: number;
+  consumableCost: number | null;
+  profitAfterConsumablesFrom: number | null;
+  profitAfterConsumablesTo: number | null;
+};
+type AppointmentDisplayExtras = {
+  services: AppointmentServiceLine[];
+  financials: AppointmentFinancialSummary;
+};
+const portfolioUploadTypes = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"]
+]);
+const portfolioUploadDir = path.resolve(process.cwd(), "public/uploads/portfolio");
 
 export async function getDashboard(actor: CrmAuthenticatedUser) {
   const now = new Date();
@@ -56,11 +87,12 @@ export async function getDashboard(actor: CrmAuthenticatedUser) {
     findNextAppointment(now, scopedEmployeeId),
     actor.role === "ADMIN" ? countLowStockProducts() : Promise.resolve(0)
   ]);
+  const nextAppointmentExtras = nextAppointment ? await getAppointmentDisplayExtras([nextAppointment.id]) : new Map<string, AppointmentDisplayExtras>();
 
   return {
     todayAppointments,
     dailyRevenue: Number(revenue._sum.amount ?? 0),
-    nextAppointment: nextAppointment ? mapAppointment(nextAppointment) : null,
+    nextAppointment: nextAppointment ? mapAppointment(nextAppointment, nextAppointmentExtras.get(nextAppointment.id.toString())) : null,
     lowStockProducts
   };
 }
@@ -191,7 +223,8 @@ export async function getConsumableAnalytics(actor: CrmAuthenticatedUser) {
 
 export async function getAppointments(actor: CrmAuthenticatedUser) {
   const appointments = await listAppointments(employeeScope(actor));
-  return appointments.map(mapAppointment);
+  const extras = await getAppointmentDisplayExtras(appointments.map((appointment) => appointment.id));
+  return appointments.map((appointment) => mapAppointment(appointment, extras.get(appointment.id.toString())));
 }
 
 export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUser, id: bigint) {
@@ -200,7 +233,8 @@ export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUse
     include: {
       client: true,
       employee: { include: { user: true } },
-      services: { include: { service: true } }
+      services: { include: { service: true } },
+      payment: true
     }
   });
 
@@ -210,20 +244,18 @@ export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUse
 
   assertOwnEmployee(actor, appointment.employeeId);
 
-  const items = await buildAppointmentConsumablePreviewItems(prisma, id);
   const alreadyWrittenOff = await hasAppointmentConsumptionLogs(prisma, id);
+  const items = alreadyWrittenOff ? await buildAppointmentActualConsumablePreviewItems(prisma, id) : await buildAppointmentConsumablePreviewItems(prisma, id);
+  const extras = await getAppointmentDisplayExtras([id]);
+  const financials = extras.get(id.toString())?.financials ?? createAppointmentFinancialSummary([], 0);
   const warnings: string[] = [];
 
   if (appointment.status === AppointmentStatus.COMPLETED) {
-    warnings.push("This appointment is already completed.");
+    warnings.push("This appointment is completed. Saving will adjust payment and consumable stock movements.");
   }
 
   if (appointment.status === AppointmentStatus.CANCELLED || appointment.status === AppointmentStatus.NO_SHOW) {
     warnings.push("Only scheduled appointments can be completed.");
-  }
-
-  if (alreadyWrittenOff) {
-    warnings.push("Consumables have already been written off. Completing now will only update the appointment status.");
   }
 
   if (items.length === 0) {
@@ -237,7 +269,7 @@ export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUse
   }
 
   const hasBlockingIssue = !alreadyWrittenOff && items.some((item) => !item.enough);
-  const isScheduled = appointment.status === AppointmentStatus.PENDING;
+  const canManageCompletion = appointment.status === AppointmentStatus.PENDING || appointment.status === AppointmentStatus.COMPLETED;
 
   return {
     appointment: {
@@ -247,9 +279,18 @@ export async function getAppointmentConsumablePreview(actor: CrmAuthenticatedUse
       master: `${appointment.employee.user.firstName} ${appointment.employee.user.lastName}`,
       time: appointment.startTime.toISOString()
     },
+    financials: {
+      revenueFrom: financials.revenueFrom,
+      revenueTo: financials.revenueTo,
+      paymentAmount: appointment.payment ? Number(appointment.payment.amount) : financials.revenueTo,
+      paymentMethod: appointment.payment?.paymentMethod.toLowerCase() ?? "cash",
+      consumableCost: financials.consumableCost,
+      profitAfterConsumablesFrom: financials.profitAfterConsumablesFrom,
+      profitAfterConsumablesTo: financials.profitAfterConsumablesTo
+    },
     status: mapAppointmentStatus(appointment.status),
     alreadyWrittenOff,
-    canComplete: isScheduled && !hasBlockingIssue,
+    canComplete: canManageCompletion && !hasBlockingIssue,
     warnings: [...new Set(warnings)],
     items
   };
@@ -606,11 +647,104 @@ export async function getPortfolio(actor: CrmAuthenticatedUser) {
 
   return photos.map((photo) => ({
     id: photo.id.toString(),
+    employeeId: photo.employeeId.toString(),
     title: photo.description ?? "Work without description",
+    description: photo.description,
     master: `${photo.employee.user.firstName} ${photo.employee.user.lastName}`,
     imageUrl: photo.imageUrl,
     visible: photo.isVisible
   }));
+}
+
+export async function createPortfolioPhoto(actor: CrmAuthenticatedUser, input: z.infer<typeof createPortfolioPhotoSchema>) {
+  const employeeId = BigInt(input.employeeId);
+  assertOwnEmployee(actor, employeeId);
+
+  await ensureEmployeesExist(prisma, [employeeId]);
+
+  const photo = await prisma.portfolioPhoto.create({
+    data: {
+      employeeId,
+      imageUrl: input.imageUrl,
+      description: input.description || null,
+      isVisible: input.visible
+    }
+  });
+
+  return { id: photo.id.toString() };
+}
+
+export async function updatePortfolioPhoto(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updatePortfolioPhotoSchema>) {
+  const current = await prisma.portfolioPhoto.findUnique({
+    where: { id },
+    select: { id: true, employeeId: true }
+  });
+
+  if (!current) {
+    throw new HttpError(404, "Portfolio photo not found.");
+  }
+
+  assertOwnEmployee(actor, current.employeeId);
+
+  const nextEmployeeId = input.employeeId ? BigInt(input.employeeId) : undefined;
+
+  if (nextEmployeeId !== undefined) {
+    assertOwnEmployee(actor, nextEmployeeId);
+    await ensureEmployeesExist(prisma, [nextEmployeeId]);
+  }
+
+  const photo = await prisma.portfolioPhoto.update({
+    where: { id },
+    data: {
+      employeeId: nextEmployeeId,
+      imageUrl: input.imageUrl,
+      description: input.description === undefined ? undefined : input.description || null,
+      isVisible: input.visible
+    }
+  });
+
+  return { id: photo.id.toString() };
+}
+
+export async function deletePortfolioPhoto(actor: CrmAuthenticatedUser, id: bigint) {
+  const current = await prisma.portfolioPhoto.findUnique({
+    where: { id },
+    select: { id: true, employeeId: true }
+  });
+
+  if (!current) {
+    throw new HttpError(404, "Portfolio photo not found.");
+  }
+
+  assertOwnEmployee(actor, current.employeeId);
+  await prisma.portfolioPhoto.delete({ where: { id } });
+}
+
+export async function uploadPortfolioImage(
+  _actor: CrmAuthenticatedUser,
+  input: {
+    contentType: string;
+    buffer: Buffer;
+  }
+) {
+  const contentType = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const extension = portfolioUploadTypes.get(contentType);
+
+  if (!extension) {
+    throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
+  }
+
+  if (input.buffer.length === 0) {
+    throw new HttpError(400, "Upload file is empty.");
+  }
+
+  await mkdir(portfolioUploadDir, { recursive: true });
+  const fileName = `${Date.now()}-${randomUUID()}.${extension}`;
+  await writeFile(path.join(portfolioUploadDir, fileName), input.buffer, { flag: "wx" });
+
+  return {
+    imageUrl: `/uploads/portfolio/${fileName}`
+  };
 }
 
 export async function getProducts(actor: CrmAuthenticatedUser) {
@@ -783,7 +917,8 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
     throw new HttpError(409, "Only scheduled appointments can be completed.");
   }
 
-  const shouldApplyConsumables = nextStatus === AppointmentStatus.COMPLETED && current.status !== AppointmentStatus.COMPLETED;
+  const shouldCompleteAppointment = nextStatus === AppointmentStatus.COMPLETED && current.status !== AppointmentStatus.COMPLETED;
+  const shouldSyncConsumables = shouldCompleteAppointment || (current.status === AppointmentStatus.COMPLETED && input.consumables !== undefined);
 
   const appointment = await prisma.$transaction(async (transaction) => {
     const updatedAppointment = await transaction.appointment.update({
@@ -797,8 +932,16 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
       }
     });
 
-    if (shouldApplyConsumables) {
-      await applyAppointmentConsumables(transaction, id);
+    if (shouldSyncConsumables) {
+      await syncAppointmentConsumables(transaction, id, input.consumables);
+    }
+
+    if (shouldCompleteAppointment || input.paymentStatus || input.paymentAmount !== undefined || input.paymentMethod) {
+      await upsertAppointmentPayment(transaction, id, {
+        amount: input.paymentAmount,
+        method: input.paymentMethod,
+        status: input.paymentStatus ?? (shouldCompleteAppointment ? "paid" : undefined)
+      });
     }
 
     return updatedAppointment;
@@ -880,7 +1023,7 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
     });
 
     if (appointmentStatus === AppointmentStatus.COMPLETED) {
-      await applyAppointmentConsumables(transaction, createdAppointment.id);
+      await syncAppointmentConsumables(transaction, createdAppointment.id);
     }
 
     return createdAppointment;
@@ -1679,6 +1822,322 @@ async function hasAppointmentConsumptionLogs(client: Pick<Prisma.TransactionClie
   return (existingLog?.count ?? 0) > 0;
 }
 
+async function getAppointmentDisplayExtras(appointmentIds: bigint[]) {
+  const uniqueIds = [...new Map(appointmentIds.map((id) => [id.toString(), id])).values()];
+  const extras = new Map<string, AppointmentDisplayExtras>();
+
+  if (uniqueIds.length === 0) {
+    return extras;
+  }
+
+  const serviceRows = await prisma.$queryRaw<
+    Array<{
+      appointmentId: bigint;
+      id: bigint;
+      name: string;
+      duration: number;
+      price: Prisma.Decimal;
+      priceFrom: Prisma.Decimal | null;
+      priceTo: Prisma.Decimal | null;
+    }>
+  >`
+    SELECT
+      appointment_service.appointment_id AS "appointmentId",
+      service.id,
+      service.name,
+      service.duration_minutes AS duration,
+      service.price,
+      service.price_from AS "priceFrom",
+      service.price_to AS "priceTo"
+    FROM appointment_services appointment_service
+    JOIN services service ON service.id = appointment_service.service_id
+    WHERE appointment_service.appointment_id IN (${Prisma.join(uniqueIds)})
+    ORDER BY appointment_service.appointment_id ASC, service.name ASC
+  `;
+
+  const servicesByAppointment = new Map<string, AppointmentServiceLine[]>();
+
+  for (const row of serviceRows) {
+    const key = row.appointmentId.toString();
+    const services = servicesByAppointment.get(key) ?? [];
+    services.push({
+      id: row.id.toString(),
+      name: row.name,
+      duration: row.duration,
+      price: toNumber(row.price),
+      priceFrom: row.priceFrom === null ? null : toNumber(row.priceFrom),
+      priceTo: row.priceTo === null ? null : toNumber(row.priceTo)
+    });
+    servicesByAppointment.set(key, services);
+  }
+
+  const costByAppointment = await getAppointmentConsumableCosts(uniqueIds);
+
+  for (const id of uniqueIds) {
+    const key = id.toString();
+    const services = servicesByAppointment.get(key) ?? [];
+    const consumableCost = costByAppointment.has(key) ? (costByAppointment.get(key) ?? null) : 0;
+    extras.set(key, {
+      services,
+      financials: createAppointmentFinancialSummary(services, consumableCost)
+    });
+  }
+
+  return extras;
+}
+
+async function getAppointmentConsumableCosts(appointmentIds: bigint[]) {
+  const costs = new Map<string, number | null>();
+
+  if (appointmentIds.length === 0) {
+    return costs;
+  }
+
+  const actualRows = await prisma.$queryRaw<
+    Array<{
+      appointmentId: bigint;
+      cost: Prisma.Decimal | null;
+      itemCount: number;
+      pricedCount: number;
+    }>
+  >`
+    SELECT
+      consumption.appointment_id AS "appointmentId",
+      COALESCE(SUM(
+        CASE
+          WHEN product.purchase_price IS NOT NULL
+            AND product.content_amount IS NOT NULL
+            AND product.content_amount > 0
+            AND lower(product.content_unit::text) = lower(consumption.unit::text)
+          THEN consumption.quantity * product.purchase_price / product.content_amount
+          ELSE 0
+        END
+      ), 0) AS cost,
+      COUNT(*)::int AS "itemCount",
+      COUNT(
+        CASE
+          WHEN product.purchase_price IS NOT NULL
+            AND product.content_amount IS NOT NULL
+            AND product.content_amount > 0
+            AND lower(product.content_unit::text) = lower(consumption.unit::text)
+          THEN 1
+        END
+      )::int AS "pricedCount"
+    FROM service_consumption_logs consumption
+    JOIN products product ON product.id = consumption.product_id
+    WHERE consumption.appointment_id IN (${Prisma.join(appointmentIds)})
+    GROUP BY consumption.appointment_id
+  `;
+
+  for (const row of actualRows) {
+    costs.set(row.appointmentId.toString(), normalizeConsumableCost(row));
+  }
+
+  const missingIds = appointmentIds.filter((id) => !costs.has(id.toString()));
+
+  if (missingIds.length === 0) {
+    return costs;
+  }
+
+  const plannedRows = await prisma.$queryRaw<
+    Array<{
+      appointmentId: bigint;
+      cost: Prisma.Decimal | null;
+      itemCount: number;
+      pricedCount: number;
+    }>
+  >`
+    SELECT
+      appointment_service.appointment_id AS "appointmentId",
+      COALESCE(SUM(
+        CASE
+          WHEN product.purchase_price IS NOT NULL
+            AND product.content_amount IS NOT NULL
+            AND product.content_amount > 0
+            AND lower(product.content_unit::text) = lower(service_consumable.unit::text)
+          THEN service_consumable.quantity * product.purchase_price / product.content_amount
+          ELSE 0
+        END
+      ), 0) AS cost,
+      COUNT(*)::int AS "itemCount",
+      COUNT(
+        CASE
+          WHEN product.purchase_price IS NOT NULL
+            AND product.content_amount IS NOT NULL
+            AND product.content_amount > 0
+            AND lower(product.content_unit::text) = lower(service_consumable.unit::text)
+          THEN 1
+        END
+      )::int AS "pricedCount"
+    FROM appointment_services appointment_service
+    JOIN service_consumables service_consumable ON service_consumable.service_id = appointment_service.service_id
+    JOIN products product ON product.id = service_consumable.product_id
+    WHERE appointment_service.appointment_id IN (${Prisma.join(missingIds)})
+    GROUP BY appointment_service.appointment_id
+  `;
+
+  for (const row of plannedRows) {
+    costs.set(row.appointmentId.toString(), normalizeConsumableCost(row));
+  }
+
+  return costs;
+}
+
+function normalizeConsumableCost(input: { cost: unknown; itemCount: number; pricedCount: number }) {
+  if (input.itemCount === 0) {
+    return 0;
+  }
+
+  if (input.pricedCount < input.itemCount) {
+    return null;
+  }
+
+  return roundMoney(toNumber(input.cost));
+}
+
+function createAppointmentFinancialSummary(services: AppointmentServiceLine[], consumableCost: number | null): AppointmentFinancialSummary {
+  const revenueFrom = roundMoney(services.reduce((sum, service) => sum + (service.priceFrom ?? service.price), 0));
+  const revenueTo = roundMoney(services.reduce((sum, service) => sum + (service.priceTo ?? service.priceFrom ?? service.price), 0));
+
+  return {
+    revenueFrom,
+    revenueTo,
+    consumableCost,
+    profitAfterConsumablesFrom: consumableCost === null ? null : roundMoney(revenueFrom - consumableCost),
+    profitAfterConsumablesTo: consumableCost === null ? null : roundMoney(revenueTo - consumableCost)
+  };
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+async function getAppointmentRevenueTo(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
+  const [row] = await client.$queryRaw<Array<{ amount: Prisma.Decimal | null }>>`
+    SELECT COALESCE(SUM(COALESCE(service.price_to, service.price_from, service.price)), 0) AS amount
+    FROM appointment_services appointment_service
+    JOIN services service ON service.id = appointment_service.service_id
+    WHERE appointment_service.appointment_id = ${appointmentId}
+  `;
+
+  return roundMoney(toNumber(row?.amount ?? 0));
+}
+
+async function upsertAppointmentPayment(
+  client: Prisma.TransactionClient,
+  appointmentId: bigint,
+  input: {
+    amount?: number;
+    method?: "cash" | "card" | "blik" | "transfer";
+    status?: "pending" | "paid" | "refunded";
+  }
+) {
+  const current = await client.payment.findUnique({
+    where: { appointmentId },
+    select: {
+      amount: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      paidAt: true
+    }
+  });
+  const amount = input.amount ?? (current ? Number(current.amount) : await getAppointmentRevenueTo(client, appointmentId));
+  const method = input.method ? toPaymentMethod(input.method) : current?.paymentMethod ?? PaymentMethod.CASH;
+  const status = input.status ? toPaymentStatus(input.status) : current?.paymentStatus ?? PaymentStatus.PAID;
+  const paidAt = status === PaymentStatus.PAID ? current?.paidAt ?? new Date() : status === PaymentStatus.REFUNDED ? current?.paidAt ?? new Date() : null;
+
+  await client.payment.upsert({
+    where: { appointmentId },
+    create: {
+      appointmentId,
+      amount,
+      paymentMethod: method,
+      paymentStatus: status,
+      paidAt
+    },
+    update: {
+      amount,
+      paymentMethod: method,
+      paymentStatus: status,
+      paidAt
+    }
+  });
+}
+
+async function buildAppointmentActualConsumablePreviewItems(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
+  const rows = await client.$queryRaw<
+    Array<{
+      productId: bigint;
+      productName: string;
+      productCategory: string | null;
+      services: string;
+      quantity: Prisma.Decimal;
+      unit: string;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      purchasePrice: Prisma.Decimal | null;
+      currentStockContentAmount: Prisma.Decimal | null;
+    }>
+  >`
+    SELECT
+      consumption.product_id AS "productId",
+      product.name AS "productName",
+      product_category.name AS "productCategory",
+      string_agg(DISTINCT service.name, ', ') AS services,
+      SUM(consumption.quantity) AS quantity,
+      lower(consumption.unit::text) AS unit,
+      product.content_amount AS "contentAmount",
+      lower(product.content_unit::text) AS "contentUnit",
+      product.purchase_price AS "purchasePrice",
+      product.stock_content_amount AS "currentStockContentAmount"
+    FROM service_consumption_logs consumption
+    JOIN products product ON product.id = consumption.product_id
+    JOIN services service ON service.id = consumption.service_id
+    LEFT JOIN product_categories product_category ON product_category.id = product.category_id
+    WHERE consumption.appointment_id = ${appointmentId}
+    GROUP BY consumption.product_id, product.name, product_category.name, consumption.unit, product.content_amount, product.content_unit, product.purchase_price, product.stock_content_amount
+    ORDER BY product.name ASC
+  `;
+
+  return rows.map((row) => {
+    const quantity = toNumber(row.quantity);
+    const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
+    const currentStockContentAmount = row.currentStockContentAmount ? toNumber(row.currentStockContentAmount) : null;
+    const purchasePrice = row.purchasePrice ? toNumber(row.purchasePrice) : null;
+    const unit = toPublicMeasurementUnit(row.unit);
+    const unitMatches = row.contentUnit === unit;
+    const unitCost = purchasePrice !== null && contentAmount && unitMatches ? purchasePrice / contentAmount : null;
+    const cost = unitCost === null ? null : roundMoney(unitCost * quantity);
+    const stockContentAmount = currentStockContentAmount === null ? null : currentStockContentAmount + quantity;
+    const stockAfter = currentStockContentAmount;
+    let issue: string | null = null;
+
+    if (!contentAmount || !row.contentUnit || currentStockContentAmount === null) {
+      issue = `Product ${row.productName} does not have package content configured.`;
+    } else if (!unitMatches) {
+      issue = `Consumable unit does not match product package unit for ${row.productName}.`;
+    }
+
+    return {
+      productId: row.productId.toString(),
+      productName: row.productName,
+      productCategory: row.productCategory,
+      services: row.services,
+      quantity,
+      unit,
+      contentAmount,
+      unitCost: unitCost === null ? null : roundMoney(unitCost),
+      cost,
+      stockContentAmount,
+      stockAfter,
+      packageEquivalentBefore: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
+      packageEquivalentAfter: contentAmount && stockAfter !== null ? stockAfter / contentAmount : null,
+      enough: !issue,
+      issue
+    };
+  });
+}
+
 async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
   const rows = await client.$queryRaw<
     Array<{
@@ -1690,6 +2149,7 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
       unit: string;
       contentAmount: Prisma.Decimal | null;
       contentUnit: string | null;
+      purchasePrice: Prisma.Decimal | null;
       stockContentAmount: Prisma.Decimal | null;
     }>
   >`
@@ -1702,6 +2162,7 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
       lower(service_consumable.unit::text) AS unit,
       product.content_amount AS "contentAmount",
       lower(product.content_unit::text) AS "contentUnit",
+      product.purchase_price AS "purchasePrice",
       product.stock_content_amount AS "stockContentAmount"
     FROM appointment_services appointment_service
     JOIN services service ON service.id = appointment_service.service_id
@@ -1709,7 +2170,7 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
     JOIN products product ON product.id = service_consumable.product_id
     LEFT JOIN product_categories product_category ON product_category.id = product.category_id
     WHERE appointment_service.appointment_id = ${appointmentId}
-    GROUP BY service_consumable.product_id, product.name, product_category.name, service_consumable.unit, product.content_amount, product.content_unit, product.stock_content_amount
+    GROUP BY service_consumable.product_id, product.name, product_category.name, service_consumable.unit, product.content_amount, product.content_unit, product.purchase_price, product.stock_content_amount
     ORDER BY product.name ASC
   `;
 
@@ -1717,8 +2178,11 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
     const quantity = toNumber(row.quantity);
     const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
     const stockContentAmount = row.stockContentAmount ? toNumber(row.stockContentAmount) : null;
+    const purchasePrice = row.purchasePrice ? toNumber(row.purchasePrice) : null;
     const unit = toPublicMeasurementUnit(row.unit);
     const unitMatches = row.contentUnit === unit;
+    const unitCost = purchasePrice !== null && contentAmount && unitMatches ? purchasePrice / contentAmount : null;
+    const cost = unitCost === null ? null : roundMoney(unitCost * quantity);
     const stockAfter = stockContentAmount !== null ? Math.max(stockContentAmount - quantity, 0) : null;
     let issue: string | null = null;
 
@@ -1738,6 +2202,8 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
       quantity,
       unit,
       contentAmount,
+      unitCost: unitCost === null ? null : roundMoney(unitCost),
+      cost,
       stockContentAmount,
       stockAfter,
       packageEquivalentBefore: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
@@ -1748,12 +2214,23 @@ async function buildAppointmentConsumablePreviewItems(client: Pick<Prisma.Transa
   });
 }
 
-async function applyAppointmentConsumables(client: Prisma.TransactionClient, appointmentId: bigint) {
-  if (await hasAppointmentConsumptionLogs(client, appointmentId)) {
+async function syncAppointmentConsumables(
+  client: Prisma.TransactionClient,
+  appointmentId: bigint,
+  inputs?: Array<{ productId: string; quantity: number; unit?: "ml" | "gram" }>
+) {
+  const appointmentServices = await client.appointmentService.findMany({
+    where: { appointmentId },
+    select: { serviceId: true },
+    orderBy: { serviceId: "asc" }
+  });
+
+  if (appointmentServices.length === 0) {
     return;
   }
 
-  const consumables = await client.$queryRaw<
+  const fallbackServiceId = appointmentServices[0]?.serviceId;
+  const plannedRows = await client.$queryRaw<
     Array<{
       serviceId: bigint;
       productId: bigint;
@@ -1782,42 +2259,201 @@ async function applyAppointmentConsumables(client: Prisma.TransactionClient, app
     ORDER BY product.name ASC
   `;
 
-  if (consumables.length === 0) {
+  if (!fallbackServiceId) {
     return;
   }
 
-  const stockByProduct = new Map<string, number>();
+  const oldRows = await client.$queryRaw<
+    Array<{
+      productId: bigint;
+      quantity: Prisma.Decimal;
+      unit: string;
+    }>
+  >`
+    SELECT
+      product_id AS "productId",
+      SUM(quantity) AS quantity,
+      lower(unit::text) AS unit
+    FROM service_consumption_logs
+    WHERE appointment_id = ${appointmentId}
+    GROUP BY product_id, unit
+  `;
 
-  for (const consumable of consumables) {
-    const quantity = toNumber(consumable.quantity);
-    const contentAmount = consumable.contentAmount ? toNumber(consumable.contentAmount) : null;
-    const stockContentAmount = consumable.stockContentAmount ? toNumber(consumable.stockContentAmount) : null;
-    const productKey = consumable.productId.toString();
+  const desiredByProduct = new Map<string, { productId: bigint; quantity: number; unit?: "ml" | "gram" }>();
 
-    if (!contentAmount || !consumable.contentUnit || stockContentAmount === null) {
-      throw new HttpError(400, `Product ${consumable.productName} does not have package content configured.`);
+  if (inputs) {
+    for (const input of inputs) {
+      const productId = BigInt(input.productId);
+      const key = productId.toString();
+      const current = desiredByProduct.get(key);
+
+      desiredByProduct.set(key, {
+        productId,
+        quantity: (current?.quantity ?? 0) + input.quantity,
+        unit: input.unit ?? current?.unit
+      });
+    }
+  } else {
+    for (const row of plannedRows) {
+      const key = row.productId.toString();
+      const current = desiredByProduct.get(key);
+
+      desiredByProduct.set(key, {
+        productId: row.productId,
+        quantity: (current?.quantity ?? 0) + toNumber(row.quantity),
+        unit: toPublicMeasurementUnit(row.unit)
+      });
+    }
+  }
+
+  const oldByProduct = new Map<string, { productId: bigint; quantity: number; unit: "ml" | "gram" }>();
+
+  for (const row of oldRows) {
+    oldByProduct.set(row.productId.toString(), {
+      productId: row.productId,
+      quantity: toNumber(row.quantity),
+      unit: toPublicMeasurementUnit(row.unit)
+    });
+  }
+
+  const productIds = [...new Map([...desiredByProduct.values(), ...oldByProduct.values()].map((item) => [item.productId.toString(), item.productId])).values()];
+
+  if (productIds.length === 0) {
+    await client.$executeRaw`
+      DELETE FROM service_consumption_logs
+      WHERE appointment_id = ${appointmentId}
+    `;
+    return;
+  }
+
+  const productRows = await client.$queryRaw<
+    Array<{
+      id: bigint;
+      name: string;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      stockContentAmount: Prisma.Decimal | null;
+      stockQuantity: number;
+    }>
+  >`
+    SELECT
+      id,
+      name,
+      content_amount AS "contentAmount",
+      lower(content_unit::text) AS "contentUnit",
+      stock_content_amount AS "stockContentAmount",
+      stock_quantity AS "stockQuantity"
+    FROM products
+    WHERE id IN (${Prisma.join(productIds)})
+  `;
+  const productsById = new Map(productRows.map((product) => [product.id.toString(), product]));
+
+  for (const desired of desiredByProduct.values()) {
+    if (desired.quantity < 0) {
+      throw new HttpError(400, "Consumable quantity cannot be negative.");
     }
 
-    if (consumable.contentUnit !== consumable.unit) {
-      throw new HttpError(400, `Consumable unit does not match product package unit for ${consumable.productName}.`);
+    const product = productsById.get(desired.productId.toString());
+
+    if (!product) {
+      throw new HttpError(404, "Consumable product not found.");
     }
 
-    const currentStockContentAmount = stockByProduct.get(productKey) ?? stockContentAmount;
+    desired.unit = desired.unit ?? toPublicMeasurementUnit(product.contentUnit ?? "");
+  }
 
-    if (currentStockContentAmount < quantity) {
-      throw new HttpError(400, `Not enough consumable stock for ${consumable.productName}.`);
+  const desiredRows = buildDesiredConsumptionRows({
+    desiredByProduct,
+    fallbackServiceId,
+    plannedRows
+  });
+
+  for (const productId of productIds) {
+    const key = productId.toString();
+    const product = productsById.get(key);
+
+    if (!product) {
+      throw new HttpError(404, "Consumable product not found.");
     }
 
-    const nextStockContentAmount = Math.max(currentStockContentAmount - quantity, 0);
-    stockByProduct.set(productKey, nextStockContentAmount);
+    const contentAmount = product.contentAmount ? toNumber(product.contentAmount) : null;
+    const contentUnit = product.contentUnit ? toPublicMeasurementUnit(product.contentUnit) : null;
+    const stockContentAmount = product.stockContentAmount ? toNumber(product.stockContentAmount) : null;
+    const oldQuantity = oldByProduct.get(key)?.quantity ?? 0;
+    const desired = desiredByProduct.get(key);
+    const desiredQuantity = desired?.quantity ?? 0;
+    const desiredUnit = desired?.unit ?? oldByProduct.get(key)?.unit ?? contentUnit;
+
+    if (!contentAmount || !contentUnit || stockContentAmount === null) {
+      throw new HttpError(400, `Product ${product.name} does not have package content configured.`);
+    }
+
+    if (!desiredUnit || desiredUnit !== contentUnit) {
+      throw new HttpError(400, `Consumable unit does not match product package unit for ${product.name}.`);
+    }
+
+    const diff = roundMoney(desiredQuantity - oldQuantity);
+    const nextStockContentAmount = roundMoney(stockContentAmount - diff);
+
+    if (nextStockContentAmount < 0) {
+      throw new HttpError(400, `Not enough consumable stock for ${product.name}.`);
+    }
 
     await client.$executeRaw`
       UPDATE products
       SET
         stock_content_amount = ${nextStockContentAmount},
         stock_quantity = floor(${nextStockContentAmount} / ${contentAmount})::int
-      WHERE id = ${consumable.productId}
+      WHERE id = ${productId}
     `;
+
+    if (diff !== 0) {
+      await insertStockMovement(client, {
+        productId,
+        movementType: diff > 0 ? StockMovementType.SALE : StockMovementType.RETURN,
+        quantity: Math.floor(nextStockContentAmount / contentAmount) - Math.floor(stockContentAmount / contentAmount),
+        contentQuantity: -diff,
+        contentUnit: toConsumableUnit(contentUnit),
+        reason: `Appointment #${appointmentId.toString()} completion`
+      });
+    }
+  }
+
+  await client.$executeRaw`
+    DELETE FROM service_consumption_logs
+    WHERE appointment_id = ${appointmentId}
+  `;
+
+  const stockAfterByProduct = new Map<string, number>();
+
+  for (const productId of productIds) {
+    const product = productsById.get(productId.toString());
+
+    if (!product?.contentAmount || product.stockContentAmount === null) {
+      continue;
+    }
+
+    const key = productId.toString();
+    const currentStockContentAmount = toNumber(product.stockContentAmount);
+    const oldQuantity = oldByProduct.get(key)?.quantity ?? 0;
+    const desiredQuantity = desiredByProduct.get(key)?.quantity ?? 0;
+    const finalStock = roundMoney(currentStockContentAmount - (desiredQuantity - oldQuantity));
+    stockAfterByProduct.set(key, finalStock);
+  }
+
+  for (const row of desiredRows) {
+    if (row.quantity <= 0) {
+      continue;
+    }
+
+    const product = productsById.get(row.productId.toString());
+    const contentAmount = product?.contentAmount ? toNumber(product.contentAmount) : null;
+    const productKey = row.productId.toString();
+    const runningAfter = stockAfterByProduct.get(productKey) ?? 0;
+    const stockBeforeAppointment = runningAfter + row.totalProductQuantity;
+    const ratio = row.totalProductQuantity > 0 ? row.quantity / row.totalProductQuantity : 0;
+    const stockContentBefore = roundMoney(stockBeforeAppointment - row.totalProductQuantity * row.insertedBeforeRatio);
+    const stockContentAfter = roundMoney(stockBeforeAppointment - row.totalProductQuantity * (row.insertedBeforeRatio + ratio));
 
     await client.$executeRaw`
       INSERT INTO service_consumption_logs (
@@ -1831,27 +2467,105 @@ async function applyAppointmentConsumables(client: Prisma.TransactionClient, app
       )
       VALUES (
         ${appointmentId},
-        ${consumable.serviceId},
-        ${consumable.productId},
-        ${quantity},
-        ${toConsumableUnit(consumable.unit === "gram" ? "gram" : "ml")}::"ConsumableUnit",
-        ${currentStockContentAmount},
-        ${nextStockContentAmount}
+        ${row.serviceId},
+        ${row.productId},
+        ${row.quantity},
+        ${toConsumableUnit(row.unit)}::"ConsumableUnit",
+        ${contentAmount ? stockContentBefore : null},
+        ${contentAmount ? stockContentAfter : null}
       )
     `;
-
-    await insertStockMovement(client, {
-      productId: consumable.productId,
-      movementType: StockMovementType.SALE,
-      quantity: Math.floor(nextStockContentAmount / contentAmount) - Math.floor(currentStockContentAmount / contentAmount),
-      contentQuantity: -quantity,
-      contentUnit: toConsumableUnit(consumable.unit === "gram" ? "gram" : "ml"),
-      reason: `Appointment #${appointmentId.toString()}`
-    });
   }
 }
 
-function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>>[number]) {
+function buildDesiredConsumptionRows(input: {
+  desiredByProduct: Map<string, { productId: bigint; quantity: number; unit?: "ml" | "gram" }>;
+  fallbackServiceId: bigint;
+  plannedRows: Array<{
+    serviceId: bigint;
+    productId: bigint;
+    quantity: Prisma.Decimal;
+    unit: string;
+  }>;
+}) {
+  const plannedByProduct = new Map<string, typeof input.plannedRows>();
+
+  for (const row of input.plannedRows) {
+    const key = row.productId.toString();
+    const rows = plannedByProduct.get(key) ?? [];
+    rows.push(row);
+    plannedByProduct.set(key, rows);
+  }
+
+  const desiredRows: Array<{
+    serviceId: bigint;
+    productId: bigint;
+    quantity: number;
+    totalProductQuantity: number;
+    insertedBeforeRatio: number;
+    unit: "ml" | "gram";
+  }> = [];
+
+  for (const desired of input.desiredByProduct.values()) {
+    if (desired.quantity <= 0) {
+      continue;
+    }
+
+    const key = desired.productId.toString();
+    const rows = plannedByProduct.get(key) ?? [];
+    const unit = desired.unit ?? "ml";
+
+    if (rows.length === 0) {
+      desiredRows.push({
+        serviceId: input.fallbackServiceId,
+        productId: desired.productId,
+        quantity: roundMoney(desired.quantity),
+        totalProductQuantity: roundMoney(desired.quantity),
+        insertedBeforeRatio: 0,
+        unit
+      });
+      continue;
+    }
+
+    const plannedTotal = rows.reduce((sum, row) => sum + toNumber(row.quantity), 0);
+    let consumedRatio = 0;
+    let remainingQuantity = roundMoney(desired.quantity);
+
+    rows.forEach((row, index) => {
+      const rowQuantity =
+        index === rows.length - 1
+          ? remainingQuantity
+          : roundMoney(plannedTotal > 0 ? (desired.quantity * toNumber(row.quantity)) / plannedTotal : desired.quantity / rows.length);
+
+      remainingQuantity = roundMoney(remainingQuantity - rowQuantity);
+      desiredRows.push({
+        serviceId: row.serviceId,
+        productId: row.productId,
+        quantity: rowQuantity,
+        totalProductQuantity: roundMoney(desired.quantity),
+        insertedBeforeRatio: consumedRatio,
+        unit
+      });
+      consumedRatio += desired.quantity > 0 ? rowQuantity / desired.quantity : 0;
+    });
+  }
+
+  return desiredRows;
+}
+
+function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>>[number], extras?: AppointmentDisplayExtras) {
+  const durationMinutes = Math.round((appointment.endTime.getTime() - appointment.startTime.getTime()) / 60_000);
+  const fallbackServices = appointment.services.map(({ service }) => ({
+    id: service.id.toString(),
+    name: service.name,
+    duration: service.durationMinutes,
+    price: Number(service.price),
+    priceFrom: null,
+    priceTo: null
+  }));
+  const services = extras?.services.length ? extras.services : fallbackServices;
+  const financials = extras?.financials ?? createAppointmentFinancialSummary(services, 0);
+
   return {
     id: appointment.id.toString(),
     time: appointment.startTime.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
@@ -1859,14 +2573,27 @@ function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>
     endDate: appointment.endTime.toISOString(),
     employeeId: appointment.employeeId.toString(),
     serviceIds: appointment.services.map(({ service }) => service.id.toString()),
+    services,
+    durationMinutes,
+    clientId: appointment.clientId.toString(),
     client: `${appointment.client.firstName} ${appointment.client.lastName}`,
+    clientPhone: appointment.client.phone,
+    clientEmail: appointment.client.email,
     service: appointment.services.map(({ service }) => service.name).join(", "),
     master: `${appointment.employee.user.firstName} ${appointment.employee.user.lastName}`,
     status: mapAppointmentStatus(appointment.status),
     clientComment: appointment.clientComment ?? "",
     employeeComment: appointment.employeeComment ?? "",
     comment: appointment.clientComment ?? appointment.employeeComment ?? "",
-    amount: Number(appointment.payment?.amount ?? 0)
+    amount: Number(appointment.payment?.amount ?? 0),
+    paymentStatus: appointment.payment?.paymentStatus.toLowerCase() ?? "pending",
+    paymentMethod: appointment.payment?.paymentMethod.toLowerCase() ?? "cash",
+    rating: appointment.review?.rating ?? null,
+    revenueFrom: financials.revenueFrom,
+    revenueTo: financials.revenueTo,
+    consumableCost: financials.consumableCost,
+    profitAfterConsumablesFrom: financials.profitAfterConsumablesFrom,
+    profitAfterConsumablesTo: financials.profitAfterConsumablesTo
   };
 }
 

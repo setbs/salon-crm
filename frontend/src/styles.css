@@ -1912,6 +1912,18 @@ textarea {
   color: #4b4038;
 }
 
+.appointment-open-button {
+  border: 0;
+  background: transparent;
+  color: #302820;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .service-groups {
   display: grid;
   gap: 12px;
@@ -2051,6 +2063,208 @@ textarea {
   padding: 18px;
 }
 
+.appointment-detail-modal {
+  width: min(900px, 100%);
+}
+
+.appointment-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.appointment-detail-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.44);
+  padding: 14px;
+}
+
+.appointment-detail-hero div {
+  display: grid;
+  gap: 5px;
+}
+
+.appointment-detail-hero span,
+.appointment-service-detail-item span,
+.appointment-comment-grid span {
+  color: #75695d;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointment-detail-hero strong {
+  color: #302820;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  font-weight: 400;
+}
+
+.appointment-detail-hero small {
+  color: #5d5147;
+  font-weight: 700;
+}
+
+.appointment-status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: #d8cec1;
+}
+
+.appointment-status-panel > div {
+  display: grid;
+  gap: 8px;
+  background: rgba(246, 241, 232, 0.5);
+  padding: 10px;
+}
+
+.appointment-status-panel span,
+.status-button-row button {
+  color: #75695d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-button-row button {
+  min-height: 32px;
+  border: 1px solid #c8beb0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 0 10px;
+}
+
+.status-button-row button.active {
+  border-color: #332820;
+  background: #332820;
+  color: #f5efe7;
+}
+
+.appointment-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1fr);
+  gap: 14px;
+}
+
+.appointment-service-detail {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.28);
+  padding: 12px;
+}
+
+.appointment-service-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.appointment-service-detail-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #ddd4c8;
+  padding-bottom: 8px;
+}
+
+.appointment-service-detail-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.appointment-service-detail-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.appointment-service-detail-item strong {
+  color: #302820;
+}
+
+.appointment-service-detail-item small {
+  color: #302820;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.appointment-financial-summary,
+.completion-payment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: #d8cec1;
+}
+
+.appointment-financial-summary div,
+.completion-payment-grid div,
+.completion-payment-grid label {
+  display: grid;
+  gap: 5px;
+  background: rgba(246, 241, 232, 0.5);
+  padding: 10px;
+}
+
+.appointment-financial-summary span,
+.completion-payment-grid span {
+  color: #75695d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointment-financial-summary strong,
+.completion-payment-grid strong {
+  color: #302820;
+}
+
+.appointment-comment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.appointment-comment-grid article {
+  display: grid;
+  gap: 8px;
+  min-height: 110px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.28);
+  padding: 12px;
+}
+
+.appointment-comment-grid p {
+  margin: 0;
+  color: #302820;
+  line-height: 1.5;
+}
+
+.appointment-detail-actions {
+  flex-wrap: wrap;
+}
+
 .preview-warning-list {
   display: grid;
   gap: 8px;
@@ -2062,6 +2276,37 @@ textarea {
   background: #f1ddd6;
   color: #8a4937;
   padding: 10px 12px;
+}
+
+.completion-summary-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr) minmax(160px, 0.5fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: #d8cec1;
+}
+
+.completion-summary-strip div {
+  display: grid;
+  gap: 5px;
+  background: rgba(246, 241, 232, 0.5);
+  padding: 12px;
+}
+
+.completion-summary-strip span,
+.completion-section-heading span,
+.completion-add-material span {
+  color: #75695d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.completion-summary-strip strong {
+  color: #302820;
 }
 
 .modal-state {
@@ -2077,9 +2322,53 @@ textarea {
   gap: 10px;
 }
 
+.completion-accounting-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.completion-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.26);
+  padding: 12px;
+}
+
+.completion-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #ddd4c8;
+  padding-bottom: 9px;
+}
+
+.completion-section-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.completion-section-heading h3 {
+  color: #302820;
+  font-size: 1rem;
+}
+
+.completion-section-heading small {
+  color: #75695d;
+  font-weight: 800;
+}
+
+.completion-accounting-layout .completion-payment-grid {
+  grid-template-columns: 1fr;
+}
+
 .consumable-preview-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(110px, 0.34fr) minmax(140px, 0.5fr) auto;
+  grid-template-columns: minmax(150px, 1fr) minmax(110px, 0.34fr) minmax(90px, 0.28fr) minmax(120px, 0.4fr) auto;
   align-items: center;
   gap: 12px;
   border: 1px solid #d8cec1;
@@ -2108,6 +2397,39 @@ textarea {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.consumable-quantity-field {
+  display: grid;
+  gap: 5px;
+}
+
+.consumable-quantity-field span {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: #302820;
+  font-weight: 800;
+}
+
+.consumable-quantity-field input {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.completion-add-material {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(100px, 0.35fr) auto;
+  align-items: end;
+  gap: 10px;
+  border-top: 1px solid #ddd4c8;
+  padding-top: 12px;
+}
+
+.completion-add-material label {
+  display: grid;
+  gap: 6px;
 }
 
 .modal-actions {
@@ -2347,6 +2669,11 @@ textarea {
   color: #4b4038;
 }
 
+.icon-only-button.mini {
+  width: 30px;
+  height: 30px;
+}
+
 .admin-submit {
   width: max-content;
   margin-top: 4px;
@@ -2533,6 +2860,25 @@ textarea {
   border: 1px dashed #b8ac9f;
   border-radius: 5px;
   color: #75695d;
+  overflow: hidden;
+  background: rgba(246, 241, 232, 0.42);
+}
+
+.portfolio-preview img,
+.portfolio-form-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portfolio-form-preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: rgba(246, 241, 232, 0.42);
 }
 
 .danger-text {
@@ -2647,11 +2993,21 @@ textarea {
 
   .calendar-filter-grid,
   .calendar-summary-strip,
+  .appointment-status-panel,
+  .appointment-detail-grid,
+  .appointment-comment-grid,
+  .appointment-financial-summary,
+  .completion-summary-strip,
+  .completion-payment-grid,
+  .completion-accounting-layout,
+  .completion-add-material,
   .profile-summary-grid {
     grid-template-columns: 1fr;
   }
 
   .calendar-day-header,
+  .appointment-detail-hero,
+  .completion-section-heading,
   .profile-section-heading {
     align-items: flex-start;
     flex-direction: column;

@@ -1,5 +1,6 @@
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
+import path from "node:path";
 import { z } from "zod";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
@@ -12,6 +13,7 @@ export const app = express();
 
 app.use(cors({ origin: env.FRONTEND_ORIGIN }));
 app.use(express.json());
+app.use("/uploads", express.static(path.resolve(process.cwd(), "public/uploads")));
 
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok" });

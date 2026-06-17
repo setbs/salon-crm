@@ -5,10 +5,17 @@ const optionalCategoryIdSchema = idStringSchema.optional().or(z.literal(""));
 const optionalDisplayPriceSchema = z.preprocess((value) => (value === "" ? null : value), z.coerce.number().nonnegative().nullable()).optional();
 const timeStringSchema = z.string().regex(/^\d{2}:\d{2}$/);
 const consumableUnitSchema = z.enum(["ml", "gram"]);
+const paymentMethodSchema = z.enum(["cash", "card", "blik", "transfer"]);
+const paymentStatusSchema = z.enum(["pending", "paid", "refunded"]);
 const serviceConsumableSchema = z.object({
   productId: idStringSchema,
   quantity: z.coerce.number().positive(),
   unit: consumableUnitSchema
+});
+const appointmentConsumableOverrideSchema = z.object({
+  productId: idStringSchema,
+  quantity: z.coerce.number().nonnegative(),
+  unit: consumableUnitSchema.optional()
 });
 
 function validateDisplayPriceRange(input: { priceFrom?: number | null; priceTo?: number | null }, context: z.RefinementCtx) {
@@ -26,7 +33,11 @@ export const updateAppointmentSchema = z.object({
   clientComment: z.string().trim().max(1000).optional(),
   employeeComment: z.string().trim().max(1000).optional(),
   startTime: z.string().datetime().optional(),
-  endTime: z.string().datetime().optional()
+  endTime: z.string().datetime().optional(),
+  paymentAmount: z.coerce.number().nonnegative().optional(),
+  paymentMethod: paymentMethodSchema.optional(),
+  paymentStatus: paymentStatusSchema.optional(),
+  consumables: z.array(appointmentConsumableOverrideSchema).optional()
 });
 
 export const createAppointmentSchema = z.object({
@@ -143,6 +154,15 @@ export const createEmployeeTimeOffSchema = z
     message: "End time must be later than start time.",
     path: ["endTime"]
   });
+
+export const createPortfolioPhotoSchema = z.object({
+  employeeId: idStringSchema,
+  imageUrl: z.string().trim().min(1).max(1000),
+  description: z.string().trim().max(1000).optional(),
+  visible: z.boolean().default(true)
+});
+
+export const updatePortfolioPhotoSchema = createPortfolioPhotoSchema.partial();
 
 export const createProductSchema = z.object({
   category: z.string().trim().min(1).max(255),

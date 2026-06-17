@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Router, raw } from "express";
 import { getAuthenticatedUser, requireCrmUser } from "../auth/auth.middleware.js";
 import {
   createEmployee,
   createEmployeeTimeOff,
+  createPortfolioPhoto,
   createProduct,
   createProductSale,
   createAppointment,
@@ -12,6 +13,7 @@ import {
   deleteService,
   deleteServiceCategory,
   deleteEmployeeTimeOff,
+  deletePortfolioPhoto,
   getAppointmentConsumablePreview,
   getClientProfile,
   getAppointments,
@@ -31,14 +33,17 @@ import {
   updateEmployee,
   updateEmployeeWorkingHours,
   updatePayment,
+  updatePortfolioPhoto,
   updateProduct,
   updateService,
   updateServiceCategory,
-  updateSettings
+  updateSettings,
+  uploadPortfolioImage
 } from "./admin.service.js";
 import {
   createEmployeeSchema,
   createEmployeeTimeOffSchema,
+  createPortfolioPhotoSchema,
   createProductSchema,
   createAppointmentSchema,
   createSaleSchema,
@@ -49,6 +54,7 @@ import {
   updateEmployeeSchema,
   updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
+  updatePortfolioPhotoSchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
@@ -251,6 +257,51 @@ adminRouter.delete("/admin/employees/:employeeId/time-off/:timeOffId", async (re
 adminRouter.get("/admin/portfolio", async (request, response, next) => {
   try {
     response.json({ data: await getPortfolio(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/uploads/portfolio", raw({ limit: "6mb", type: ["image/jpeg", "image/png", "image/webp", "image/gif"] }), async (request, response, next) => {
+  try {
+    if (!Buffer.isBuffer(request.body)) {
+      response.status(400).json({ message: "Image upload body is required." });
+      return;
+    }
+
+    response.status(201).json({
+      data: await uploadPortfolioImage(getAuthenticatedUser(request), {
+        contentType: request.headers["content-type"] ?? "",
+        buffer: request.body
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/portfolio", async (request, response, next) => {
+  try {
+    const body = createPortfolioPhotoSchema.parse(request.body);
+    response.status(201).json({ data: await createPortfolioPhoto(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/portfolio/:id", async (request, response, next) => {
+  try {
+    const body = updatePortfolioPhotoSchema.parse(request.body);
+    response.json({ data: await updatePortfolioPhoto(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/portfolio/:id", async (request, response, next) => {
+  try {
+    await deletePortfolioPhoto(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }

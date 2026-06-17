@@ -1,4 +1,4 @@
-import { listActiveEmployees, listActiveServices } from "./catalog.repository.js";
+import { listActiveEmployees, listActiveServices, listVisiblePortfolio } from "./catalog.repository.js";
 
 export async function getServices() {
   const services = await listActiveServices();
@@ -37,5 +37,17 @@ export async function getEmployees(serviceIds: bigint[]) {
       categoryId: null,
       category: null
     }))
+  }));
+}
+
+export async function getPortfolio() {
+  const photos = await listVisiblePortfolio();
+
+  return photos.map((photo) => ({
+    id: photo.id.toString(),
+    title: photo.description ?? "Salon work",
+    description: photo.description,
+    imageUrl: photo.imageUrl,
+    employee: `${photo.employee.user.firstName} ${photo.employee.user.lastName}`
   }));
 }

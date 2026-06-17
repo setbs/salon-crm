@@ -42,6 +42,20 @@ export function listActiveEmployees(serviceIds: bigint[]) {
   });
 }
 
+export function listVisiblePortfolio() {
+  return prisma.portfolioPhoto.findMany({
+    where: {
+      isVisible: true,
+      employee: { isActive: true }
+    },
+    include: {
+      employee: { include: { user: true } }
+    },
+    orderBy: { createdAt: "desc" },
+    take: 12
+  });
+}
+
 export type ActiveServiceRow = {
   id: bigint;
   categoryId: bigint | null;

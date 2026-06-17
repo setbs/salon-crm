@@ -23,6 +23,14 @@ export type Employee = {
   services: Array<{ id: string; name: string }>;
 };
 
+export type PortfolioPhoto = {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string;
+  employee: string;
+};
+
 export type Slot = {
   startTime: string;
   endTime: string;
@@ -57,6 +65,8 @@ export type AppointmentConsumablePreviewItem = {
   quantity: number;
   unit: MeasurementUnit;
   contentAmount: number | null;
+  unitCost: number | null;
+  cost: number | null;
   stockContentAmount: number | null;
   stockAfter: number | null;
   packageEquivalentBefore: number | null;
@@ -72,6 +82,15 @@ export type AppointmentConsumablePreview = {
     service: string;
     master: string;
     time: string;
+  };
+  financials: {
+    revenueFrom: number;
+    revenueTo: number;
+    paymentAmount: number;
+    paymentMethod: "cash" | "card" | "blik" | "transfer";
+    consumableCost: number | null;
+    profitAfterConsumablesFrom: number | null;
+    profitAfterConsumablesTo: number | null;
   };
   status: string;
   alreadyWrittenOff: boolean;
@@ -115,7 +134,19 @@ export type AdminAppointment = {
   endDate: string;
   employeeId: string;
   serviceIds: string[];
+  services: Array<{
+    id: string;
+    name: string;
+    duration: number;
+    price: number;
+    priceFrom: number | null;
+    priceTo: number | null;
+  }>;
+  durationMinutes: number;
+  clientId: string;
   client: string;
+  clientPhone: string;
+  clientEmail: string | null;
   service: string;
   master: string;
   status: string;
@@ -123,6 +154,14 @@ export type AdminAppointment = {
   employeeComment: string;
   comment: string;
   amount: number;
+  paymentStatus: string;
+  paymentMethod: "cash" | "card" | "blik" | "transfer";
+  rating: number | null;
+  revenueFrom: number;
+  revenueTo: number;
+  consumableCost: number | null;
+  profitAfterConsumablesFrom: number | null;
+  profitAfterConsumablesTo: number | null;
 };
 
 export type AdminClient = {
@@ -239,7 +278,9 @@ export type AdminEmployee = {
 
 export type AdminPortfolioPhoto = {
   id: string;
+  employeeId: string;
   title: string;
+  description: string | null;
   master: string;
   imageUrl: string;
   visible: boolean;
@@ -374,6 +415,13 @@ export type EmployeeTimeOffInput = {
   reason?: string;
 };
 
+export type PortfolioInput = {
+  employeeId: string;
+  imageUrl: string;
+  description?: string;
+  visible: boolean;
+};
+
 export type AdminAppointmentInput = {
   employeeId: string;
   serviceIds: string[];
@@ -488,6 +536,10 @@ export async function fetchAvailability(employeeId: string, serviceIds: string[]
   return request<ApiResponse<Slot[]>>(`/api/availability?${params}`).then((response) => response.data);
 }
 
+export async function fetchPortfolio() {
+  return request<ApiResponse<PortfolioPhoto[]>>("/api/portfolio").then((response) => response.data);
+}
+
 export async function createAppointment(payload: AppointmentPayload) {
   return request<ApiResponse<{ id: string; startTime: string }>>("/api/appointments", {
     method: "POST",
@@ -520,7 +572,17 @@ async function getAdmin<T>(resource: string) {
   return request<ApiResponse<T>>(`/api/admin/${resource}`).then((response) => response.data);
 }
 
-export async function updateAdminAppointment(id: string, payload: { status?: string; employeeComment?: string }) {
+export async function updateAdminAppointment(
+  id: string,
+  payload: {
+    status?: string;
+    employeeComment?: string;
+    paymentAmount?: number;
+    paymentMethod?: "cash" | "card" | "blik" | "transfer";
+    paymentStatus?: "pending" | "paid" | "refunded";
+    consumables?: Array<{ productId: string; quantity: number; unit?: MeasurementUnit }>;
+  }
+) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/appointments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
 }
 
@@ -542,6 +604,26 @@ export async function fetchAppointmentConsumablePreview(id: string) {
 
 export async function fetchAdminClientProfile(id: string) {
   return request<ApiResponse<AdminClientProfile>>(`/api/admin/clients/${id}`).then((response) => response.data);
+}
+
+export async function createAdminPortfolioPhoto(payload: PortfolioInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/portfolio", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminPortfolioPhoto(id: string, payload: Partial<PortfolioInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/portfolio/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminPortfolioPhoto(id: string) {
+  return request<void>(`/api/admin/portfolio/${id}`, { method: "DELETE" });
+}
+
+export async function uploadAdminPortfolioImage(file: File) {
+  return request<ApiResponse<{ imageUrl: string }>>(`/api/admin/uploads/portfolio`, {
+    method: "POST",
+    headers: { "Content-Type": file.type },
+    body: file
+  }).then((response) => response.data);
 }
 
 export async function createAdminService(payload: ServiceInput) {

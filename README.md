@@ -12,7 +12,7 @@ The project is built as a diploma and portfolio application with a practical bus
 
 ### Public website
 
-- Salon home page with about, portfolio, contacts, and a public price list.
+- Salon home page with about, CRM-managed portfolio, contacts, and a public price list.
 - Price list grouped by service categories.
 - Optional service price ranges, for example `500 - 800 ₴`.
 - Online booking wizard:
@@ -31,6 +31,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Client database with search and client profiles.
 - Employee profiles with service assignment and activation control.
 - Employee weekly schedules and time-off blocks.
+- Portfolio management for public website gallery, with image URL or local file upload.
 - Service and service category management.
 - Product inventory and product sales.
 - Product editing and manual stock movements.

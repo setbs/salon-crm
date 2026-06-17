@@ -72,6 +72,7 @@ temp/
 # Uploads
 uploads/
 public/uploads/
+backend/public/uploads/
 
 # Generated docs
 *.pdf

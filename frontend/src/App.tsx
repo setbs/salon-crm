@@ -32,20 +32,23 @@ import {
   createAdminAppointment,
   createAdminEmployee,
   createAdminEmployeeTimeOff,
+  createAdminPortfolioPhoto,
   createAdminProduct,
   createAdminSale,
   createAdminService,
   createAdminStockMovement,
   createAppointment,
+  deleteAdminEmployeeTimeOff,
+  deleteAdminPortfolioPhoto,
   deleteAdminService,
   deleteAdminServiceCategory,
-  deleteAdminEmployeeTimeOff,
   fetchAdminData,
   fetchAvailability,
   fetchAppointmentConsumablePreview,
   fetchAdminClientProfile,
   fetchCurrentUser,
   fetchEmployees,
+  fetchPortfolio,
   fetchServices,
   getStoredAuthToken,
   loginCrm,
@@ -56,10 +59,12 @@ import {
   updateAdminEmployee,
   updateAdminEmployeeWorkingHours,
   updateAdminPayment,
+  updateAdminPortfolioPhoto,
   updateAdminProduct,
   updateAdminService,
   updateAdminServiceCategory,
   updateAdminSettings,
+  uploadAdminPortfolioImage,
   type AdminData,
   type AdminAppointmentInput,
   type AdminClientProfile,
@@ -70,6 +75,8 @@ import {
   type EmployeeTimeOffInput,
   type EmployeeWorkingHoursInput,
   type MeasurementUnit,
+  type PortfolioInput,
+  type PortfolioPhoto,
   type ProductInput,
   type SaleInput,
   type Service,
@@ -125,6 +132,42 @@ function formatSelectedServicesPrice(services: DisplayPrice[], fallbackPrice: nu
   const to = services.reduce((sum, service) => sum + (service.priceTo ?? service.priceFrom ?? service.price), 0);
 
   return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
+}
+
+function formatMoneyRange(from: number, to: number) {
+  return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
+}
+
+function formatNullableMoney(value: number | null) {
+  return value === null ? "not tracked" : formatHryvnia(value);
+}
+
+function formatNullableMoneyRange(from: number | null, to: number | null) {
+  return from === null || to === null ? "not tracked" : formatMoneyRange(from, to);
+}
+
+function roundDisplayMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getAppointmentClientRevenueRange(appointment: AdminData["appointments"][number]) {
+  if (appointment.amount > 0 && appointment.paymentStatus === "paid") {
+    return { from: appointment.amount, to: appointment.amount };
+  }
+
+  return { from: appointment.revenueFrom, to: appointment.revenueTo };
+}
+
+function getAppointmentClientProfitRange(appointment: AdminData["appointments"][number]) {
+  if (appointment.consumableCost === null) {
+    return { from: null, to: null };
+  }
+
+  const revenue = getAppointmentClientRevenueRange(appointment);
+  return {
+    from: revenue.from - appointment.consumableCost,
+    to: revenue.to - appointment.consumableCost
+  };
 }
 
 const serviceCopy: Record<string, { name: string; description: string }> = {
@@ -327,7 +370,7 @@ const homeImages = {
   care: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=82"
 };
 
-const homePortfolio = [
+const homePortfolioFallback = [
   { title: "Soft blonde color", image: homeImages.color },
   { title: "Clean manicure finish", image: homeImages.manicure },
   { title: "Hair care consultation", image: homeImages.care }
@@ -368,11 +411,16 @@ const homePriceFallback: HomePriceCategory[] = [
 
 function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onOpenBooking: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioPhoto[]>([]);
 
   useEffect(() => {
     fetchServices()
       .then(setServices)
       .catch(() => setServices([]));
+
+    fetchPortfolio()
+      .then(setPortfolio)
+      .catch(() => setPortfolio([]));
   }, []);
 
   const priceCategories = useMemo<HomePriceCategory[]>(() => {
@@ -407,6 +455,10 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
 
     return [...groups.values()];
   }, [services]);
+  const visiblePortfolio =
+    portfolio.length > 0
+      ? portfolio.map((item) => ({ title: item.title, image: item.imageUrl, caption: item.employee }))
+      : homePortfolioFallback.map((item) => ({ ...item, caption: item.title }));
 
   return (
     <main className="home-shell">
@@ -476,13 +528,13 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
         <div className="home-section-heading">
           <p className="eyebrow">Portfolio</p>
           <h2>Selected work</h2>
-          <p>Visual proof matters in beauty services. The gallery can later be connected to CRM portfolio uploads.</p>
+          <p>Visual proof matters in beauty services. The gallery is managed from the CRM portfolio section.</p>
         </div>
         <div className="home-portfolio-grid">
-          {homePortfolio.map((item) => (
+          {visiblePortfolio.map((item) => (
             <figure key={item.title}>
-              <img alt={item.title} src={item.image} />
-              <figcaption>{item.title}</figcaption>
+              <img alt={item.title} src={item.image} onError={(event) => { event.currentTarget.src = homeImages.care; }} />
+              <figcaption>{item.title}{item.caption && item.caption !== item.title ? ` · ${item.caption}` : ""}</figcaption>
             </figure>
           ))}
         </div>
@@ -769,6 +821,7 @@ function AdminContent({
         appointments={data.appointments}
         clients={data.clients}
         employees={data.employees}
+        products={data.products}
         services={data.services}
         runAction={runAction}
       />
@@ -804,7 +857,7 @@ function AdminContent({
   }
 
   if (section === "portfolio") {
-    return <PortfolioSection portfolio={data.portfolio} />;
+    return <PortfolioSection employees={data.employees} portfolio={data.portfolio} runAction={runAction} />;
   }
 
   if (section === "products") {
@@ -891,12 +944,14 @@ function CalendarSection({
   appointments,
   clients,
   employees,
+  products,
   services,
   runAction
 }: {
   appointments: AdminData["appointments"];
   clients: AdminData["clients"];
   employees: AdminData["employees"];
+  products: AdminData["products"];
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
@@ -905,12 +960,14 @@ function CalendarSection({
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [reschedulingAppointmentId, setReschedulingAppointmentId] = useState<string | null>(null);
   const [commentingAppointmentId, setCommentingAppointmentId] = useState<string | null>(null);
   const [isCompletionOpen, setIsCompletionOpen] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [completionPreview, setCompletionPreview] = useState<AppointmentConsumablePreview | null>(null);
+  const selectedAppointment = appointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null;
   const reschedulingAppointment = appointments.find((appointment) => appointment.id === reschedulingAppointmentId) ?? null;
   const commentingAppointment = appointments.find((appointment) => appointment.id === commentingAppointmentId) ?? null;
   const rangeStart = calendarView === "week" ? getWeekStartDateString(calendarAnchorDate) : calendarAnchorDate;
@@ -928,6 +985,12 @@ function CalendarSection({
   const groupedAppointments = buildCalendarGroups(visibleAppointments, rangeStart, rangeEnd);
   const periodLabel = calendarView === "week" ? `${formatCalendarDate(rangeStart)} - ${formatCalendarDate(rangeEnd)}` : formatCalendarDate(rangeStart);
   const scheduledCount = visibleAppointments.filter((appointment) => appointment.status === "scheduled").length;
+
+  useEffect(() => {
+    if (selectedAppointmentId && !appointments.some((appointment) => appointment.id === selectedAppointmentId)) {
+      setSelectedAppointmentId(null);
+    }
+  }, [appointments, selectedAppointmentId]);
 
   async function openCompletionPreview(appointmentId: string) {
     setIsCompletionOpen(true);
@@ -958,9 +1021,20 @@ function CalendarSection({
   function renderAppointmentActions(item: AdminData["appointments"][number]) {
     return (
       <InlineActions
-        labels={item.status === "scheduled" ? ["Complete", "Reschedule", "Comment", "No-show", "Cancel"] : ["Comment"]}
+        labels={
+          item.status === "scheduled"
+            ? ["Details", "Complete", "Reschedule", "Comment", "No-show", "Cancel"]
+            : item.status === "completed"
+              ? ["Details", "Edit completion", "Comment"]
+              : ["Details", "Comment"]
+        }
         onAction={(label) => {
-          if (label === "Complete") {
+          if (label === "Details") {
+            setSelectedAppointmentId(item.id);
+            return;
+          }
+
+          if (label === "Complete" || label === "Edit completion") {
             void openCompletionPreview(item.id);
             return;
           }
@@ -1066,7 +1140,9 @@ function CalendarSection({
                 <DataTable
                   columns={["Time", "Client", "Service", "Employee", "Comment", "Actions", "Status"]}
                   rows={group.appointments.map((item) => [
-                    item.time,
+                    <button className="appointment-open-button" onClick={() => setSelectedAppointmentId(item.id)} type="button">
+                      {item.time}
+                    </button>,
                     item.client,
                     item.service,
                     item.master,
@@ -1082,6 +1158,38 @@ function CalendarSection({
           ))}
         </div>
       </Panel>
+      {selectedAppointment ? (
+        <AppointmentDetailsDialog
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointmentId(null)}
+          onComment={() => {
+            setSelectedAppointmentId(null);
+            setCommentingAppointmentId(selectedAppointment.id);
+          }}
+          onComplete={() => {
+            setSelectedAppointmentId(null);
+            void openCompletionPreview(selectedAppointment.id);
+          }}
+          onReschedule={() => {
+            setSelectedAppointmentId(null);
+            setReschedulingAppointmentId(selectedAppointment.id);
+          }}
+          onStatusChange={(status) =>
+            runAction(async () => {
+              await updateAdminAppointment(selectedAppointment.id, { status });
+            })
+          }
+          onPaymentStatusChange={(paymentStatus) =>
+            runAction(() =>
+              updateAdminAppointment(selectedAppointment.id, {
+                paymentStatus,
+                paymentAmount: selectedAppointment.amount > 0 ? selectedAppointment.amount : selectedAppointment.revenueTo,
+                paymentMethod: selectedAppointment.paymentMethod
+              })
+            )
+          }
+        />
+      ) : null}
       {isCreatingAppointment ? (
         <AdminModal title="New appointment" onClose={() => setIsCreatingAppointment(false)}>
           <AppointmentCreateForm
@@ -1135,15 +1243,190 @@ function CalendarSection({
           error={previewError}
           isLoading={isPreviewLoading}
           onClose={closeCompletionPreview}
-          onConfirm={(appointmentId) =>
+          onConfirm={(appointmentId, payload) =>
             runAction(async () => {
-              await updateAdminAppointment(appointmentId, { status: "completed" });
+              await updateAdminAppointment(appointmentId, { status: "completed", ...payload });
               closeCompletionPreview();
             })
           }
           preview={completionPreview}
+          products={products}
         />
       ) : null}
+    </div>
+  );
+}
+
+function AppointmentDetailsDialog({
+  appointment,
+  onClose,
+  onComment,
+  onComplete,
+  onPaymentStatusChange,
+  onReschedule,
+  onStatusChange
+}: {
+  appointment: AdminData["appointments"][number];
+  onClose: () => void;
+  onComment: () => void;
+  onComplete: () => void;
+  onPaymentStatusChange: (status: "pending" | "paid" | "refunded") => Promise<void>;
+  onReschedule: () => void;
+  onStatusChange: (status: "cancelled" | "no_show") => Promise<void>;
+}) {
+  const isScheduled = appointment.status === "scheduled";
+  const clientRevenue = getAppointmentClientRevenueRange(appointment);
+  const clientProfit = getAppointmentClientProfitRange(appointment);
+  const serviceRows =
+    appointment.services.length > 0
+      ? appointment.services
+      : [
+          {
+            id: "summary",
+            name: appointment.service || "Service",
+            duration: appointment.durationMinutes,
+            price: appointment.amount,
+            priceFrom: null,
+            priceTo: null
+          }
+        ];
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <section aria-modal="true" className="admin-modal appointment-detail-modal" role="dialog">
+        <div className="panel-header">
+          <div>
+            <p className="admin-kicker">Appointment details</p>
+            <h2>{appointment.client}</h2>
+          </div>
+          <button aria-label="Close appointment details" className="icon-only-button" onClick={onClose} title="Close" type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+
+        <div className="appointment-detail">
+          <section className="appointment-detail-hero">
+            <div>
+              <span>{formatAppointmentDateTimeRange(appointment)}</span>
+              <strong>{appointment.service || "Appointment"}</strong>
+              <small>{appointment.master}</small>
+            </div>
+            <StatusBadge status={appointment.status} />
+          </section>
+
+          <div className="appointment-status-panel">
+            <div>
+              <span>Visit status</span>
+              <StatusBadge status={appointment.status} />
+            </div>
+            <div>
+              <span>Payment status</span>
+              <div className="status-button-row" aria-label="Payment status">
+                {(["pending", "paid", "refunded"] as const).map((status) => (
+                  <button
+                    className={appointment.paymentStatus === status ? "active" : ""}
+                    key={status}
+                    onClick={() => void onPaymentStatusChange(status)}
+                    type="button"
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="appointment-detail-grid">
+            <InfoList
+              items={[
+                ["Phone", appointment.clientPhone || "-"],
+                ["Email", appointment.clientEmail || "-"],
+                ["Employee", appointment.master],
+                ["Duration", `${appointment.durationMinutes} min`],
+                ["Total", appointment.amount > 0 ? adminMoney.format(appointment.amount) : formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)],
+                ["Payment", appointment.paymentStatus],
+                ["Rating", appointment.rating ? `${appointment.rating}/5` : "-"]
+              ]}
+            />
+
+            <section className="appointment-service-detail">
+              <div className="profile-section-heading">
+                <h3>Services</h3>
+                <span>{serviceRows.length} selected</span>
+              </div>
+              <div className="appointment-service-detail-list">
+                {serviceRows.map((service) => (
+                  <article className="appointment-service-detail-item" key={service.id}>
+                    <div>
+                      <strong>{service.name}</strong>
+                      <span>{service.duration} min</span>
+                    </div>
+                    <small>{formatServicePrice(service)}</small>
+                  </article>
+                ))}
+              </div>
+              <div className="appointment-financial-summary">
+                <div>
+                  <span>Services total</span>
+                  <strong>{formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)}</strong>
+                </div>
+                <div>
+                  <span>Revenue from client</span>
+                  <strong>{formatMoneyRange(clientRevenue.from, clientRevenue.to)}</strong>
+                </div>
+                <div>
+                  <span>Consumables cost</span>
+                  <strong>{formatNullableMoney(appointment.consumableCost)}</strong>
+                </div>
+                <div>
+                  <span>After consumables</span>
+                  <strong>{formatNullableMoneyRange(clientProfit.from, clientProfit.to)}</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="appointment-comment-grid">
+            <article>
+              <span>Client comment</span>
+              <p>{appointment.clientComment || "No client comment."}</p>
+            </article>
+            <article>
+              <span>Internal comment</span>
+              <p>{appointment.employeeComment || "No internal comment."}</p>
+            </article>
+          </div>
+        </div>
+
+        <div className="modal-actions appointment-detail-actions">
+          <button className="secondary-button compact-button" onClick={onClose} type="button">
+            Close
+          </button>
+          <button className="secondary-button compact-button" onClick={onComment} type="button">
+            Comment
+          </button>
+          {isScheduled ? (
+            <>
+              <button className="secondary-button compact-button" onClick={onReschedule} type="button">
+                Reschedule
+              </button>
+              <button className="secondary-button compact-button" onClick={() => void onStatusChange("no_show")} type="button">
+                No-show
+              </button>
+              <button className="secondary-button compact-button" onClick={() => void onStatusChange("cancelled")} type="button">
+                Cancel
+              </button>
+              <button className="primary-button compact-button" onClick={onComplete} type="button">
+                Complete
+              </button>
+            </>
+          ) : appointment.status === "completed" ? (
+            <button className="primary-button compact-button" onClick={onComplete} type="button">
+              Edit completion
+            </button>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -1153,21 +1436,130 @@ function CompletionPreviewDialog({
   isLoading,
   onClose,
   onConfirm,
-  preview
+  preview,
+  products
 }: {
   error: string;
   isLoading: boolean;
   onClose: () => void;
-  onConfirm: (appointmentId: string) => Promise<void>;
+  onConfirm: (
+    appointmentId: string,
+    payload: {
+      paymentAmount: number;
+      paymentMethod: "cash" | "card" | "blik" | "transfer";
+      consumables: Array<{ productId: string; quantity: number; unit: MeasurementUnit }>;
+    }
+  ) => Promise<void>;
   preview: AppointmentConsumablePreview | null;
+  products: AdminData["products"];
 }) {
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "blik" | "transfer">("cash");
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [extraConsumables, setExtraConsumables] = useState<Array<{ id: string; productId: string; quantity: string }>>([]);
+  const [newConsumable, setNewConsumable] = useState({ productId: "", quantity: "" });
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+
+    setPaymentAmount(String(preview.financials.paymentAmount));
+    setPaymentMethod(preview.financials.paymentMethod);
+    setQuantities(Object.fromEntries(preview.items.map((item) => [item.productId, String(item.quantity)])));
+    setExtraConsumables([]);
+    setNewConsumable({ productId: "", quantity: "" });
+  }, [preview?.appointment.id]);
+
+  const baseItems =
+    preview?.items.map((item) => {
+      const quantity = Math.max(0, Number(quantities[item.productId] ?? item.quantity) || 0);
+      const stockAfter = item.stockContentAmount !== null ? Math.max(item.stockContentAmount - quantity, 0) : null;
+      const packageEquivalentAfter = item.contentAmount && stockAfter !== null ? stockAfter / item.contentAmount : null;
+      const hasConfigurationIssue = item.contentAmount === null || item.stockContentAmount === null || Boolean(item.issue && !item.issue.includes("Not enough"));
+      const enough = !hasConfigurationIssue && (item.stockContentAmount === null || item.stockContentAmount >= quantity);
+
+      return {
+        ...item,
+        quantity,
+        stockAfter,
+        packageEquivalentAfter,
+        cost: item.unitCost === null ? null : item.unitCost * quantity,
+        enough
+      };
+    }) ?? [];
+  const extraItems = extraConsumables
+    .map((extra) => {
+      const product = products.find((item) => item.id === extra.productId);
+
+      if (!product) {
+        return null;
+      }
+
+      const quantity = Math.max(0, Number(extra.quantity) || 0);
+      const unit = product.contentUnit ?? "ml";
+      const unitCost = product.purchase > 0 && product.contentAmount ? product.purchase / product.contentAmount : null;
+      const stockAfter = product.stockContentAmount !== null ? Math.max(product.stockContentAmount - quantity, 0) : null;
+      const issue =
+        product.contentAmount === null || product.stockContentAmount === null || product.contentUnit === null
+          ? `Product ${product.name} does not have package content configured.`
+          : product.stockContentAmount < quantity
+            ? `Not enough consumable stock for ${product.name}.`
+            : null;
+
+      return {
+        productId: product.id,
+        productName: product.name,
+        productCategory: product.category,
+        services: "Unplanned material",
+        quantity,
+        unit,
+        contentAmount: product.contentAmount,
+        unitCost: unitCost === null ? null : roundDisplayMoney(unitCost),
+        cost: unitCost === null ? null : unitCost * quantity,
+        stockContentAmount: product.stockContentAmount,
+        stockAfter,
+        packageEquivalentBefore:
+          product.contentAmount && product.stockContentAmount !== null ? product.stockContentAmount / product.contentAmount : null,
+        packageEquivalentAfter: product.contentAmount && stockAfter !== null ? stockAfter / product.contentAmount : null,
+        enough: !issue,
+        issue,
+        extraId: extra.id
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+  const actualItems = [...baseItems, ...extraItems];
+  const usedProductIds = new Set([...baseItems.map((item) => item.productId), ...extraConsumables.map((item) => item.productId)]);
+  const availableExtraProducts = products.filter(
+    (product) => product.contentAmount !== null && product.contentUnit !== null && product.stockContentAmount !== null && !usedProductIds.has(product.id)
+  );
+  const actualConsumableCost = actualItems.some((item) => item.cost === null && item.quantity > 0)
+    ? null
+    : roundDisplayMoney(actualItems.reduce((sum, item) => sum + (item.cost ?? 0), 0));
+  const receivedAmount = Math.max(0, Number(paymentAmount) || 0);
+  const profitAfterConsumables = actualConsumableCost === null ? null : roundDisplayMoney(receivedAmount - actualConsumableCost);
+  const canConfirm = preview ? preview.canComplete && receivedAmount >= 0 && actualItems.every((item) => item.enough) : false;
+  const completionMode = preview?.status === "completed" ? "Edit completed appointment" : "Complete appointment";
+
+  function addExtraConsumable() {
+    const productId = newConsumable.productId || availableExtraProducts[0]?.id;
+    const quantity = Number(newConsumable.quantity);
+
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
+      return;
+    }
+
+    setExtraConsumables((current) => [...current, { id: `${productId}-${Date.now()}`, productId, quantity: String(quantity) }]);
+    setNewConsumable({ productId: "", quantity: "" });
+  }
+
   return (
     <div className="admin-modal-backdrop" role="presentation">
       <section aria-modal="true" className="admin-modal" role="dialog">
         <div className="panel-header">
           <div>
             <p className="admin-kicker">Completion workflow</p>
-            <h2>Complete appointment</h2>
+            <h2>{completionMode}</h2>
           </div>
           <button aria-label="Close completion preview" className="icon-only-button" onClick={onClose} title="Close" type="button">
             <X aria-hidden="true" size={16} />
@@ -1179,14 +1571,20 @@ function CompletionPreviewDialog({
 
         {preview ? (
           <>
-            <InfoList
-              items={[
-                ["Client", preview.appointment.client],
-                ["Service", preview.appointment.service || "-"],
-                ["Employee", preview.appointment.master],
-                ["Time", formatShortDate(preview.appointment.time)]
-              ]}
-            />
+            <div className="completion-summary-strip">
+              <div>
+                <span>Client</span>
+                <strong>{preview.appointment.client}</strong>
+              </div>
+              <div>
+                <span>Time</span>
+                <strong>{formatShortDate(preview.appointment.time)}</strong>
+              </div>
+              <div>
+                <span>Services total</span>
+                <strong>{formatMoneyRange(preview.financials.revenueFrom, preview.financials.revenueTo)}</strong>
+              </div>
+            </div>
 
             {preview.warnings.length > 0 ? (
               <div className="preview-warning-list">
@@ -1196,38 +1594,156 @@ function CompletionPreviewDialog({
               </div>
             ) : null}
 
-            <div className="consumable-preview-list">
-              {preview.items.length > 0 ? (
-                preview.items.map((item) => (
-                  <article className={item.enough ? "consumable-preview-row" : "consumable-preview-row warning"} key={item.productId}>
-                    <div>
-                      <strong>{item.productName}</strong>
-                      <span>{item.services}</span>
-                    </div>
-                    <div>
-                      <small>will use</small>
-                      <strong>
-                        {formatPlainNumber(item.quantity)} {formatUnit(item.unit)}
-                      </strong>
-                    </div>
-                    <div>
-                      <small>stock after</small>
-                      <strong>{formatPreviewStock(item)}</strong>
-                    </div>
-                    <StatusBadge status={item.enough ? "ready" : "blocked"} />
-                  </article>
-                ))
-              ) : (
-                <div className="modal-state">No internal consumables are configured for this appointment.</div>
-              )}
+            <div className="completion-accounting-layout">
+              <section className="completion-section">
+                <div className="completion-section-heading">
+                  <div>
+                    <span>Step 1</span>
+                    <h3>Actual consumables</h3>
+                  </div>
+                  <small>{actualItems.length} materials</small>
+                </div>
+                <div className="consumable-preview-list">
+                  {actualItems.length > 0 ? (
+                    actualItems.map((item) => (
+                      <article className={item.enough ? "consumable-preview-row" : "consumable-preview-row warning"} key={String("extraId" in item ? item.extraId : item.productId)}>
+                        <div>
+                          <strong>{item.productName}</strong>
+                          <span>{item.services}</span>
+                        </div>
+                        <label className="consumable-quantity-field">
+                          <small>actual use</small>
+                          <span>
+                            <input
+                              min="0"
+                              step="0.01"
+                              type="number"
+                              value={"extraId" in item ? extraConsumables.find((extra) => extra.id === item.extraId)?.quantity ?? String(item.quantity) : quantities[item.productId] ?? String(item.quantity)}
+                              onChange={(event) => {
+                                if ("extraId" in item) {
+                                  setExtraConsumables((current) =>
+                                    current.map((extra) => (extra.id === item.extraId ? { ...extra, quantity: event.target.value } : extra))
+                                  );
+                                  return;
+                                }
+
+                                setQuantities((current) => ({ ...current, [item.productId]: event.target.value }));
+                              }}
+                            />
+                            {formatUnit(item.unit)}
+                          </span>
+                        </label>
+                        <div>
+                          <small>cost</small>
+                          <strong>{formatNullableMoney(item.cost === null ? null : roundDisplayMoney(item.cost))}</strong>
+                        </div>
+                        <div>
+                          <small>stock after</small>
+                          <strong>{formatPreviewStock(item)}</strong>
+                        </div>
+                        {"extraId" in item ? (
+                          <button
+                            aria-label="Remove unplanned material"
+                            className="icon-only-button mini"
+                            onClick={() => setExtraConsumables((current) => current.filter((extra) => extra.id !== item.extraId))}
+                            type="button"
+                          >
+                            <X aria-hidden="true" size={14} />
+                          </button>
+                        ) : (
+                          <StatusBadge status={item.enough ? "ready" : "blocked"} />
+                        )}
+                      </article>
+                    ))
+                  ) : (
+                    <div className="modal-state">No internal consumables are configured for this appointment.</div>
+                  )}
+                </div>
+                <div className="completion-add-material">
+                  <label>
+                    <span>Add unplanned material</span>
+                    <select
+                      value={newConsumable.productId}
+                      onChange={(event) => setNewConsumable((current) => ({ ...current, productId: event.target.value }))}
+                    >
+                      <option value="">Select product</option>
+                      {availableExtraProducts.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} · {product.contentUnit ? formatUnit(product.contentUnit) : "unit"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Amount</span>
+                    <input
+                      min="0"
+                      step="0.01"
+                      type="number"
+                      value={newConsumable.quantity}
+                      onChange={(event) => setNewConsumable((current) => ({ ...current, quantity: event.target.value }))}
+                    />
+                  </label>
+                  <button className="secondary-button compact-button" disabled={availableExtraProducts.length === 0} onClick={addExtraConsumable} type="button">
+                    Add material
+                  </button>
+                </div>
+              </section>
+
+              <section className="completion-section">
+                <div className="completion-section-heading">
+                  <div>
+                    <span>Step 2</span>
+                    <h3>Payment & profit</h3>
+                  </div>
+                </div>
+                <div className="completion-payment-grid">
+                  <label>
+                    <span>Client paid</span>
+                    <input min="0" step="0.01" type="number" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Payment method</span>
+                    <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)}>
+                      <option value="cash">Cash</option>
+                      <option value="card">Card</option>
+                      <option value="blik">BLIK</option>
+                      <option value="transfer">Transfer</option>
+                    </select>
+                  </label>
+                  <div>
+                    <span>Consumables cost</span>
+                    <strong>{formatNullableMoney(actualConsumableCost)}</strong>
+                  </div>
+                  <div>
+                    <span>Net profit</span>
+                    <strong>{formatNullableMoney(profitAfterConsumables)}</strong>
+                  </div>
+                </div>
+              </section>
             </div>
 
             <div className="modal-actions">
               <button className="secondary-button compact-button" onClick={onClose} type="button">
                 Close
               </button>
-              <button className="primary-button compact-button" disabled={!preview.canComplete} onClick={() => void onConfirm(preview.appointment.id)} type="button">
-                Confirm completion
+              <button
+                className="primary-button compact-button"
+                disabled={!canConfirm}
+                onClick={() =>
+                  void onConfirm(preview.appointment.id, {
+                    paymentAmount: receivedAmount,
+                    paymentMethod,
+                    consumables: actualItems.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      unit: item.unit
+                    }))
+                  })
+                }
+                type="button"
+              >
+                {preview.status === "completed" ? "Save corrections" : "Confirm completion"}
               </button>
             </div>
           </>
@@ -2429,25 +2945,182 @@ function EmployeeScheduleForm({
   );
 }
 
-function PortfolioSection({ portfolio }: { portfolio: AdminData["portfolio"] }) {
+function PortfolioSection({
+  employees,
+  portfolio,
+  runAction
+}: {
+  employees: AdminData["employees"];
+  portfolio: AdminData["portfolio"];
+  runAction: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [isCreatingPhoto, setIsCreatingPhoto] = useState(false);
+  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
+  const editingPhoto = portfolio.find((photo) => photo.id === editingPhotoId) ?? null;
+
   return (
     <div className="admin-grid">
-      <Panel title="Portfolio" action="Upload photo">
+      <Panel title="Portfolio" action="Add photo" onAction={() => setIsCreatingPhoto(true)} wide>
         <div className="portfolio-grid">
-          {portfolio.map((item) => (
-            <article className="portfolio-card" key={item.title}>
+          {portfolio.length > 0 ? portfolio.map((item) => (
+            <article className="portfolio-card" key={item.id}>
               <div className="portfolio-preview">
-                <Camera aria-hidden="true" />
+                <img alt={item.title} src={item.imageUrl} onError={(event) => { event.currentTarget.style.display = "none"; }} />
               </div>
               <strong>{item.title}</strong>
               <span>{item.master}</span>
-              <InlineActions labels={[item.visible ? "Hide" : "Show", "Delete"]} />
+              <span>{item.visible ? "visible" : "hidden"}</span>
+              <InlineActions
+                labels={[item.visible ? "Hide" : "Show", "Edit", "Delete"]}
+                onAction={(label) => {
+                  if (label === "Edit") {
+                    setEditingPhotoId(item.id);
+                    return;
+                  }
+
+                  if (label === "Delete") {
+                    void runAction(() => deleteAdminPortfolioPhoto(item.id));
+                    return;
+                  }
+
+                  void runAction(() => updateAdminPortfolioPhoto(item.id, { visible: !item.visible }));
+                }}
+              />
             </article>
-          ))}
+          )) : <div className="empty-state">No portfolio photos yet.</div>}
         </div>
       </Panel>
-      <FormPanel title="Work description" fields={["Photo", "Description", "Employee", "Visibility"]} />
+      {isCreatingPhoto ? (
+        <AdminModal title="New portfolio photo" onClose={() => setIsCreatingPhoto(false)}>
+          <PortfolioPhotoForm
+            employees={employees}
+            onCancel={() => setIsCreatingPhoto(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminPortfolioPhoto(payload);
+                setIsCreatingPhoto(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {editingPhoto ? (
+        <AdminModal title={`Edit portfolio photo`} onClose={() => setEditingPhotoId(null)}>
+          <PortfolioPhotoForm
+            employees={employees}
+            key={editingPhoto.id}
+            onCancel={() => setEditingPhotoId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminPortfolioPhoto(editingPhoto.id, payload);
+                setEditingPhotoId(null);
+              })
+            }
+            photo={editingPhoto}
+          />
+        </AdminModal>
+      ) : null}
     </div>
+  );
+}
+
+function PortfolioPhotoForm({
+  employees,
+  onCancel,
+  onSubmit,
+  photo
+}: {
+  employees: AdminData["employees"];
+  onCancel: () => void;
+  onSubmit: (payload: PortfolioInput) => Promise<void>;
+  photo?: AdminData["portfolio"][number];
+}) {
+  const [form, setForm] = useState({
+    employeeId: photo?.employeeId ?? employees[0]?.id ?? "",
+    imageUrl: photo?.imageUrl ?? "",
+    description: photo?.description ?? "",
+    visible: photo?.visible ?? true
+  });
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError("");
+
+    try {
+      const result = await uploadAdminPortfolioImage(file);
+      setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      employeeId: form.employeeId,
+      imageUrl: form.imageUrl,
+      description: form.description || undefined,
+      visible: form.visible
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Employee</span>
+        <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
+          {employees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Upload from device</span>
+        <input
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          disabled={isUploading}
+          onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)}
+          type="file"
+        />
+      </label>
+      {uploadError ? <p className="form-note">{uploadError}</p> : null}
+      <label>
+        <span>{isUploading ? "Uploading photo..." : "Photo URL"}</span>
+        <input disabled={isUploading} value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <label className="checkbox-line">
+        <input checked={form.visible} onChange={(event) => setForm({ ...form, visible: event.target.checked })} type="checkbox" />
+        <span>Visible on public website</span>
+      </label>
+      {form.imageUrl ? (
+        <div className="portfolio-form-preview">
+          <img alt="Portfolio preview" src={form.imageUrl} />
+        </div>
+      ) : null}
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" disabled={!form.employeeId || isUploading} type="submit">
+          {isUploading ? "Uploading..." : "Save photo"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -3142,6 +3815,18 @@ function formatShortDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatAppointmentDateTimeRange(appointment: AdminData["appointments"][number]) {
+  const date = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(appointment.date));
+  const start = toDateTimeFields(appointment.date).time;
+  const end = toDateTimeFields(appointment.endDate).time;
+
+  return `${date}, ${start} - ${end}`;
+}
+
 function toLocalDateKey(value: string) {
   return toDateTimeFields(value).date;
 }
@@ -3660,7 +4345,9 @@ function InlineActions({ labels, onAction }: { labels: string[]; onAction?: (lab
     <div className="inline-actions">
       {labels.map((label) => {
         const Icon =
-          label === "Complete" || label === "paid"
+          label === "Details"
+            ? FileText
+            : label === "Complete" || label === "paid"
             ? Check
             : label === "Delete" || label === "Cancel"
               ? Trash2
