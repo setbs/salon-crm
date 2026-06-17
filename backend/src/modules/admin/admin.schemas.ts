@@ -2,6 +2,23 @@ import { z } from "zod";
 
 const idStringSchema = z.string().regex(/^\d+$/);
 const optionalCategoryIdSchema = idStringSchema.optional().or(z.literal(""));
+const optionalDisplayPriceSchema = z.preprocess((value) => (value === "" ? null : value), z.coerce.number().nonnegative().nullable()).optional();
+const consumableUnitSchema = z.enum(["ml", "gram"]);
+const serviceConsumableSchema = z.object({
+  productId: idStringSchema,
+  quantity: z.coerce.number().positive(),
+  unit: consumableUnitSchema
+});
+
+function validateDisplayPriceRange(input: { priceFrom?: number | null; priceTo?: number | null }, context: z.RefinementCtx) {
+  if (input.priceFrom !== undefined && input.priceFrom !== null && input.priceTo !== undefined && input.priceTo !== null && input.priceTo < input.priceFrom) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Price to must be greater than or equal to price from.",
+      path: ["priceTo"]
+    });
+  }
+}
 
 export const updateAppointmentSchema = z.object({
   status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).optional(),
@@ -29,25 +46,35 @@ export const createAppointmentSchema = z.object({
   employeeComment: z.string().trim().max(1000).optional()
 });
 
-export const createServiceSchema = z.object({
-  categoryId: optionalCategoryIdSchema,
-  name: z.string().trim().min(1).max(255),
-  description: z.string().trim().max(1000).optional(),
-  duration: z.coerce.number().int().positive(),
-  price: z.coerce.number().nonnegative(),
-  active: z.boolean().default(true),
-  employeeIds: z.array(idStringSchema).default([])
-});
+export const createServiceSchema = z
+  .object({
+    categoryId: optionalCategoryIdSchema,
+    name: z.string().trim().min(1).max(255),
+    description: z.string().trim().max(1000).optional(),
+    duration: z.coerce.number().int().positive(),
+    price: z.coerce.number().nonnegative(),
+    priceFrom: optionalDisplayPriceSchema,
+    priceTo: optionalDisplayPriceSchema,
+    active: z.boolean().default(true),
+    employeeIds: z.array(idStringSchema).default([]),
+    consumables: z.array(serviceConsumableSchema).default([])
+  })
+  .superRefine(validateDisplayPriceRange);
 
-export const updateServiceSchema = z.object({
-  categoryId: optionalCategoryIdSchema.optional(),
-  name: z.string().trim().min(1).max(255).optional(),
-  description: z.string().trim().max(1000).optional(),
-  duration: z.coerce.number().int().positive().optional(),
-  price: z.coerce.number().nonnegative().optional(),
-  active: z.boolean().optional(),
-  employeeIds: z.array(idStringSchema).optional()
-});
+export const updateServiceSchema = z
+  .object({
+    categoryId: optionalCategoryIdSchema.optional(),
+    name: z.string().trim().min(1).max(255).optional(),
+    description: z.string().trim().max(1000).optional(),
+    duration: z.coerce.number().int().positive().optional(),
+    price: z.coerce.number().nonnegative().optional(),
+    priceFrom: optionalDisplayPriceSchema,
+    priceTo: optionalDisplayPriceSchema,
+    active: z.boolean().optional(),
+    employeeIds: z.array(idStringSchema).optional(),
+    consumables: z.array(serviceConsumableSchema).optional()
+  })
+  .superRefine(validateDisplayPriceRange);
 
 export const createServiceCategorySchema = z.object({
   name: z.string().trim().min(1).max(255),
@@ -65,7 +92,9 @@ export const createProductSchema = z.object({
   purchase: z.coerce.number().nonnegative().optional(),
   sale: z.coerce.number().nonnegative(),
   stock: z.coerce.number().int(),
-  min: z.coerce.number().int().nonnegative()
+  min: z.coerce.number().int().nonnegative(),
+  contentAmount: z.coerce.number().positive().optional(),
+  contentUnit: consumableUnitSchema.optional()
 });
 
 export const updateProductSchema = createProductSchema.partial();

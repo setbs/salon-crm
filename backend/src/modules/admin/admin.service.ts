@@ -35,6 +35,8 @@ import type {
 } from "./admin.schemas.js";
 import type { z } from "zod";
 
+type ConsumableUnitValue = "ML" | "GRAM";
+
 export async function getDashboard(actor: CrmAuthenticatedUser) {
   const now = new Date();
   const dayStart = new Date(now);
@@ -87,6 +89,7 @@ export async function getServices(_actor: CrmAuthenticatedUser) {
 
   return services.map((service) => {
     const employees = mapServiceEmployees(service.employees);
+    const consumables = mapServiceConsumables(service.consumables);
 
     return {
       id: service.id.toString(),
@@ -101,9 +104,12 @@ export async function getServices(_actor: CrmAuthenticatedUser) {
         : null,
       name: service.name,
       price: Number(service.price),
+      priceFrom: service.priceFrom ? Number(service.priceFrom) : null,
+      priceTo: service.priceTo ? Number(service.priceTo) : null,
       duration: service.durationMinutes,
       description: service.description,
       active: service.isActive,
+      consumables,
       employees,
       employeeIds: employees.map((employee) => employee.id)
     };
@@ -152,6 +158,11 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
   }
 
   const products = await listProducts();
+  const productContentRows = await prisma.$queryRaw<Array<{ id: bigint; contentAmount: Prisma.Decimal | null; contentUnit: string | null }>>`
+    SELECT id, content_amount AS "contentAmount", lower(content_unit::text) AS "contentUnit"
+    FROM products
+  `;
+  const productContent = new Map(productContentRows.map((row) => [row.id.toString(), row]));
 
   return products.map((product) => ({
     id: product.id.toString(),
@@ -161,6 +172,8 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
     sale: Number(product.sellingPrice),
     stock: product.stockQuantity,
     min: product.minStockQuantity,
+    contentAmount: productContent.get(product.id.toString())?.contentAmount ? Number(productContent.get(product.id.toString())?.contentAmount) : null,
+    contentUnit: productContent.get(product.id.toString())?.contentUnit ?? null,
     movements: product.stockMovements.map((movement) => ({
       type: movement.movementType.toLowerCase(),
       quantity: movement.quantity,
@@ -351,17 +364,20 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
 export async function createService(actor: CrmAuthenticatedUser, input: z.infer<typeof createServiceSchema>) {
   assertAdmin(actor);
   const employeeIds = toUniqueBigIntIds(input.employeeIds);
+  const consumables = normalizeConsumables(input.consumables);
 
   const service = await prisma.$transaction(async (tx) => {
     await ensureEmployeesExist(tx, employeeIds);
+    await ensureProductsExist(tx, consumables.map((consumable) => consumable.productId));
 
     const [createdService] = await tx.$queryRaw<{ id: bigint }[]>`
-      INSERT INTO services (category_id, name, description, duration_minutes, price, is_active)
-      VALUES (${input.categoryId ? BigInt(input.categoryId) : null}, ${input.name}, ${input.description ?? null}, ${input.duration}, ${input.price}, ${input.active})
+      INSERT INTO services (category_id, name, description, duration_minutes, price, price_from, price_to, is_active)
+      VALUES (${input.categoryId ? BigInt(input.categoryId) : null}, ${input.name}, ${input.description ?? null}, ${input.duration}, ${input.price}, ${input.priceFrom ?? null}, ${input.priceTo ?? null}, ${input.active})
       RETURNING id
     `;
 
     await syncServiceEmployees(tx, createdService.id, employeeIds);
+    await syncServiceConsumables(tx, createdService.id, consumables);
     return createdService;
   });
 
@@ -373,7 +389,9 @@ export async function updateService(actor: CrmAuthenticatedUser, id: bigint, inp
 
   const updates: Prisma.Sql[] = [];
   const shouldSyncEmployees = input.employeeIds !== undefined;
+  const shouldSyncConsumables = input.consumables !== undefined;
   const employeeIds = shouldSyncEmployees ? toUniqueBigIntIds(input.employeeIds) : [];
+  const consumables = shouldSyncConsumables ? normalizeConsumables(input.consumables) : [];
 
   if (input.categoryId !== undefined) {
     updates.push(Prisma.sql`category_id = ${input.categoryId ? BigInt(input.categoryId) : null}`);
@@ -395,20 +413,35 @@ export async function updateService(actor: CrmAuthenticatedUser, id: bigint, inp
     updates.push(Prisma.sql`price = ${input.price}`);
   }
 
+  if (input.priceFrom !== undefined) {
+    updates.push(Prisma.sql`price_from = ${input.priceFrom}`);
+  }
+
+  if (input.priceTo !== undefined) {
+    updates.push(Prisma.sql`price_to = ${input.priceTo}`);
+  }
+
   if (input.active !== undefined) {
     updates.push(Prisma.sql`is_active = ${input.active}`);
   }
 
   const service = await prisma.$transaction(async (tx) => {
-    if (shouldSyncEmployees) {
+    if (shouldSyncEmployees || shouldSyncConsumables) {
       const existingService = await tx.service.findUnique({ where: { id }, select: { id: true } });
 
       if (!existingService) {
         throw new HttpError(404, "Service not found.");
       }
+    }
 
+    if (shouldSyncEmployees) {
       await ensureEmployeesExist(tx, employeeIds);
       await syncServiceEmployees(tx, id, employeeIds);
+    }
+
+    if (shouldSyncConsumables) {
+      await ensureProductsExist(tx, consumables.map((consumable) => consumable.productId));
+      await syncServiceConsumables(tx, id, consumables);
     }
 
     if (updates.length === 0) {
@@ -494,6 +527,27 @@ export async function updateServiceCategory(actor: CrmAuthenticatedUser, id: big
   return { id: category.id.toString() };
 }
 
+export async function deleteServiceCategory(actor: CrmAuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
+    SELECT id
+    FROM service_categories
+    WHERE id = ${id}
+  `;
+
+  if (!category) {
+    throw new HttpError(404, "Service category not found.");
+  }
+
+  await prisma.$executeRaw`
+    DELETE FROM service_categories
+    WHERE id = ${id}
+  `;
+
+  return { id: id.toString() };
+}
+
 export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductSchema>) {
   assertAdmin(actor);
 
@@ -515,6 +569,14 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
       minStockQuantity: input.min
     }
   });
+
+  if (input.contentAmount) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET content_amount = ${input.contentAmount}, content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit"
+      WHERE id = ${product.id}
+    `;
+  }
 
   await prisma.stockMovement.create({
     data: {
@@ -553,6 +615,14 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
       minStockQuantity: input.min
     }
   });
+
+  if (input.contentAmount !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET content_amount = ${input.contentAmount}, content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit"
+      WHERE id = ${id}
+    `;
+  }
 
   return { id: product.id.toString() };
 }
@@ -680,12 +750,54 @@ function mapServiceEmployees(value: Prisma.JsonValue) {
     }));
 }
 
+function mapServiceConsumables(value: Prisma.JsonValue) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(isJsonObject).map((consumable) => ({
+    productId: String(consumable.productId),
+    productName: typeof consumable.productName === "string" ? consumable.productName : "Unnamed product",
+    productCategory: typeof consumable.productCategory === "string" ? consumable.productCategory : null,
+    quantity: toNumber(consumable.quantity),
+    unit: consumable.unit === "gram" ? "gram" : "ml",
+    productContentAmount: consumable.productContentAmount === null ? null : toNumber(consumable.productContentAmount),
+    productContentUnit: consumable.productContentUnit === "gram" ? "gram" : consumable.productContentUnit === "ml" ? "ml" : null
+  }));
+}
+
 function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function toNumber(value: unknown) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return Number(value);
+  }
+
+  return 0;
+}
+
 function toUniqueBigIntIds(ids: string[] | undefined) {
   return [...new Set(ids ?? [])].map((id) => BigInt(id));
+}
+
+function normalizeConsumables(input: Array<{ productId: string; quantity: number; unit: "ml" | "gram" }> | undefined) {
+  const consumables = new Map<string, { productId: bigint; quantity: number; unit: ConsumableUnitValue }>();
+
+  for (const consumable of input ?? []) {
+    consumables.set(consumable.productId, {
+      productId: BigInt(consumable.productId),
+      quantity: consumable.quantity,
+      unit: toConsumableUnit(consumable.unit)
+    });
+  }
+
+  return [...consumables.values()];
 }
 
 async function ensureEmployeesExist(client: Prisma.TransactionClient, employeeIds: bigint[]) {
@@ -700,6 +812,18 @@ async function ensureEmployeesExist(client: Prisma.TransactionClient, employeeId
   }
 }
 
+async function ensureProductsExist(client: Prisma.TransactionClient, productIds: bigint[]) {
+  if (productIds.length === 0) {
+    return;
+  }
+
+  const count = await client.product.count({ where: { id: { in: productIds }, isActive: true } });
+
+  if (count !== productIds.length) {
+    throw new HttpError(400, "One or more consumable products do not exist.");
+  }
+}
+
 async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId: bigint, employeeIds: bigint[]) {
   await client.employeeService.deleteMany({ where: { serviceId } });
 
@@ -711,6 +835,32 @@ async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId:
     data: employeeIds.map((employeeId) => ({ employeeId, serviceId })),
     skipDuplicates: true
   });
+}
+
+async function syncServiceConsumables(
+  client: Prisma.TransactionClient,
+  serviceId: bigint,
+  consumables: Array<{ productId: bigint; quantity: number; unit: ConsumableUnitValue }>
+) {
+  await client.$executeRaw`
+    DELETE FROM service_consumables
+    WHERE service_id = ${serviceId}
+  `;
+
+  if (consumables.length === 0) {
+    return;
+  }
+
+  for (const consumable of consumables) {
+    await client.$executeRaw`
+      INSERT INTO service_consumables (service_id, product_id, quantity, unit, updated_at)
+      VALUES (${serviceId}, ${consumable.productId}, ${consumable.quantity}, ${consumable.unit}::"ConsumableUnit", now())
+    `;
+  }
+}
+
+function toConsumableUnit(unit: "ml" | "gram") {
+  return unit === "gram" ? "GRAM" : "ML";
 }
 
 function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>>[number]) {

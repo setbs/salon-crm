@@ -16,7 +16,9 @@ export async function getServices() {
     name: service.name,
     description: service.description,
     durationMinutes: service.durationMinutes,
-    price: Number(service.price)
+    price: Number(service.price),
+    priceFrom: service.priceFrom ? Number(service.priceFrom) : null,
+    priceTo: service.priceTo ? Number(service.priceTo) : null
   }));
 }
 

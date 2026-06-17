@@ -1,123 +1,185 @@
 # Salon CRM
 
-CRM system for managing a beauty salon.
+CRM and public booking application for a beauty salon.
 
-## About the Project
+## About
 
-Salon CRM is a web application designed to help beauty salons manage appointments, clients, services, employees, and sales in a single place.
+Salon CRM is a web application for managing salon appointments, clients, services, employees, products, payments, and a public online booking flow.
 
-The project was created as a learning and portfolio application focused on modern web technologies and practical business workflows used in small service-based companies.
+The project is built as a diploma and portfolio application with a practical business workflow in mind: clients can book appointments online, while salon staff can manage schedules, services, inventory, and CRM data from an admin panel.
 
 ## Features
 
-### Appointment Management
+### Public website
 
-* Create and edit appointments
-* Calendar view
-* Employee scheduling
-* Appointment status tracking
+- Salon home page with about, portfolio, contacts, and a public price list.
+- Price list grouped by service categories.
+- Optional service price ranges, for example `500 - 800 ₴`.
+- Online booking wizard:
+  - service selection;
+  - employee selection, skipped automatically when only one employee fits;
+  - date and time selection;
+  - contact details step.
 
-### Client Management
+### CRM panel
 
-* Client database
-* Contact information
-* Appointment history
-* Notes and comments
+- JWT authentication.
+- Role-based access for admins and employees.
+- Admin dashboard.
+- Appointment management.
+- Client database.
+- Service and service category management.
+- Product inventory and product sales.
+- Payments and reviews overview.
+- Salon settings.
 
-### Services
+### Services and inventory
 
-* Service categories
-* Service pricing
-* Service duration management
-* Active/inactive services
-
-### Products
-
-* Product catalog
-* Product pricing
-* Inventory tracking (planned)
-
-### Administration
-
-* User authentication
-* Role-based access
-* Administrative dashboard
-* Business statistics
+- Service categories can be created, edited, disabled, and deleted.
+- Services can be created, edited, disabled, and deleted when not used in appointment history.
+- Services support:
+  - base price for calculations;
+  - optional public display range: `price from` / `price to`;
+  - duration;
+  - assigned employees;
+  - internal consumable cosmetics.
+- Products support package content amount, for example `60 ml`.
+- Services can define consumable products and usage amount, for example `20 ml` of a peeling product.
+- Consumables are internal CRM data and are not shown to public booking users.
 
 ## Technology Stack
 
 ### Frontend
 
-* Next.js
-* React
-* TypeScript
-* Tailwind CSS
+- React
+- Vite
+- TypeScript
+- CSS
+- lucide-react icons
 
 ### Backend
 
-* Node.js
-* Next.js API Routes
-* Prisma ORM
+- Node.js
+- Express
+- TypeScript
+- Prisma ORM
+- JWT with `jose`
+- Zod validation
 
-### Database
+### Database and infrastructure
 
-* PostgreSQL
+- PostgreSQL
+- Docker Compose for local PostgreSQL
+- Prisma migrations and seed data
+
+## Project Structure
+
+```text
+backend/   Express API, Prisma schema, migrations, seed data
+frontend/  React + Vite client application
+docs/      ERD, use-case, activity diagrams, planning notes
+docker/    Local PostgreSQL compose configuration
+```
 
 ## Getting Started
 
 ### Requirements
 
-* Node.js 20+
-* PostgreSQL
-* npm
+- Node.js 20+
+- npm
+- Docker
 
 ### Installation
 
 ```bash
 git clone https://github.com/setbs/salon-crm.git
 cd salon-crm
-
 npm install
 ```
 
-Create an `.env` file and configure the database connection.
-
-Run database migrations:
+Create local environment variables:
 
 ```bash
-npx prisma migrate deploy
+cp .env.example .env
 ```
 
-Start the development server:
+Start PostgreSQL:
+
+```bash
+npm run db:up
+```
+
+Apply database migrations:
+
+```bash
+cd backend
+npx prisma migrate deploy
+cd ..
+```
+
+Seed demo data:
+
+```bash
+npm run prisma:seed
+```
+
+Start the application:
 
 ```bash
 npm run dev
 ```
 
-Application will be available at:
+Local URLs:
 
 ```text
-http://localhost:3000
+Frontend: http://localhost:5173
+Backend:  http://localhost:4000
+Health:   http://localhost:4000/api/health
 ```
 
-## Current Status
+## Demo Credentials
 
-The project is under active development.
+Admin:
 
-Implemented:
+```text
+Email:    admin@sl-color.local
+Password: admin12345
+```
 
-* Authentication
-* Appointment management
-* Client management
-* Services and categories
-* Administrative panel
+Employees:
 
-Planned:
+```text
+Email:    anna@soulbeauty.local
+Password: employee12345
 
-* Product inventory
-* Reviews module
-* Service material consumption tracking
-* Advanced reporting
+Email:    maya@soulbeauty.local
+Password: employee12345
+```
+
+## Useful Commands
+
+```bash
+npm run dev
+npm run build
+npm run typecheck
+npm run db:up
+npm run db:down
+npm run prisma:seed
+```
+
+## Documentation
+
+- ERD: `docs/ERD.sql`
+- Use-case diagram: `docs/use-case.md`
+- Client booking process diagram: `docs/activity-client.md`
+- Additional planning documents: `docs/`
+
+## Current Notes
+
+- Docker is used locally for PostgreSQL.
+- The frontend talks to the backend through Vite `/api` proxy in development.
+- Public service data does not expose internal consumable cosmetics.
+- Automatic stock deduction for service consumables is prepared at the data-model level, but the final write-off logic should be implemented as a separate workflow when an appointment is completed.
 
 ## License
 

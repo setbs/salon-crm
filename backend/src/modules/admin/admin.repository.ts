@@ -93,27 +93,48 @@ export function listServices() {
       s.description,
       s.duration_minutes AS "durationMinutes",
       s.price,
+      s.price_from AS "priceFrom",
+      s.price_to AS "priceTo",
       s.is_active AS "isActive",
       sc.name AS "categoryName",
       sc.description AS "categoryDescription",
       sc.is_active AS "categoryActive",
-      COALESCE(
-        json_agg(
-          json_build_object(
-            'id', e.id::text,
-            'name', trim(concat_ws(' ', u.first_name, u.last_name)),
-            'specialization', e.specialization
-          )
-          ORDER BY u.first_name ASC, u.last_name ASC
-        ) FILTER (WHERE e.id IS NOT NULL),
-        '[]'::json
-      ) AS employees
+      COALESCE(service_employees.employees, '[]'::json) AS employees,
+      COALESCE(service_consumables.consumables, '[]'::json) AS consumables
     FROM services s
     LEFT JOIN service_categories sc ON sc.id = s.category_id
-    LEFT JOIN employee_services es ON es.service_id = s.id
-    LEFT JOIN employees e ON e.id = es.employee_id
-    LEFT JOIN users u ON u.id = e.user_id
-    GROUP BY s.id, sc.id
+    LEFT JOIN LATERAL (
+      SELECT json_agg(
+        json_build_object(
+          'id', e.id::text,
+          'name', trim(concat_ws(' ', u.first_name, u.last_name)),
+          'specialization', e.specialization
+        )
+        ORDER BY u.first_name ASC, u.last_name ASC
+      ) AS employees
+      FROM employee_services es
+      JOIN employees e ON e.id = es.employee_id
+      JOIN users u ON u.id = e.user_id
+      WHERE es.service_id = s.id
+    ) service_employees ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT json_agg(
+        json_build_object(
+          'productId', p.id::text,
+          'productName', p.name,
+          'productCategory', pc.name,
+          'quantity', service_consumable.quantity,
+          'unit', lower(service_consumable.unit::text),
+          'productContentAmount', p.content_amount,
+          'productContentUnit', lower(p.content_unit::text)
+        )
+        ORDER BY p.name ASC
+      ) AS consumables
+      FROM service_consumables service_consumable
+      JOIN products p ON p.id = service_consumable.product_id
+      LEFT JOIN product_categories pc ON pc.id = p.category_id
+      WHERE service_consumable.service_id = s.id
+    ) service_consumables ON TRUE
     ORDER BY sc.name ASC NULLS LAST, s.name ASC
   `;
 }
@@ -221,11 +242,14 @@ export type ServiceWithCategoryRow = {
   description: string | null;
   durationMinutes: number;
   price: Prisma.Decimal;
+  priceFrom: Prisma.Decimal | null;
+  priceTo: Prisma.Decimal | null;
   isActive: boolean;
   categoryName: string | null;
   categoryDescription: string | null;
   categoryActive: boolean | null;
   employees: Prisma.JsonValue;
+  consumables: Prisma.JsonValue;
 };
 
 export type ServiceCategoryRow = {

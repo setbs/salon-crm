@@ -10,6 +10,8 @@ export type Service = {
   description: string | null;
   durationMinutes: number;
   price: number;
+  priceFrom: number | null;
+  priceTo: number | null;
 };
 
 export type Employee = {
@@ -80,11 +82,26 @@ export type AdminService = {
   category: AdminServiceCategory | null;
   name: string;
   price: number;
+  priceFrom: number | null;
+  priceTo: number | null;
   duration: number;
   description: string | null;
   active: boolean;
+  consumables: AdminServiceConsumable[];
   employeeIds: string[];
   employees: Array<{ id: string; name: string; specialization: string | null }>;
+};
+
+export type MeasurementUnit = "ml" | "gram";
+
+export type AdminServiceConsumable = {
+  productId: string;
+  productName: string;
+  productCategory: string | null;
+  quantity: number;
+  unit: MeasurementUnit;
+  productContentAmount: number | null;
+  productContentUnit: MeasurementUnit | null;
 };
 
 export type AdminServiceCategory = {
@@ -119,6 +136,8 @@ export type AdminProduct = {
   sale: number;
   stock: number;
   min: number;
+  contentAmount: number | null;
+  contentUnit: MeasurementUnit | null;
   movements: Array<{ type: string; quantity: number; reason: string | null; createdAt: string }>;
 };
 
@@ -180,10 +199,17 @@ export type ServiceInput = {
   categoryId?: string;
   name: string;
   price: number;
+  priceFrom?: number | null;
+  priceTo?: number | null;
   duration: number;
   description?: string;
   active: boolean;
   employeeIds: string[];
+  consumables: Array<{
+    productId: string;
+    quantity: number;
+    unit: MeasurementUnit;
+  }>;
 };
 
 export type ServiceCategoryInput = {
@@ -215,6 +241,8 @@ export type ProductInput = {
   sale: number;
   stock: number;
   min: number;
+  contentAmount?: number;
+  contentUnit?: MeasurementUnit;
 };
 
 export type SaleInput = {
@@ -359,6 +387,10 @@ export async function createAdminServiceCategory(payload: ServiceCategoryInput) 
 
 export async function updateAdminServiceCategory(id: string, payload: Partial<ServiceCategoryInput>) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/service-categories/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminServiceCategory(id: string) {
+  return request<void>(`/api/admin/service-categories/${id}`, { method: "DELETE" });
 }
 
 export async function createAdminProduct(payload: ProductInput) {

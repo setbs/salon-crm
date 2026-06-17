@@ -7,6 +7,7 @@ import {
   createService,
   createServiceCategory,
   deleteService,
+  deleteServiceCategory,
   getAppointments,
   getClients,
   getDashboard,
@@ -142,6 +143,15 @@ adminRouter.patch("/admin/service-categories/:id", async (request, response, nex
   try {
     const body = updateServiceCategorySchema.parse(request.body);
     response.json({ data: await updateServiceCategory(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/service-categories/:id", async (request, response, next) => {
+  try {
+    await deleteServiceCategory(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }

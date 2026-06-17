@@ -34,6 +34,7 @@ import {
   createAdminService,
   createAppointment,
   deleteAdminService,
+  deleteAdminServiceCategory,
   fetchAdminData,
   fetchAvailability,
   fetchCurrentUser,
@@ -53,6 +54,7 @@ import {
   type AdminAppointmentInput,
   type AuthUser,
   type Employee,
+  type MeasurementUnit,
   type ProductInput,
   type SaleInput,
   type Service,
@@ -62,17 +64,52 @@ import {
   type Slot
 } from "./api";
 
-const bookingMoney = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "UAH",
-  maximumFractionDigits: 0
-});
-
 const adminMoney = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "UAH",
   maximumFractionDigits: 0
 });
+
+const plainHryvnia = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0
+});
+
+type DisplayPrice = {
+  price: number;
+  priceFrom?: number | null;
+  priceTo?: number | null;
+};
+
+function formatHryvnia(value: number) {
+  return `${plainHryvnia.format(value)} ₴`;
+}
+
+function formatServicePrice(value: DisplayPrice) {
+  if (value.priceFrom !== null && value.priceFrom !== undefined && value.priceTo !== null && value.priceTo !== undefined) {
+    return `${plainHryvnia.format(value.priceFrom)} - ${plainHryvnia.format(value.priceTo)} ₴`;
+  }
+
+  if (value.priceFrom !== null && value.priceFrom !== undefined) {
+    return `from ${formatHryvnia(value.priceFrom)}`;
+  }
+
+  if (value.priceTo !== null && value.priceTo !== undefined) {
+    return `up to ${formatHryvnia(value.priceTo)}`;
+  }
+
+  return formatHryvnia(value.price);
+}
+
+function formatSelectedServicesPrice(services: DisplayPrice[], fallbackPrice: number) {
+  if (services.length === 0 || services.every((service) => service.priceFrom === null && service.priceTo === null)) {
+    return formatHryvnia(fallbackPrice);
+  }
+
+  const from = services.reduce((sum, service) => sum + (service.priceFrom ?? service.price), 0);
+  const to = services.reduce((sum, service) => sum + (service.priceTo ?? service.priceFrom ?? service.price), 0);
+
+  return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
+}
 
 const serviceCopy: Record<string, { name: string; description: string }> = {
   "Women's haircut": {
@@ -217,27 +254,23 @@ type HomePriceCategory = {
   }>;
 };
 
-const priceListMoney = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 0
-});
-
 const homePriceFallback: HomePriceCategory[] = [
   {
     id: "fallback-hair",
     name: "Hair care",
     services: [
-      { id: "fallback-cut", name: "Women's haircut", priceLabel: "500 - 800" },
-      { id: "fallback-color", name: "Hair coloring", priceLabel: "1800 - 4500" },
-      { id: "fallback-care", name: "Hair reconstruction", priceLabel: "1200 - 2500" }
+      { id: "fallback-cut", name: "Women's haircut", priceLabel: "500 - 800 ₴" },
+      { id: "fallback-color", name: "Hair coloring", priceLabel: "1,800 - 4,500 ₴" },
+      { id: "fallback-care", name: "Hair reconstruction", priceLabel: "1,200 - 2,500 ₴" }
     ]
   },
   {
     id: "fallback-nails",
     name: "Nail care",
     services: [
-      { id: "fallback-manicure", name: "Classic manicure", priceLabel: "400 - 600" },
-      { id: "fallback-polish", name: "Gel polish", priceLabel: "650" },
-      { id: "fallback-care-nails", name: "Nail care consultation", priceLabel: "300 - 350" }
+      { id: "fallback-manicure", name: "Classic manicure", priceLabel: "400 - 600 ₴" },
+      { id: "fallback-polish", name: "Gel polish", priceLabel: "650 ₴" },
+      { id: "fallback-care-nails", name: "Nail care consultation", priceLabel: "300 - 350 ₴" }
     ]
   }
 ];
@@ -267,7 +300,7 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
         name: service.name,
         description: service.description,
         durationLabel: `${service.durationMinutes} min`,
-        priceLabel: priceListMoney.format(service.price)
+        priceLabel: formatServicePrice(service)
       };
 
       if (existing) {
@@ -289,7 +322,7 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
       <header className="home-nav">
         <button className="home-brand-button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} type="button">
           <span className="home-mark">SL</span>
-          <span>Color Studio</span>
+          <span className="cl-logo-part">Color Studio</span>
         </button>
         <nav aria-label="Public navigation">
           <a href="#about">About</a>
@@ -405,7 +438,7 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
             <span>S</span>
             <span>L</span>
           </div>
-          <span>Color Studio</span>
+          <span id="color-studio">Color Studio</span>
         </div>
         <button className="primary-button home-centered-action" onClick={onOpenBooking} type="button">
           Book appointment
@@ -656,7 +689,15 @@ function AdminContent({
   }
 
   if (section === "services") {
-    return <ServicesSection services={data.services} categories={data.serviceCategories} employees={data.employees} runAction={runAction} />;
+    return (
+      <ServicesSection
+        services={data.services}
+        categories={data.serviceCategories}
+        employees={data.employees}
+        products={data.products}
+        runAction={runAction}
+      />
+    );
   }
 
   if (section === "employees") {
@@ -850,7 +891,7 @@ function AppointmentCreateForm({
             <label className="checkbox-line" key={service.id}>
               <input checked={serviceIds.includes(service.id)} onChange={() => toggleService(service.id)} type="checkbox" />
               <span>
-                {service.name} · {service.duration} min · {adminMoney.format(service.price)}
+                {service.name} · {service.duration} min · {formatServicePrice(service)}
               </span>
             </label>
           ))}
@@ -1055,11 +1096,13 @@ function ServicesSection({
   services,
   categories,
   employees,
+  products,
   runAction
 }: {
   services: AdminData["services"];
   categories: AdminData["serviceCategories"];
   employees: AdminData["employees"];
+  products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -1087,14 +1130,14 @@ function ServicesSection({
           </label>
         </div>
         <DataTable
-          columns={["Category", "Name", "Specialists", "Price", "Duration", "Description", "Status", "Actions"]}
+          columns={["Category", "Name", "Specialists", "Price", "Duration", "Consumables", "Status", "Actions"]}
           rows={filteredServices.map((item) => [
             item.category?.name ?? "Uncategorized",
             item.name,
             item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
-            adminMoney.format(item.price),
+            formatServicePrice(item),
             `${item.duration} min`,
-            item.description || "no description",
+            formatConsumables(item.consumables),
             item.active ? "active" : "disabled",
             <InlineActions
               labels={[item.active ? "Disable" : "Enable", "Edit", "Delete"]}
@@ -1123,10 +1166,15 @@ function ServicesSection({
             category.description ?? "no description",
             category.active ? "active" : "disabled",
             <InlineActions
-              labels={[category.active ? "Disable" : "Enable", "Edit"]}
+              labels={[category.active ? "Disable" : "Enable", "Edit", "Delete"]}
               onAction={(label) => {
                 if (label === "Edit") {
                   setEditingCategoryId(category.id);
+                  return;
+                }
+
+                if (label === "Delete") {
+                  void runAction(() => deleteAdminServiceCategory(category.id));
                   return;
                 }
 
@@ -1150,11 +1198,12 @@ function ServicesSection({
           }
         />
       ) : null}
-      <ServiceForm categories={categories} employees={employees} onSubmit={(payload) => runAction(() => createAdminService(payload))} />
+      <ServiceForm categories={categories} employees={employees} products={products} onSubmit={(payload) => runAction(() => createAdminService(payload))} />
       {editingService ? (
         <ServiceEditForm
           categories={categories}
           employees={employees}
+          products={products}
           key={editingService.id}
           service={editingService}
           onCancel={() => setEditingServiceId(null)}
@@ -1217,13 +1266,14 @@ function ProductsSection({
     <div className="admin-grid">
       <Panel title="Products / inventory" action="Add product">
         <DataTable
-          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Min. stock"]}
+          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Package", "Min. stock"]}
           rows={products.map((item) => [
             item.category,
             item.name,
             adminMoney.format(item.purchase),
             adminMoney.format(item.sale),
             item.stock <= item.min ? <span className="danger-text">{item.stock}</span> : item.stock,
+            item.contentAmount ? `${item.contentAmount} ${formatUnit(item.contentUnit)}` : "not set",
             item.min
           ])}
         />
@@ -1430,20 +1480,25 @@ function ServiceCategoryEditForm({
 function ServiceForm({
   categories,
   employees,
+  products,
   onSubmit
 }: {
   categories: AdminData["serviceCategories"];
   employees: AdminData["employees"];
+  products: AdminData["products"];
   onSubmit: (payload: ServiceInput) => Promise<void>;
 }) {
   const [form, setForm] = useState({
     categoryId: categories[0]?.id ?? "",
     name: "",
     price: "0",
+    priceFrom: "",
+    priceTo: "",
     duration: "60",
     description: "",
     active: true,
-    employeeIds: employees[0]?.id ? [employees[0].id] : []
+    employeeIds: employees[0]?.id ? [employees[0].id] : [],
+    consumables: [] as ConsumableFormItem[]
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -1452,10 +1507,13 @@ function ServiceForm({
       categoryId: form.categoryId,
       name: form.name,
       price: Number(form.price),
+      priceFrom: optionalPriceInput(form.priceFrom),
+      priceTo: optionalPriceInput(form.priceTo),
       duration: Number(form.duration),
       description: form.description,
       active: form.active,
-      employeeIds: form.employeeIds
+      employeeIds: form.employeeIds,
+      consumables: toConsumablePayload(form.consumables)
     });
   }
 
@@ -1478,8 +1536,16 @@ function ServiceForm({
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
         </label>
         <label>
-          <span>Price</span>
+          <span>Base price</span>
           <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
+        </label>
+        <label>
+          <span>Price from</span>
+          <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
+        </label>
+        <label>
+          <span>Price to</span>
+          <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
         </label>
         <label>
           <span>Duration, min</span>
@@ -1493,6 +1559,11 @@ function ServiceForm({
           employees={employees}
           selectedIds={form.employeeIds}
           onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+        />
+        <ConsumableSelector
+          items={form.consumables}
+          products={products}
+          onChange={(consumables) => setForm({ ...form, consumables })}
         />
         {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
         <label className="checkbox-line">
@@ -1510,12 +1581,14 @@ function ServiceForm({
 function ServiceEditForm({
   categories,
   employees,
+  products,
   onCancel,
   onSubmit,
   service
 }: {
   categories: AdminData["serviceCategories"];
   employees: AdminData["employees"];
+  products: AdminData["products"];
   onCancel: () => void;
   onSubmit: (payload: ServiceInput) => Promise<void>;
   service: AdminData["services"][number];
@@ -1524,10 +1597,17 @@ function ServiceEditForm({
     categoryId: service.categoryId ?? "",
     name: service.name,
     price: String(service.price),
+    priceFrom: service.priceFrom === null ? "" : String(service.priceFrom),
+    priceTo: service.priceTo === null ? "" : String(service.priceTo),
     duration: String(service.duration),
     description: service.description ?? "",
     active: service.active,
-    employeeIds: service.employeeIds
+    employeeIds: service.employeeIds,
+    consumables: service.consumables.map((consumable) => ({
+      productId: consumable.productId,
+      quantity: String(consumable.quantity),
+      unit: consumable.unit
+    })) as ConsumableFormItem[]
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -1536,10 +1616,13 @@ function ServiceEditForm({
       categoryId: form.categoryId,
       name: form.name,
       price: Number(form.price),
+      priceFrom: optionalPriceInput(form.priceFrom),
+      priceTo: optionalPriceInput(form.priceTo),
       duration: Number(form.duration),
       description: form.description,
       active: form.active,
-      employeeIds: form.employeeIds
+      employeeIds: form.employeeIds,
+      consumables: toConsumablePayload(form.consumables)
     });
   }
 
@@ -1562,8 +1645,16 @@ function ServiceEditForm({
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
         </label>
         <label>
-          <span>Price</span>
+          <span>Base price</span>
           <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
+        </label>
+        <label>
+          <span>Price from</span>
+          <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
+        </label>
+        <label>
+          <span>Price to</span>
+          <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
         </label>
         <label>
           <span>Duration, min</span>
@@ -1577,6 +1668,11 @@ function ServiceEditForm({
           employees={employees}
           selectedIds={form.employeeIds}
           onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+        />
+        <ConsumableSelector
+          items={form.consumables}
+          products={products}
+          onChange={(consumables) => setForm({ ...form, consumables })}
         />
         {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
         <label className="checkbox-line">
@@ -1626,8 +1722,130 @@ function EmployeeSelector({
   );
 }
 
+type ConsumableFormItem = {
+  productId: string;
+  quantity: string;
+  unit: MeasurementUnit;
+};
+
+function ConsumableSelector({
+  items,
+  onChange,
+  products
+}: {
+  items: ConsumableFormItem[];
+  onChange: (items: ConsumableFormItem[]) => void;
+  products: AdminData["products"];
+}) {
+  const defaultProductId = products[0]?.id ?? "";
+
+  function addItem() {
+    if (!defaultProductId) {
+      return;
+    }
+
+    onChange([...items, { productId: defaultProductId, quantity: "1", unit: "ml" }]);
+  }
+
+  function updateItem(index: number, patch: Partial<ConsumableFormItem>) {
+    onChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <div className="consumable-builder">
+      <div className="consumable-builder-header">
+        <span>Consumable cosmetics</span>
+        <button className="secondary-button compact-button" disabled={!defaultProductId} onClick={addItem} type="button">
+          Add item
+        </button>
+      </div>
+      <small className="form-note">Internal service parameters for analytics. Clients do not see these values.</small>
+      {products.length === 0 ? <small className="form-note">Add products first to use them as consumables.</small> : null}
+      {items.map((item, index) => (
+        <div className="consumable-row" key={`${item.productId}-${index}`}>
+          <label>
+            <span>Product</span>
+            <select value={item.productId} onChange={(event) => updateItem(index, { productId: event.target.value })}>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {formatProductOption(product)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Amount</span>
+            <input
+              min="0.01"
+              step="0.01"
+              type="number"
+              value={item.quantity}
+              onChange={(event) => updateItem(index, { quantity: event.target.value })}
+              required
+            />
+          </label>
+          <label>
+            <span>Unit</span>
+            <select value={item.unit} onChange={(event) => updateItem(index, { unit: event.target.value as MeasurementUnit })}>
+              <option value="ml">ml</option>
+              <option value="gram">g</option>
+            </select>
+          </label>
+          <button aria-label="Remove consumable" className="icon-only-button" onClick={() => removeItem(index)} title="Remove" type="button">
+            <Trash2 aria-hidden="true" size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function toConsumablePayload(items: ConsumableFormItem[]): ServiceInput["consumables"] {
+  return items
+    .filter((item) => item.productId && Number(item.quantity) > 0)
+    .map((item) => ({
+      productId: item.productId,
+      quantity: Number(item.quantity),
+      unit: item.unit
+    }));
+}
+
+function optionalPriceInput(value: string) {
+  return value.trim() ? Number(value) : null;
+}
+
+function formatConsumables(consumables: AdminData["services"][number]["consumables"]) {
+  if (consumables.length === 0) {
+    return "not set";
+  }
+
+  return consumables.map((consumable) => `${consumable.productName}: ${consumable.quantity} ${formatUnit(consumable.unit)}`).join(", ");
+}
+
+function formatProductOption(product: AdminData["products"][number]) {
+  const content = product.contentAmount ? ` · ${product.contentAmount} ${formatUnit(product.contentUnit)}/pack` : "";
+  return `${product.name}${content} · stock ${product.stock}`;
+}
+
+function formatUnit(unit: MeasurementUnit | null | undefined) {
+  return unit === "gram" ? "g" : "ml";
+}
+
 function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promise<void> }) {
-  const [form, setForm] = useState({ category: "", name: "", purchase: "0", sale: "0", stock: "0", min: "0" });
+  const [form, setForm] = useState({
+    category: "",
+    name: "",
+    purchase: "0",
+    sale: "0",
+    stock: "0",
+    min: "0",
+    contentAmount: "",
+    contentUnit: "ml" as MeasurementUnit
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1637,7 +1855,9 @@ function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promis
       purchase: Number(form.purchase),
       sale: Number(form.sale),
       stock: Number(form.stock),
-      min: Number(form.min)
+      min: Number(form.min),
+      contentAmount: form.contentAmount ? Number(form.contentAmount) : undefined,
+      contentUnit: form.contentAmount ? form.contentUnit : undefined
     });
   }
 
@@ -1667,6 +1887,24 @@ function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promis
         <label>
           <span>Minimum stock</span>
           <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
+        </label>
+        <label>
+          <span>Package content</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={form.contentAmount}
+            onChange={(event) => setForm({ ...form, contentAmount: event.target.value })}
+            placeholder="60"
+          />
+        </label>
+        <label>
+          <span>Content unit</span>
+          <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
+            <option value="ml">ml</option>
+            <option value="gram">g</option>
+          </select>
         </label>
         <button className="primary-button admin-submit" type="submit">
           Add product
@@ -2200,7 +2438,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
             <div>
               <dt>Total</dt>
               <dd>
-                {bookingMoney.format(total.price)} · {total.duration} min
+                {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
               </dd>
             </div>
           </dl>
@@ -2301,7 +2539,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                             <small>{copy?.description ?? service.description ?? "Individual consultation"}</small>
                           </span>
                           <span className="service-choice-meta">
-                            <strong>{bookingMoney.format(service.price)}</strong>
+                            <strong>{formatServicePrice(service)}</strong>
                             <small>{service.durationMinutes} min</small>
                           </span>
                         </button>
@@ -2315,7 +2553,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
             <footer className="wizard-actions">
               <div className="summary">
                 <span>{selectedServices.length > 0 ? `${selectedServices.length} selected` : "No services selected"}</span>
-                <strong>{selectedServices.length > 0 ? bookingMoney.format(total.price) : "Choose services"}</strong>
+                <strong>{selectedServices.length > 0 ? formatSelectedServicesPrice(selectedServices, total.price) : "Choose services"}</strong>
                 <small>{total.duration > 0 ? `${total.duration} min total` : "Start with the service list"}</small>
               </div>
               <button
@@ -2383,7 +2621,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                 <span>Visit summary</span>
                 <strong>{selectedServices.map((service) => service.name).join(", ")}</strong>
                 <small>
-                  {bookingMoney.format(total.price)} · {total.duration} min
+                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
                 </small>
                 <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Employee not selected"}</small>
               </aside>
@@ -2525,7 +2763,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                   <div>
                     <span>Total</span>
                     <strong>
-                      {bookingMoney.format(total.price)} · {total.duration} min
+                      {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
                     </strong>
                   </div>
                 </section>

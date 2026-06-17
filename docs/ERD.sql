@@ -32,6 +32,11 @@ Enum StockMovementType {
   RETURN
 }
 
+Enum ConsumableUnit {
+  ML
+  GRAM
+}
+
 Table users {
   id bigint [pk, increment]
 
@@ -76,6 +81,8 @@ Table services {
   description text
   duration_minutes int [not null]
   price decimal(10,2) [not null]
+  price_from decimal(10,2)
+  price_to decimal(10,2)
   is_active boolean [not null, default: true]
 
   created_at timestamp [not null]
@@ -87,6 +94,22 @@ Table employee_services {
 
   indexes {
     (employee_id, service_id) [pk]
+  }
+}
+
+Table service_consumables {
+  id bigint [pk, increment]
+
+  service_id bigint [not null]
+  product_id bigint [not null]
+  quantity decimal(10,2) [not null]
+  unit ConsumableUnit [not null]
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+
+  indexes {
+    (service_id, product_id) [unique]
   }
 }
 
@@ -228,6 +251,8 @@ Table products {
   selling_price decimal(10,2) [not null]
   stock_quantity int [not null]
   min_stock_quantity int [not null]
+  content_amount decimal(10,2)
+  content_unit ConsumableUnit
   is_active boolean [not null, default: true]
 
   created_at timestamp [not null]
@@ -302,6 +327,9 @@ Ref: services.category_id > service_categories.id [delete: set null]
 
 Ref: employee_services.employee_id > employees.id [delete: cascade]
 Ref: employee_services.service_id > services.id [delete: cascade]
+
+Ref: service_consumables.service_id > services.id [delete: cascade]
+Ref: service_consumables.product_id > products.id
 
 Ref: appointments.client_id > users.id
 Ref: appointments.employee_id > employees.id

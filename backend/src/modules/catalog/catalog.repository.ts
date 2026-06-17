@@ -10,6 +10,8 @@ export function listActiveServices() {
       s.description,
       s.duration_minutes AS "durationMinutes",
       s.price,
+      s.price_from AS "priceFrom",
+      s.price_to AS "priceTo",
       sc.name AS "categoryName",
       sc.description AS "categoryDescription"
     FROM services s
@@ -47,6 +49,8 @@ export type ActiveServiceRow = {
   description: string | null;
   durationMinutes: number;
   price: Prisma.Decimal;
+  priceFrom: Prisma.Decimal | null;
+  priceTo: Prisma.Decimal | null;
   categoryName: string | null;
   categoryDescription: string | null;
 };
