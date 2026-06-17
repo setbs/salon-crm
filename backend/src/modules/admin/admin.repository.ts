@@ -43,13 +43,25 @@ export function findNextAppointment(now: Date, employeeId?: bigint) {
   });
 }
 
-export function countLowStockProducts() {
-  return prisma.product.count({
-    where: {
-      isActive: true,
-      stockQuantity: { lte: prisma.product.fields.minStockQuantity }
-    }
-  });
+export async function countLowStockProducts() {
+  const [result] = await prisma.$queryRaw<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS count
+    FROM products
+    WHERE is_active = true
+      AND (
+        (
+          content_amount IS NOT NULL
+          AND stock_content_amount IS NOT NULL
+          AND stock_content_amount <= min_stock_quantity * content_amount
+        )
+        OR (
+          content_amount IS NULL
+          AND stock_quantity <= min_stock_quantity
+        )
+      )
+  `;
+
+  return result?.count ?? 0;
 }
 
 export function listAppointments(employeeId?: bigint) {

@@ -6,6 +6,7 @@ import {
   createAppointment,
   createService,
   createServiceCategory,
+  createStockMovement,
   deleteService,
   deleteServiceCategory,
   getAppointmentConsumablePreview,
@@ -35,6 +36,7 @@ import {
   createSaleSchema,
   createServiceSchema,
   createServiceCategorySchema,
+  createStockMovementSchema,
   updateAppointmentSchema,
   updatePaymentSchema,
   updateProductSchema,
@@ -212,6 +214,15 @@ adminRouter.patch("/admin/products/:id", async (request, response, next) => {
   try {
     const body = updateProductSchema.parse(request.body);
     response.json({ data: await updateProduct(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/stock-movements", async (request, response, next) => {
+  try {
+    const body = createStockMovementSchema.parse(request.body);
+    response.status(201).json({ data: await createStockMovement(getAuthenticatedUser(request), body) });
   } catch (error) {
     next(error);
   }

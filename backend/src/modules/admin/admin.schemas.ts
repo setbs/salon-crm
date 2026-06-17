@@ -99,6 +99,44 @@ export const createProductSchema = z.object({
 
 export const updateProductSchema = createProductSchema.partial();
 
+export const createStockMovementSchema = z
+  .object({
+    productId: idStringSchema,
+    movementType: z.enum(["purchase", "adjustment", "return"]),
+    amountMode: z.enum(["packages", "content"]),
+    amount: z.coerce.number(),
+    reason: z.string().trim().max(500).optional()
+  })
+  .superRefine((input, context) => {
+    if (input.amountMode === "packages" && !Number.isInteger(input.amount)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Package amount must be a whole number.",
+        path: ["amount"]
+      });
+    }
+
+    if (input.movementType === "adjustment") {
+      if (input.amount === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Adjustment amount cannot be zero.",
+          path: ["amount"]
+        });
+      }
+
+      return;
+    }
+
+    if (input.amount <= 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Amount must be positive.",
+        path: ["amount"]
+      });
+    }
+  });
+
 export const createSaleSchema = z.object({
   productId: idStringSchema,
   quantity: z.coerce.number().int().positive(),

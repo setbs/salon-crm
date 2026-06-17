@@ -25,6 +25,7 @@ import type {
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
+  createStockMovementSchema,
   createSaleSchema,
   updateAppointmentSchema,
   updatePaymentSchema,
@@ -356,6 +357,16 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
     FROM products
   `;
   const productContent = new Map(productContentRows.map((row) => [row.id.toString(), row]));
+  const movementContentRows = await prisma.$queryRaw<
+    Array<{ id: bigint; contentQuantity: Prisma.Decimal | null; contentUnit: string | null }>
+  >`
+    SELECT
+      id,
+      content_quantity AS "contentQuantity",
+      lower(content_unit::text) AS "contentUnit"
+    FROM stock_movements
+  `;
+  const movementContent = new Map(movementContentRows.map((row) => [row.id.toString(), row]));
 
   return products.map((product) => {
     const content = productContent.get(product.id.toString());
@@ -365,6 +376,8 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
     return {
       id: product.id.toString(),
       category: product.category?.name ?? "Uncategorized",
+      brand: product.brand,
+      sku: product.sku,
       name: product.name,
       purchase: Number(product.purchasePrice ?? 0),
       sale: Number(product.sellingPrice),
@@ -374,12 +387,24 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       contentUnit: content?.contentUnit ?? null,
       stockContentAmount,
       stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
-      movements: product.stockMovements.map((movement) => ({
-        type: movement.movementType.toLowerCase(),
-        quantity: movement.quantity,
-        reason: movement.reason,
-        createdAt: movement.createdAt.toISOString()
-      }))
+      stockStatus: getProductStockStatus({
+        stockQuantity: product.stockQuantity,
+        minStockQuantity: product.minStockQuantity,
+        contentAmount,
+        stockContentAmount
+      }),
+      movements: product.stockMovements.map((movement) => {
+        const movementContentData = movementContent.get(movement.id.toString());
+
+        return {
+          type: movement.movementType.toLowerCase(),
+          quantity: movement.quantity,
+          contentQuantity: movementContentData?.contentQuantity ? Number(movementContentData.contentQuantity) : null,
+          contentUnit: movementContentData?.contentUnit ? toPublicMeasurementUnit(movementContentData.contentUnit) : null,
+          reason: movement.reason,
+          createdAt: movement.createdAt.toISOString()
+        };
+      })
     };
   });
 }
@@ -811,13 +836,13 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
     `;
   }
 
-  await prisma.stockMovement.create({
-    data: {
-      productId: product.id,
-      movementType: StockMovementType.PURCHASE,
-      quantity: input.stock,
-      reason: "Initial stock"
-    }
+  await insertStockMovement(prisma, {
+    productId: product.id,
+    movementType: StockMovementType.PURCHASE,
+    quantity: input.stock,
+    contentQuantity: input.contentAmount ? input.contentAmount * input.stock : null,
+    contentUnit: input.contentAmount ? toConsumableUnit(input.contentUnit ?? "ml") : null,
+    reason: "Initial stock"
   });
 
   return { id: product.id.toString() };
@@ -870,6 +895,108 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
   return { id: product.id.toString() };
 }
 
+export async function createStockMovement(actor: CrmAuthenticatedUser, input: z.infer<typeof createStockMovementSchema>) {
+  assertAdmin(actor);
+
+  const productId = BigInt(input.productId);
+
+  const movement = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUnique({ where: { id: productId } });
+
+    if (!product) {
+      throw new HttpError(404, "Product not found.");
+    }
+
+    const [content] = await tx.$queryRaw<
+      Array<{ contentAmount: Prisma.Decimal | null; contentUnit: string | null; stockContentAmount: Prisma.Decimal | null }>
+    >`
+      SELECT
+        content_amount AS "contentAmount",
+        lower(content_unit::text) AS "contentUnit",
+        stock_content_amount AS "stockContentAmount"
+      FROM products
+      WHERE id = ${productId}
+    `;
+
+    const contentAmount = content?.contentAmount ? toNumber(content.contentAmount) : null;
+    const stockContentAmount = content?.stockContentAmount ? toNumber(content.stockContentAmount) : null;
+    const currentPackageStock = product.stockQuantity;
+    const signedAmount = getSignedStockMovementAmount(input.movementType, input.amount);
+    const movementType = toStockMovementType(input.movementType);
+    let packageDelta = 0;
+    let contentDelta: number | null = null;
+    let contentUnit: ConsumableUnitValue | null = null;
+
+    if (input.amountMode === "content") {
+      if (!contentAmount || !content?.contentUnit) {
+        throw new HttpError(400, "This product does not have package content configured.");
+      }
+
+      const currentContentStock = stockContentAmount ?? currentPackageStock * contentAmount;
+      const nextContentStock = currentContentStock + signedAmount;
+
+      if (nextContentStock < 0) {
+        throw new HttpError(400, "Stock cannot be negative.");
+      }
+
+      packageDelta = Math.floor(nextContentStock / contentAmount) - Math.floor(currentContentStock / contentAmount);
+      contentDelta = signedAmount;
+      contentUnit = toConsumableUnit(content.contentUnit === "gram" ? "gram" : "ml");
+
+      await tx.$executeRaw`
+        UPDATE products
+        SET
+          stock_content_amount = ${nextContentStock},
+          stock_quantity = floor(${nextContentStock} / ${contentAmount})::int
+        WHERE id = ${productId}
+      `;
+    } else if (contentAmount && content?.contentUnit) {
+      const currentContentStock = stockContentAmount ?? currentPackageStock * contentAmount;
+      const nextContentStock = currentContentStock + signedAmount * contentAmount;
+
+      if (nextContentStock < 0) {
+        throw new HttpError(400, "Stock cannot be negative.");
+      }
+
+      packageDelta = signedAmount;
+      contentDelta = signedAmount * contentAmount;
+      contentUnit = toConsumableUnit(content.contentUnit === "gram" ? "gram" : "ml");
+
+      await tx.$executeRaw`
+        UPDATE products
+        SET
+          stock_content_amount = ${nextContentStock},
+          stock_quantity = floor(${nextContentStock} / ${contentAmount})::int
+        WHERE id = ${productId}
+      `;
+    } else {
+      const nextPackageStock = currentPackageStock + signedAmount;
+
+      if (nextPackageStock < 0) {
+        throw new HttpError(400, "Stock cannot be negative.");
+      }
+
+      packageDelta = signedAmount;
+
+      await tx.product.update({
+        where: { id: productId },
+        data: { stockQuantity: nextPackageStock }
+      });
+    }
+
+    return insertStockMovement(tx, {
+      productId,
+      movementType,
+      quantity: packageDelta,
+      contentQuantity: contentDelta,
+      contentUnit,
+      reason: input.reason || null
+    });
+  });
+
+  return { id: movement.id.toString() };
+}
+
 export async function createProductSale(actor: CrmAuthenticatedUser, input: z.infer<typeof createSaleSchema>) {
   const productId = BigInt(input.productId);
   const quantity = input.quantity;
@@ -884,9 +1011,12 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
     }
 
     const [inventory] = await transaction.$queryRaw<
-      Array<{ contentAmount: Prisma.Decimal | null; stockContentAmount: Prisma.Decimal | null }>
+      Array<{ contentAmount: Prisma.Decimal | null; contentUnit: string | null; stockContentAmount: Prisma.Decimal | null }>
     >`
-      SELECT content_amount AS "contentAmount", stock_content_amount AS "stockContentAmount"
+      SELECT
+        content_amount AS "contentAmount",
+        lower(content_unit::text) AS "contentUnit",
+        stock_content_amount AS "stockContentAmount"
       FROM products
       WHERE id = ${productId}
     `;
@@ -936,13 +1066,13 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
       });
     }
 
-    await transaction.stockMovement.create({
-      data: {
-        productId,
-        movementType: StockMovementType.SALE,
-        quantity: -quantity,
-        reason: `Sale #${createdSale.id.toString()}`
-      }
+    await insertStockMovement(transaction, {
+      productId,
+      movementType: StockMovementType.SALE,
+      quantity: -quantity,
+      contentQuantity: contentAmount ? -quantity * contentAmount : null,
+      contentUnit: contentAmount && inventory?.contentUnit ? toConsumableUnit(inventory.contentUnit === "gram" ? "gram" : "ml") : null,
+      reason: `Sale #${createdSale.id.toString()}`
     });
 
     await transaction.payment.create({
@@ -1055,6 +1185,39 @@ function toNumber(value: unknown) {
   return 0;
 }
 
+function getProductStockStatus(input: {
+  stockQuantity: number;
+  minStockQuantity: number;
+  contentAmount: number | null;
+  stockContentAmount: number | null;
+}) {
+  if (input.contentAmount && input.stockContentAmount === null) {
+    return "not_tracked";
+  }
+
+  if (input.contentAmount && input.stockContentAmount !== null) {
+    return input.stockContentAmount <= input.minStockQuantity * input.contentAmount ? "low" : "ok";
+  }
+
+  return input.stockQuantity <= input.minStockQuantity ? "low" : "ok";
+}
+
+function toStockMovementType(type: "purchase" | "adjustment" | "return") {
+  if (type === "adjustment") {
+    return StockMovementType.ADJUSTMENT;
+  }
+
+  if (type === "return") {
+    return StockMovementType.RETURN;
+  }
+
+  return StockMovementType.PURCHASE;
+}
+
+function getSignedStockMovementAmount(type: "purchase" | "adjustment" | "return", amount: number) {
+  return type === "adjustment" ? amount : Math.abs(amount);
+}
+
 function toUniqueBigIntIds(ids: string[] | undefined) {
   return [...new Set(ids ?? [])].map((id) => BigInt(id));
 }
@@ -1123,6 +1286,40 @@ async function ensureConsumableProductsConfigured(
       throw new HttpError(400, `Consumable unit does not match product package unit for ${product.name}.`);
     }
   }
+}
+
+async function insertStockMovement(
+  client: Pick<Prisma.TransactionClient, "$queryRaw">,
+  input: {
+    productId: bigint;
+    movementType: StockMovementType;
+    quantity: number;
+    contentQuantity: number | null;
+    contentUnit: ConsumableUnitValue | null;
+    reason: string | null;
+  }
+) {
+  const [movement] = await client.$queryRaw<Array<{ id: bigint }>>`
+    INSERT INTO stock_movements (
+      product_id,
+      movement_type,
+      quantity,
+      content_quantity,
+      content_unit,
+      reason
+    )
+    VALUES (
+      ${input.productId},
+      ${input.movementType}::"StockMovementType",
+      ${input.quantity},
+      ${input.contentQuantity},
+      ${input.contentUnit}::"ConsumableUnit",
+      ${input.reason}
+    )
+    RETURNING id
+  `;
+
+  return movement;
 }
 
 async function syncServiceEmployees(client: Prisma.TransactionClient, serviceId: bigint, employeeIds: bigint[]) {
@@ -1342,6 +1539,15 @@ async function applyAppointmentConsumables(client: Prisma.TransactionClient, app
         ${nextStockContentAmount}
       )
     `;
+
+    await insertStockMovement(client, {
+      productId: consumable.productId,
+      movementType: StockMovementType.SALE,
+      quantity: Math.floor(nextStockContentAmount / contentAmount) - Math.floor(currentStockContentAmount / contentAmount),
+      contentQuantity: -quantity,
+      contentUnit: toConsumableUnit(consumable.unit === "gram" ? "gram" : "ml"),
+      reason: `Appointment #${appointmentId.toString()}`
+    });
   }
 }
 

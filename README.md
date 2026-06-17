@@ -30,6 +30,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Client database.
 - Service and service category management.
 - Product inventory and product sales.
+- Product editing and manual stock movements.
 - Appointment completion workflow with consumable write-off preview.
 - Consumable analytics for the last 30 days.
 - Payments and reviews overview.
@@ -46,6 +47,7 @@ The project is built as a diploma and portfolio application with a practical bus
   - assigned employees;
   - internal consumable cosmetics.
 - Products support package content amount, for example `60 ml`.
+- Stock can be adjusted either by whole packages or by actual content amount in ml/g.
 - Services can define consumable products and usage amount, for example `20 ml` of a peeling product.
 - Completing an appointment writes off configured service consumables from product stock and stores the write-off in `service_consumption_logs`.
 - Before completing an appointment, CRM users can preview the exact consumables to be written off and whether stock is sufficient.
@@ -185,6 +187,7 @@ npm run prisma:seed
 - The frontend talks to the backend through Vite `/api` proxy in development.
 - Public service data does not expose internal consumable cosmetics.
 - Consumable stock is tracked in ml/g and shown as package-equivalent stock in the CRM inventory.
+- Low-stock alerts use ml/g content stock for consumable products and package stock for regular retail products.
 - Consumable write-off is idempotent: moving an already completed appointment through updates does not subtract the same materials twice.
 
 ## License

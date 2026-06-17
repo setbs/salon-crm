@@ -307,6 +307,8 @@ Table stock_movements {
   product_id bigint [not null]
   movement_type StockMovementType [not null]
   quantity int [not null]
+  content_quantity decimal(10,2)
+  content_unit ConsumableUnit
   reason text
 
   created_at timestamp [not null]

@@ -33,6 +33,7 @@ import {
   createAdminProduct,
   createAdminSale,
   createAdminService,
+  createAdminStockMovement,
   createAppointment,
   deleteAdminService,
   deleteAdminServiceCategory,
@@ -49,6 +50,7 @@ import {
   rescheduleAdminAppointment,
   updateAdminAppointmentComment,
   updateAdminPayment,
+  updateAdminProduct,
   updateAdminService,
   updateAdminServiceCategory,
   updateAdminSettings,
@@ -64,6 +66,7 @@ import {
   type ServiceCategoryInput,
   type ServiceInput,
   type SettingsInput,
+  type StockMovementInput,
   type Slot
 } from "./api";
 
@@ -1275,6 +1278,8 @@ function ServicesSection({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [isCreatingService, setIsCreatingService] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const filteredServices = categoryFilter === "all" ? services : services.filter((service) => (service.categoryId ?? "") === categoryFilter);
@@ -1283,52 +1288,7 @@ function ServicesSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Services" action="Add service">
-        <div className="table-toolbar">
-          <label>
-            <span>Category filter</span>
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-              <option value="all">All categories</option>
-              <option value="">Uncategorized</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <DataTable
-          columns={["Category", "Name", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
-          rows={filteredServices.map((item) => [
-            item.category?.name ?? "Uncategorized",
-            item.name,
-            item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
-            formatServicePrice(item),
-            `${item.duration} min`,
-            formatConsumables(item.consumables),
-            item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
-            item.active ? "active" : "disabled",
-            <InlineActions
-              labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
-              onAction={(label) => {
-                if (label === "Edit") {
-                  setEditingServiceId(item.id);
-                  return;
-                }
-
-                if (label === "Delete") {
-                  void runAction(() => deleteAdminService(item.id));
-                  return;
-                }
-
-                void runAction(() => updateAdminService(item.id, { active: !item.active }));
-              }}
-            />
-          ])}
-        />
-      </Panel>
-      <Panel title="Service categories" action="Add category">
+      <Panel title="Service categories" action="Add category" onAction={() => setIsCreatingCategory(true)} wide>
         <DataTable
           columns={["Name", "Description", "Status", "Actions"]}
           rows={categories.map((category) => [
@@ -1354,36 +1314,113 @@ function ServicesSection({
           ])}
         />
       </Panel>
-      <ServiceCategoryForm onSubmit={(payload) => runAction(() => createAdminServiceCategory(payload))} />
-      {editingCategory ? (
-        <ServiceCategoryEditForm
-          category={editingCategory}
-          key={editingCategory.id}
-          onCancel={() => setEditingCategoryId(null)}
-          onSubmit={(payload) =>
-            runAction(async () => {
-              await updateAdminServiceCategory(editingCategory.id, payload);
-              setEditingCategoryId(null);
-            })
-          }
+      <Panel title="Services" action="Add service" onAction={() => setIsCreatingService(true)} wide>
+        <div className="table-toolbar">
+          <label>
+            <span>Category filter</span>
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              <option value="">Uncategorized</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <DataTable
+          columns={["Category", "Name", "Description", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
+          rows={filteredServices.map((item) => [
+            item.category?.name ?? "Uncategorized",
+            item.name,
+            item.description || "-",
+            item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
+            formatServicePrice(item),
+            `${item.duration} min`,
+            formatConsumables(item.consumables),
+            item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
+            item.active ? "active" : "disabled",
+            <InlineActions
+              labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
+              onAction={(label) => {
+                if (label === "Edit") {
+                  setEditingServiceId(item.id);
+                  return;
+                }
+
+                if (label === "Delete") {
+                  void runAction(() => deleteAdminService(item.id));
+                  return;
+                }
+
+                void runAction(() => updateAdminService(item.id, { active: !item.active }));
+              }}
+            />
+          ])}
         />
+      </Panel>
+      {isCreatingCategory ? (
+        <AdminModal title="New category" onClose={() => setIsCreatingCategory(false)}>
+          <ServiceCategoryForm
+            onCancel={() => setIsCreatingCategory(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminServiceCategory(payload);
+                setIsCreatingCategory(false);
+              })
+            }
+          />
+        </AdminModal>
       ) : null}
-      <ServiceForm categories={categories} employees={employees} products={products} onSubmit={(payload) => runAction(() => createAdminService(payload))} />
+      {editingCategory ? (
+        <AdminModal title={`Edit category: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
+          <ServiceCategoryEditForm
+            category={editingCategory}
+            key={editingCategory.id}
+            onCancel={() => setEditingCategoryId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminServiceCategory(editingCategory.id, payload);
+                setEditingCategoryId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {isCreatingService ? (
+        <AdminModal title="New service" onClose={() => setIsCreatingService(false)}>
+          <ServiceForm
+            categories={categories}
+            employees={employees}
+            products={products}
+            onCancel={() => setIsCreatingService(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminService(payload);
+                setIsCreatingService(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
       {editingService ? (
-        <ServiceEditForm
-          categories={categories}
-          employees={employees}
-          products={products}
-          key={editingService.id}
-          service={editingService}
-          onCancel={() => setEditingServiceId(null)}
-          onSubmit={(payload) =>
-            runAction(async () => {
-              await updateAdminService(editingService.id, payload);
-              setEditingServiceId(null);
-            })
-          }
-        />
+        <AdminModal title={`Edit service: ${editingService.name}`} onClose={() => setEditingServiceId(null)}>
+          <ServiceEditForm
+            categories={categories}
+            employees={employees}
+            products={products}
+            key={editingService.id}
+            service={editingService}
+            onCancel={() => setEditingServiceId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminService(editingService.id, payload);
+                setEditingServiceId(null);
+              })
+            }
+          />
+        </AdminModal>
       ) : null}
     </div>
   );
@@ -1432,30 +1469,77 @@ function ProductsSection({
   products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+  const [isCreatingStockMovement, setIsCreatingStockMovement] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const editingProduct = products.find((product) => product.id === editingProductId) ?? null;
+
   return (
     <div className="admin-grid">
-      <Panel title="Products / inventory" action="Add product">
+      <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)}>
         <DataTable
-          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Package", "Min. stock"]}
+          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
           rows={products.map((item) => [
             item.category,
             item.name,
             adminMoney.format(item.purchase),
             adminMoney.format(item.sale),
-            item.stock <= item.min ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
+            item.stockStatus === "low" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
             item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
-            item.min
+            <StatusBadge status={item.stockStatus} />,
+            <InlineActions labels={["Edit"]} onAction={() => setEditingProductId(item.id)} />
           ])}
         />
       </Panel>
-      <ProductForm onSubmit={(payload) => runAction(() => createAdminProduct(payload))} />
-      <Panel title="Stock movement history">
+      {isCreatingProduct ? (
+        <AdminModal title="New product" onClose={() => setIsCreatingProduct(false)}>
+          <ProductForm
+            onCancel={() => setIsCreatingProduct(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminProduct(payload);
+                setIsCreatingProduct(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {editingProduct ? (
+        <AdminModal title={`Edit product: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
+          <ProductForm
+            key={editingProduct.id}
+            onCancel={() => setEditingProductId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminProduct(editingProduct.id, payload);
+                setEditingProductId(null);
+              })
+            }
+            product={editingProduct}
+          />
+        </AdminModal>
+      ) : null}
+      {isCreatingStockMovement ? (
+        <AdminModal title="Stock movement" onClose={() => setIsCreatingStockMovement(false)}>
+          <StockMovementForm
+            onCancel={() => setIsCreatingStockMovement(false)}
+            products={products}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminStockMovement(payload);
+                setIsCreatingStockMovement(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      <Panel title="Stock movement history" action="Add movement" onAction={() => setIsCreatingStockMovement(true)}>
         <InfoList
           items={products
             .flatMap((product) =>
               product.movements.map((movement) => [
                 movement.type,
-                `${movement.quantity > 0 ? "+" : ""}${movement.quantity} ${product.name}${movement.reason ? ` · ${movement.reason}` : ""}`
+                `${formatStockMovementAmount(movement)} ${product.name}${movement.reason ? ` · ${movement.reason}` : ""}`
               ] as [string, string])
             )
             .slice(0, 6)}
@@ -1560,7 +1644,13 @@ function SettingsSection({
   );
 }
 
-function ServiceCategoryForm({ onSubmit }: { onSubmit: (payload: ServiceCategoryInput) => Promise<void> }) {
+function ServiceCategoryForm({
+  onCancel,
+  onSubmit
+}: {
+  onCancel: () => void;
+  onSubmit: (payload: ServiceCategoryInput) => Promise<void>;
+}) {
   const [form, setForm] = useState({ name: "", description: "", active: true });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -1573,25 +1663,28 @@ function ServiceCategoryForm({ onSubmit }: { onSubmit: (payload: ServiceCategory
   }
 
   return (
-    <Panel title="New category">
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Name</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        </label>
-        <label>
-          <span>Description</span>
-          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
-        </label>
-        <label className="checkbox-line">
-          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Active category</span>
-        </label>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <label className="checkbox-line">
+        <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+        <span>Active category</span>
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
         <button className="primary-button admin-submit" type="submit">
           Add category
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
 }
 
@@ -1620,41 +1713,41 @@ function ServiceCategoryEditForm({
   }
 
   return (
-    <Panel title={`Edit category: ${category.name}`}>
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Name</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        </label>
-        <label>
-          <span>Description</span>
-          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
-        </label>
-        <label className="checkbox-line">
-          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Active category</span>
-        </label>
-        <div className="form-actions">
-          <button className="primary-button admin-submit" type="submit">
-            Save category
-          </button>
-          <button className="booking-link light" onClick={onCancel} type="button">
-            Cancel
-          </button>
-        </div>
-      </form>
-    </Panel>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <label className="checkbox-line">
+        <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+        <span>Active category</span>
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" type="submit">
+          Save category
+        </button>
+      </div>
+    </form>
   );
 }
 
 function ServiceForm({
   categories,
   employees,
+  onCancel,
   products,
   onSubmit
 }: {
   categories: AdminData["serviceCategories"];
   employees: AdminData["employees"];
+  onCancel: () => void;
   products: AdminData["products"];
   onSubmit: (payload: ServiceInput) => Promise<void>;
 }) {
@@ -1688,63 +1781,66 @@ function ServiceForm({
   }
 
   return (
-    <Panel title="New service">
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Category</span>
-          <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-            <option value="">Uncategorized</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Name</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        </label>
-        <label>
-          <span>Base price</span>
-          <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
-        </label>
-        <label>
-          <span>Price from</span>
-          <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
-        </label>
-        <label>
-          <span>Price to</span>
-          <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
-        </label>
-        <label>
-          <span>Duration, min</span>
-          <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
-        </label>
-        <label>
-          <span>Description</span>
-          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
-        </label>
-        <EmployeeSelector
-          employees={employees}
-          selectedIds={form.employeeIds}
-          onChange={(employeeIds) => setForm({ ...form, employeeIds })}
-        />
-        <ConsumableSelector
-          items={form.consumables}
-          products={products}
-          onChange={(consumables) => setForm({ ...form, consumables })}
-        />
-        {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
-        <label className="checkbox-line">
-          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Active service</span>
-        </label>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Category</span>
+        <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
+          <option value="">Uncategorized</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Base price</span>
+        <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
+      </label>
+      <label>
+        <span>Price from</span>
+        <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
+      </label>
+      <label>
+        <span>Price to</span>
+        <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
+      </label>
+      <label>
+        <span>Duration, min</span>
+        <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <EmployeeSelector
+        employees={employees}
+        selectedIds={form.employeeIds}
+        onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+      />
+      <ConsumableSelector
+        items={form.consumables}
+        products={products}
+        onChange={(consumables) => setForm({ ...form, consumables })}
+      />
+      {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
+      <label className="checkbox-line">
+        <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+        <span>Active service</span>
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
         <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
           Add service
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
 }
 
@@ -1797,68 +1893,66 @@ function ServiceEditForm({
   }
 
   return (
-    <Panel title={`Edit service: ${service.name}`}>
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Category</span>
-          <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-            <option value="">Uncategorized</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Name</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        </label>
-        <label>
-          <span>Base price</span>
-          <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
-        </label>
-        <label>
-          <span>Price from</span>
-          <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
-        </label>
-        <label>
-          <span>Price to</span>
-          <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
-        </label>
-        <label>
-          <span>Duration, min</span>
-          <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
-        </label>
-        <label>
-          <span>Description</span>
-          <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
-        </label>
-        <EmployeeSelector
-          employees={employees}
-          selectedIds={form.employeeIds}
-          onChange={(employeeIds) => setForm({ ...form, employeeIds })}
-        />
-        <ConsumableSelector
-          items={form.consumables}
-          products={products}
-          onChange={(consumables) => setForm({ ...form, consumables })}
-        />
-        {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
-        <label className="checkbox-line">
-          <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-          <span>Active service</span>
-        </label>
-        <div className="form-actions">
-          <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
-            Save service
-          </button>
-          <button className="booking-link light" onClick={onCancel} type="button">
-            Cancel
-          </button>
-        </div>
-      </form>
-    </Panel>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Category</span>
+        <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
+          <option value="">Uncategorized</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Base price</span>
+        <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
+      </label>
+      <label>
+        <span>Price from</span>
+        <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
+      </label>
+      <label>
+        <span>Price to</span>
+        <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
+      </label>
+      <label>
+        <span>Duration, min</span>
+        <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <EmployeeSelector
+        employees={employees}
+        selectedIds={form.employeeIds}
+        onChange={(employeeIds) => setForm({ ...form, employeeIds })}
+      />
+      <ConsumableSelector
+        items={form.consumables}
+        products={products}
+        onChange={(consumables) => setForm({ ...form, consumables })}
+      />
+      {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
+      <label className="checkbox-line">
+        <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
+        <span>Active service</span>
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
+          Save service
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -2009,6 +2103,16 @@ function formatProductStock(product: AdminData["products"][number]) {
   return String(product.stock);
 }
 
+function formatStockMovementAmount(movement: AdminData["products"][number]["movements"][number]) {
+  if (movement.contentQuantity !== null && movement.contentUnit) {
+    const sign = movement.contentQuantity > 0 ? "+" : "";
+    return `${sign}${formatPlainNumber(movement.contentQuantity)} ${formatUnit(movement.contentUnit)}`;
+  }
+
+  const sign = movement.quantity > 0 ? "+" : "";
+  return `${sign}${movement.quantity} packs`;
+}
+
 function formatAnalyticsTotals(analytics: AdminData["consumableAnalytics"]) {
   const parts = [];
 
@@ -2060,16 +2164,26 @@ function formatUnit(unit: MeasurementUnit | null | undefined) {
   return unit === "gram" ? "g" : "ml";
 }
 
-function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promise<void> }) {
+function ProductForm({
+  onCancel,
+  onSubmit,
+  product
+}: {
+  onCancel?: () => void;
+  onSubmit: (payload: ProductInput) => Promise<void>;
+  product?: AdminData["products"][number];
+}) {
   const [form, setForm] = useState({
-    category: "",
-    name: "",
-    purchase: "0",
-    sale: "0",
-    stock: "0",
-    min: "0",
-    contentAmount: "",
-    contentUnit: "ml" as MeasurementUnit
+    category: product?.category ?? "",
+    name: product?.name ?? "",
+    brand: product?.brand ?? "",
+    sku: product?.sku ?? "",
+    purchase: String(product?.purchase ?? 0),
+    sale: String(product?.sale ?? 0),
+    stock: String(product?.stock ?? 0),
+    min: String(product?.min ?? 0),
+    contentAmount: product?.contentAmount ? String(product.contentAmount) : "",
+    contentUnit: product?.contentUnit ?? ("ml" as MeasurementUnit)
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -2077,6 +2191,8 @@ function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promis
     void onSubmit({
       category: form.category,
       name: form.name,
+      brand: form.brand || undefined,
+      sku: form.sku || undefined,
       purchase: Number(form.purchase),
       sale: Number(form.sale),
       stock: Number(form.stock),
@@ -2087,55 +2203,166 @@ function ProductForm({ onSubmit }: { onSubmit: (payload: ProductInput) => Promis
   }
 
   return (
-    <Panel title="New product">
-      <form className="admin-form" onSubmit={submit}>
-        <label>
-          <span>Category</span>
-          <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
-        </label>
-        <label>
-          <span>Product</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-        </label>
-        <label>
-          <span>Purchase price</span>
-          <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
-        </label>
-        <label>
-          <span>Sale price</span>
-          <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
-        </label>
-        <label>
-          <span>Stock</span>
-          <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
-        </label>
-        <label>
-          <span>Minimum stock</span>
-          <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
-        </label>
-        <label>
-          <span>Package content</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={form.contentAmount}
-            onChange={(event) => setForm({ ...form, contentAmount: event.target.value })}
-            placeholder="60"
-          />
-        </label>
-        <label>
-          <span>Content unit</span>
-          <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
-            <option value="ml">ml</option>
-            <option value="gram">g</option>
-          </select>
-        </label>
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Category</span>
+        <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
+      </label>
+      <label>
+        <span>Product</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Brand</span>
+        <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
+      </label>
+      <label>
+        <span>SKU</span>
+        <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
+      </label>
+      <label>
+        <span>Purchase price</span>
+        <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
+      </label>
+      <label>
+        <span>Sale price</span>
+        <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
+      </label>
+      <label>
+        <span>Stock</span>
+        <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
+      </label>
+      <label>
+        <span>Minimum stock</span>
+        <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
+      </label>
+      <label>
+        <span>Package content</span>
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          value={form.contentAmount}
+          onChange={(event) => setForm({ ...form, contentAmount: event.target.value })}
+          placeholder="60"
+        />
+      </label>
+      <label>
+        <span>Content unit</span>
+        <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
+          <option value="ml">ml</option>
+          <option value="gram">g</option>
+        </select>
+      </label>
+      <div className="form-actions">
+        {onCancel ? (
+          <button className="secondary-button compact-button" onClick={onCancel} type="button">
+            Cancel
+          </button>
+        ) : null}
         <button className="primary-button admin-submit" type="submit">
-          Add product
+          {product ? "Save product" : "Add product"}
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
+  );
+}
+
+function StockMovementForm({
+  onCancel,
+  onSubmit,
+  products
+}: {
+  onCancel: () => void;
+  onSubmit: (payload: StockMovementInput) => Promise<void>;
+  products: AdminData["products"];
+}) {
+  const [form, setForm] = useState({
+    productId: products[0]?.id ?? "",
+    movementType: "purchase" as StockMovementInput["movementType"],
+    amountMode: "packages" as StockMovementInput["amountMode"],
+    amount: "1",
+    reason: ""
+  });
+  const selectedProduct = products.find((product) => product.id === form.productId) ?? products[0];
+  const canUseContent = Boolean(selectedProduct?.contentAmount && selectedProduct.contentUnit);
+
+  useEffect(() => {
+    if (form.amountMode === "content" && !canUseContent) {
+      setForm((current) => ({ ...current, amountMode: "packages" }));
+    }
+  }, [canUseContent, form.amountMode]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedProduct) {
+      return;
+    }
+
+    void onSubmit({
+      productId: form.productId,
+      movementType: form.movementType,
+      amountMode: form.amountMode,
+      amount: Number(form.amount),
+      reason: form.reason || undefined
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Product</span>
+        <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
+          {products.map((product) => (
+            <option key={product.id} value={product.id}>
+              {formatProductOption(product)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Movement type</span>
+        <select value={form.movementType} onChange={(event) => setForm({ ...form, movementType: event.target.value as StockMovementInput["movementType"] })}>
+          <option value="purchase">Purchase</option>
+          <option value="adjustment">Adjustment</option>
+          <option value="return">Return</option>
+        </select>
+      </label>
+      <label>
+        <span>Amount mode</span>
+        <select value={form.amountMode} onChange={(event) => setForm({ ...form, amountMode: event.target.value as StockMovementInput["amountMode"] })}>
+          <option value="packages">Packages</option>
+          <option value="content" disabled={!canUseContent}>
+            {selectedProduct?.contentUnit ? formatUnit(selectedProduct.contentUnit) : "ml/g"}
+          </option>
+        </select>
+      </label>
+      <label>
+        <span>{form.amountMode === "content" ? `Amount, ${formatUnit(selectedProduct?.contentUnit)}` : "Packages"}</span>
+        <input
+          step={form.amountMode === "content" ? "0.01" : "1"}
+          type="number"
+          value={form.amount}
+          onChange={(event) => setForm({ ...form, amount: event.target.value })}
+          required
+        />
+      </label>
+      <label>
+        <span>Reason</span>
+        <textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} rows={3} />
+      </label>
+      {form.movementType === "adjustment" ? <small className="form-note">Adjustment can be positive or negative.</small> : null}
+      {!canUseContent ? <small className="form-note">Configure package content on the product to use ml/g movements.</small> : null}
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" disabled={!selectedProduct} type="submit">
+          Save movement
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -2285,13 +2512,41 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
   );
 }
 
-function Panel({ title, action, children }: { title: string; action?: string; children: React.ReactNode }) {
+function AdminModal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
   return (
-    <section className="admin-panel">
+    <div className="admin-modal-backdrop" role="presentation">
+      <section aria-modal="true" className="admin-modal" role="dialog">
+        <div className="panel-header">
+          <h2>{title}</h2>
+          <button aria-label="Close modal" className="icon-only-button" onClick={onClose} title="Close" type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  action,
+  children,
+  onAction,
+  wide
+}: {
+  title: string;
+  action?: string;
+  children: React.ReactNode;
+  onAction?: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <section className={wide ? "admin-panel wide-panel" : "admin-panel"}>
       <header className="panel-header">
         <h2>{title}</h2>
         {action ? (
-          <button className="panel-action" type="button">
+          <button className="panel-action" onClick={onAction} type="button">
             <Plus aria-hidden="true" size={16} />
             {action}
           </button>
@@ -2390,7 +2645,10 @@ function StatusBadge({ status }: { status: string }) {
     paid: "paid",
     refunded: "refunded",
     ready: "ready",
-    blocked: "blocked"
+    blocked: "blocked",
+    ok: "ok",
+    low: "low",
+    not_tracked: "not tracked"
   };
 
   return <span className={`status-badge ${status}`}>{statusLabels[status] ?? status}</span>;

@@ -1721,6 +1721,10 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.admin-panel.wide-panel {
+  grid-column: 1 / -1;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -1754,7 +1758,7 @@ textarea {
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 620px;
+  min-width: 760px;
 }
 
 .admin-table th,
@@ -1792,7 +1796,8 @@ textarea {
 
 .status-badge.completed,
 .status-badge.paid,
-.status-badge.ready {
+.status-badge.ready,
+.status-badge.ok {
   border-color: #98ad89;
   background: #e3eadb;
   color: #4a6940;
@@ -1801,14 +1806,16 @@ textarea {
 .status-badge.cancelled,
 .status-badge.refunded,
 .status-badge.no_show,
-.status-badge.blocked {
+.status-badge.blocked,
+.status-badge.low {
   border-color: #c59b8c;
   background: #f1ddd6;
   color: #8a4937;
 }
 
 .status-badge.pending,
-.status-badge.scheduled {
+.status-badge.scheduled,
+.status-badge.not_tracked {
   border-color: #c8b37b;
   background: #efe4c8;
   color: #745d25;

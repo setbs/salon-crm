@@ -192,6 +192,8 @@ export type AdminPortfolioPhoto = {
 export type AdminProduct = {
   id: string;
   category: string;
+  brand: string | null;
+  sku: string | null;
   name: string;
   purchase: number;
   sale: number;
@@ -201,7 +203,15 @@ export type AdminProduct = {
   contentUnit: MeasurementUnit | null;
   stockContentAmount: number | null;
   stockPackageEquivalent: number | null;
-  movements: Array<{ type: string; quantity: number; reason: string | null; createdAt: string }>;
+  stockStatus: "ok" | "low" | "not_tracked";
+  movements: Array<{
+    type: string;
+    quantity: number;
+    contentQuantity: number | null;
+    contentUnit: MeasurementUnit | null;
+    reason: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type AdminSale = {
@@ -301,12 +311,22 @@ export type AdminAppointmentInput = {
 export type ProductInput = {
   category: string;
   name: string;
+  brand?: string;
+  sku?: string;
   purchase?: number;
   sale: number;
   stock: number;
   min: number;
   contentAmount?: number;
   contentUnit?: MeasurementUnit;
+};
+
+export type StockMovementInput = {
+  productId: string;
+  movementType: "purchase" | "adjustment" | "return";
+  amountMode: "packages" | "content";
+  amount: number;
+  reason?: string;
 };
 
 export type SaleInput = {
@@ -464,6 +484,14 @@ export async function deleteAdminServiceCategory(id: string) {
 
 export async function createAdminProduct(payload: ProductInput) {
   return request<ApiResponse<{ id: string }>>("/api/admin/products", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminProduct(id: string, payload: Partial<ProductInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/products/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function createAdminStockMovement(payload: StockMovementInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/stock-movements", jsonRequest("POST", payload)).then((response) => response.data);
 }
 
 export async function createAdminSale(payload: SaleInput) {

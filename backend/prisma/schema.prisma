@@ -364,12 +364,14 @@ model ProductSaleItem {
 }
 
 model StockMovement {
-  id           BigInt            @id @default(autoincrement())
-  productId    BigInt            @map("product_id")
-  movementType StockMovementType @map("movement_type")
-  quantity     Int
-  reason       String?
-  createdAt    DateTime          @default(now()) @map("created_at")
+  id              BigInt            @id @default(autoincrement())
+  productId       BigInt            @map("product_id")
+  movementType    StockMovementType @map("movement_type")
+  quantity        Int
+  contentQuantity Decimal?          @map("content_quantity") @db.Decimal(10, 2)
+  contentUnit     ConsumableUnit?   @map("content_unit")
+  reason          String?
+  createdAt       DateTime          @default(now()) @map("created_at")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
