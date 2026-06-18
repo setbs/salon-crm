@@ -164,11 +164,31 @@ export const createPortfolioPhotoSchema = z.object({
 
 export const updatePortfolioPhotoSchema = createPortfolioPhotoSchema.partial();
 
-export const createProductSchema = z.object({
-  category: z.string().trim().min(1).max(255),
+export const createProductCategorySchema = z.object({
   name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(1000).optional(),
+  imageUrl: z.string().trim().max(1000).optional()
+});
+
+export const updateProductCategorySchema = createProductCategorySchema.partial();
+
+export const createProductBrandSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(1000).optional()
+});
+
+export const updateProductBrandSchema = createProductBrandSchema.partial();
+
+export const createProductSchema = z.object({
+  categoryId: idStringSchema.optional().or(z.literal("")),
+  category: z.string().trim().max(255).optional(),
+  brandId: idStringSchema.optional().or(z.literal("")),
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(1000).optional(),
+  quote: z.string().trim().max(1000).optional(),
   brand: z.string().trim().max(255).optional(),
   sku: z.string().trim().max(100).optional(),
+  imageUrl: z.string().trim().max(1000).optional(),
   purchase: z.coerce.number().nonnegative().optional(),
   sale: z.coerce.number().nonnegative(),
   stock: z.coerce.number().int(),

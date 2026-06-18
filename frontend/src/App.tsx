@@ -34,12 +34,17 @@ import {
   createAdminEmployeeTimeOff,
   createAdminPortfolioPhoto,
   createAdminProduct,
+  createAdminProductBrand,
+  createAdminProductCategory,
   createAdminSale,
   createAdminService,
   createAdminStockMovement,
   createAppointment,
   deleteAdminEmployeeTimeOff,
   deleteAdminPortfolioPhoto,
+  deleteAdminProduct,
+  deleteAdminProductBrand,
+  deleteAdminProductCategory,
   deleteAdminService,
   deleteAdminServiceCategory,
   fetchAdminData,
@@ -49,6 +54,7 @@ import {
   fetchCurrentUser,
   fetchEmployees,
   fetchPortfolio,
+  fetchProducts,
   fetchServices,
   getStoredAuthToken,
   loginCrm,
@@ -61,10 +67,13 @@ import {
   updateAdminPayment,
   updateAdminPortfolioPhoto,
   updateAdminProduct,
+  updateAdminProductBrand,
+  updateAdminProductCategory,
   updateAdminService,
   updateAdminServiceCategory,
   updateAdminSettings,
   uploadAdminPortfolioImage,
+  uploadAdminProductImage,
   type AdminData,
   type AdminAppointmentInput,
   type AdminClientProfile,
@@ -78,6 +87,9 @@ import {
   type PortfolioInput,
   type PortfolioPhoto,
   type ProductInput,
+  type ProductBrandInput,
+  type ProductCategoryInput,
+  type PublicProduct,
   type SaleInput,
   type Service,
   type ServiceCategoryInput,
@@ -267,7 +279,7 @@ function formatSuggestedDate(value: string) {
   }).format(new Date(`${value}T00:00:00`));
 }
 
-type AppMode = "home" | "admin" | "booking";
+type AppMode = "home" | "admin" | "booking" | "shop";
 type AdminSection =
   | "dashboard"
   | "calendar"
@@ -342,7 +354,9 @@ export function App() {
   return (
     <>
       {mode === "home" ? (
-        <HomeView onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} />
+        <HomeView onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
+      ) : mode === "shop" ? (
+        <ShopView onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
       ) : mode === "admin" ? (
         authUser ? (
           <AdminPanel onLogout={logout} onOpenBooking={() => setMode("booking")} user={authUser} />
@@ -367,7 +381,8 @@ const homeImages = {
   hero: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1800&q=82",
   color: "https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=900&q=82",
   manicure: "https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=900&q=82",
-  care: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=82"
+  care: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=82",
+  products: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&w=1800&q=82"
 };
 
 const homePortfolioFallback = [
@@ -409,7 +424,70 @@ const homePriceFallback: HomePriceCategory[] = [
   }
 ];
 
-function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onOpenBooking: () => void }) {
+const shopProductFallback: PublicProduct[] = [
+  {
+    id: "fallback-shampoo-hyaluronic",
+    category: { id: "fallback-shampoos", name: "Hair shampoos", description: "Daily professional home care", imageUrl: null },
+    name: "Shampoo with hyaluronic acid",
+    brand: "Professional cosmetics",
+    description: "For all hair types",
+    quote: "A clean start for hair that needs lightness and shine.",
+    imageUrl: null,
+    price: 950,
+    contentAmount: 250,
+    contentUnit: "ml",
+    inStock: true
+  },
+  {
+    id: "fallback-shampoo-blackberry",
+    category: { id: "fallback-shampoos", name: "Hair shampoos", description: "Daily professional home care", imageUrl: null },
+    name: "Shampoo with blackberry extract",
+    brand: "Professional cosmetics",
+    description: "Soft cleansing and shine",
+    quote: "A daily ritual for softness without heaviness.",
+    imageUrl: null,
+    price: 900,
+    contentAmount: 250,
+    contentUnit: "ml",
+    inStock: true
+  },
+  {
+    id: "fallback-conditioner-centella",
+    category: { id: "fallback-conditioners", name: "Hair conditioners", description: "Smoothness and easy combing", imageUrl: null },
+    name: "Conditioner with centella extract",
+    brand: "Professional cosmetics",
+    description: "For dry and sensitive hair",
+    quote: "Care that leaves the hair calm, smooth and easier to style.",
+    imageUrl: null,
+    price: 1050,
+    contentAmount: 250,
+    contentUnit: "ml",
+    inStock: true
+  },
+  {
+    id: "fallback-conditioner-lotus",
+    category: { id: "fallback-conditioners", name: "Hair conditioners", description: "Smoothness and easy combing", imageUrl: null },
+    name: "Conditioner with lotus extract",
+    brand: "Professional cosmetics",
+    description: "Light care without heaviness",
+    quote: "A soft finish for hair that should move naturally.",
+    imageUrl: null,
+    price: 1050,
+    contentAmount: 250,
+    contentUnit: "ml",
+    inStock: true
+  }
+];
+
+function HomeView({
+  onOpenAdmin,
+  onOpenBooking,
+  onOpenShop
+}: {
+  onOpenAdmin: () => void;
+  onOpenBooking: () => void;
+  onOpenShop: () => void;
+}) {
   const [services, setServices] = useState<Service[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioPhoto[]>([]);
 
@@ -470,7 +548,8 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
         <nav aria-label="Public navigation">
           <a href="#about">About</a>
           <a href="#portfolio">Portfolio</a>
-          <a href="#price-list">Price list</a>
+          <a className="nav-feature-link" href="#price-list">Price list</a>
+          <button className="nav-feature-link" onClick={onOpenShop} type="button">Cosmetics</button>
           <a href="#contact">Contact</a>
         </nav>
         <div className="home-nav-actions">
@@ -493,6 +572,9 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
           <div className="home-hero-actions">
             <button className="primary-button" onClick={onOpenBooking} type="button">
               Book appointment
+            </button>
+            <button className="secondary-button" onClick={onOpenShop} type="button">
+              Professional cosmetics
             </button>
             <a href="#price-list">View price list</a>
           </div>
@@ -621,6 +703,253 @@ function HomeView({ onOpenAdmin, onOpenBooking }: { onOpenAdmin: () => void; onO
         </button>
       </section>
     </main>
+  );
+}
+
+type ShopProductCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  products: PublicProduct[];
+};
+
+function groupShopProducts(products: PublicProduct[]) {
+  const groups = new Map<string, ShopProductCategory>();
+
+  for (const product of products) {
+    const categoryId = product.category?.id ?? "uncategorized";
+    const categoryName = product.category?.name ?? "Home care";
+    const existing = groups.get(categoryId);
+
+    if (existing) {
+      existing.products.push(product);
+    } else {
+      groups.set(categoryId, {
+        id: categoryId,
+        name: categoryName,
+        description: product.category?.description ?? null,
+        imageUrl: product.category?.imageUrl ?? null,
+        products: [product]
+      });
+    }
+  }
+
+  return [...groups.values()];
+}
+
+function formatProductVolume(product: PublicProduct) {
+  if (!product.contentAmount || !product.contentUnit) {
+    return "home care";
+  }
+
+  return `${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}`;
+}
+
+function ShopView({
+  onOpenAdmin,
+  onOpenBooking,
+  onOpenHome
+}: {
+  onOpenAdmin: () => void;
+  onOpenBooking: () => void;
+  onOpenHome: () => void;
+}) {
+  const [products, setProducts] = useState<PublicProduct[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    fetchProducts()
+      .then((items) => {
+        setProducts(items);
+        setStatus("ready");
+      })
+      .catch(() => {
+        setProducts([]);
+        setStatus("error");
+      });
+  }, []);
+
+  const visibleProducts = useMemo(() => {
+    return products.length > 0 ? products : shopProductFallback;
+  }, [products]);
+  const categories = useMemo(() => groupShopProducts(visibleProducts), [visibleProducts]);
+
+  return (
+    <main className="shop-shell">
+      <header className="home-nav shop-nav">
+        <button className="home-brand-button" onClick={onOpenHome} type="button">
+          <span className="home-mark">SL</span>
+          <span className="cl-logo-part">Color Studio</span>
+        </button>
+        <nav aria-label="Shop navigation">
+          <button onClick={onOpenHome} type="button">Salon</button>
+          <a href="#shop-catalog">Catalog</a>
+          <a href="#shop-contact">Contact</a>
+        </nav>
+        <div className="home-nav-actions">
+          <button className="secondary-button" onClick={onOpenAdmin} type="button">
+            CRM
+          </button>
+          <button className="primary-button" onClick={onOpenBooking} type="button">
+            Book appointment
+          </button>
+        </div>
+      </header>
+
+      <section className="shop-hero">
+        <img alt="Professional hair care cosmetics bottles" src={homeImages.products} />
+        <div className="shop-hero-overlay" />
+        <div className="shop-hero-content">
+          <p className="eyebrow">Professional home care</p>
+          <h1>Professional cosmetics</h1>
+          <p>Products selected for salon clients: shampoos, conditioners and care formulas grouped by category.</p>
+          <div className="home-hero-actions">
+            <a href="#shop-catalog">View catalog</a>
+            <button className="primary-button" onClick={onOpenBooking} type="button">
+              Ask specialist
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="shop-catalog" id="shop-catalog">
+        <div className="shop-watermark" aria-hidden="true">
+          Professional cosmetics
+        </div>
+        <header className="home-price-heading shop-heading">
+          <p className="eyebrow">Product catalog</p>
+          <h2>HOME CARE</h2>
+          <span>{visibleProducts.length} products</span>
+        </header>
+
+        {status === "loading" ? <div className="empty-state">Loading cosmetics...</div> : null}
+        {status === "error" ? <div className="admin-alert">Could not load products. Showing demo catalog.</div> : null}
+
+        <div className="shop-category-list">
+          {categories.map((category) => (
+            <article className="shop-category-card" key={category.id}>
+              <div className="shop-category-media">
+                <img alt="" src={category.imageUrl ?? homeImages.products} />
+                <span>Professional care</span>
+              </div>
+              <div className="shop-category-body">
+                <div className="shop-category-heading">
+                  <div>
+                    <h3>{category.name}</h3>
+                    {category.description ? <p>{category.description}</p> : null}
+                  </div>
+                  <span>{category.products.length} items</span>
+                </div>
+
+                <div className="shop-product-list">
+                  {category.products.map((product) => (
+                    <button className="shop-product-row" key={product.id} onClick={() => setSelectedProduct(product)} type="button">
+                      <div className="shop-product-image">
+                        {product.imageUrl ? (
+                          <img
+                            alt={product.name}
+                            src={product.imageUrl}
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <span>{product.brand?.slice(0, 2) || "SL"}</span>
+                        )}
+                      </div>
+                      <div className="shop-product-copy">
+                        <strong>{product.name}</strong>
+                        <small>{product.description || product.brand || "Professional salon care"}</small>
+                      </div>
+                      <div className="shop-product-meta">
+                        <span>{product.brand || "SL Color Studio"}</span>
+                        <span>{formatProductVolume(product)}</span>
+                        <strong>{formatHryvnia(product.price)}</strong>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <button className="shop-category-action" onClick={onOpenBooking} type="button">
+                  Request recommendation <ArrowRight aria-hidden="true" size={16} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-section home-contact" id="shop-contact">
+        <div className="home-section-heading">
+          <p className="eyebrow">Contact</p>
+          <h2>Choose care with a specialist</h2>
+          <p>The catalog is managed from CRM inventory. Ask the salon team which product fits your hair and color history.</p>
+        </div>
+        <div className="home-contact-grid">
+          <div>
+            <Phone aria-hidden="true" size={20} />
+            <strong>+38 (050) 23 03 408</strong>
+            <span>Phone</span>
+          </div>
+          <div>
+            <MapPin aria-hidden="true" size={20} />
+            <strong>Brody, Stusa St. 2</strong>
+            <span>Pick up in salon</span>
+          </div>
+        </div>
+      </section>
+      {selectedProduct ? <ProductDetailDialog onClose={() => setSelectedProduct(null)} onRequest={onOpenBooking} product={selectedProduct} /> : null}
+    </main>
+  );
+}
+
+function ProductDetailDialog({
+  onClose,
+  onRequest,
+  product
+}: {
+  onClose: () => void;
+  onRequest: () => void;
+  product: PublicProduct;
+}) {
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <section aria-modal="true" className="admin-modal product-detail-modal" role="dialog">
+        <div className="panel-header">
+          <div>
+            <p className="admin-kicker">{product.brand || "Professional cosmetics"}</p>
+            <h2>{product.name}</h2>
+          </div>
+          <button aria-label="Close product details" className="icon-only-button" onClick={onClose} title="Close" type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+        <div className="product-detail-layout">
+          <div className="product-detail-image">
+            {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <span>{product.brand?.slice(0, 2) || "SL"}</span>}
+          </div>
+          <div className="product-detail-copy">
+            <p>{product.description || "Professional salon care selected for home routine support."}</p>
+            <div className="product-detail-meta">
+              <span>{product.category?.name ?? "Home care"}</span>
+              <span>{formatProductVolume(product)}</span>
+              <strong>{formatHryvnia(product.price)}</strong>
+            </div>
+            {product.quote ? <blockquote>{product.quote}</blockquote> : <blockquote>Professional care should feel precise, calm and easy to keep at home.</blockquote>}
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="secondary-button compact-button" onClick={onClose} type="button">
+            Close
+          </button>
+          <button className="primary-button compact-button" onClick={onRequest} type="button">
+            Ask specialist
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -861,7 +1190,7 @@ function AdminContent({
   }
 
   if (section === "products") {
-    return <ProductsSection products={data.products} runAction={runAction} />;
+    return <ProductsSection brands={data.productBrands} categories={data.productCategories} products={data.products} runAction={runAction} />;
   }
 
   if (section === "sales") {
@@ -1365,26 +1694,62 @@ function AppointmentDetailsDialog({
                   </article>
                 ))}
               </div>
-              <div className="appointment-financial-summary">
-                <div>
-                  <span>Services total</span>
-                  <strong>{formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)}</strong>
-                </div>
-                <div>
-                  <span>Revenue from client</span>
-                  <strong>{formatMoneyRange(clientRevenue.from, clientRevenue.to)}</strong>
-                </div>
-                <div>
-                  <span>Consumables cost</span>
-                  <strong>{formatNullableMoney(appointment.consumableCost)}</strong>
-                </div>
-                <div>
-                  <span>After consumables</span>
-                  <strong>{formatNullableMoneyRange(clientProfit.from, clientProfit.to)}</strong>
-                </div>
-              </div>
             </section>
           </div>
+
+          <section className="appointment-finance-card">
+            <div className="profile-section-heading">
+              <h3>Procedure finances</h3>
+              <span>{appointment.paymentStatus}</span>
+            </div>
+            <div className="appointment-finance-metrics">
+              <div>
+                <span>Services total</span>
+                <strong>{formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)}</strong>
+              </div>
+              <div>
+                <span>Client paid</span>
+                <strong>{formatMoneyRange(clientRevenue.from, clientRevenue.to)}</strong>
+              </div>
+              <div>
+                <span>Consumables</span>
+                <strong>{formatNullableMoney(appointment.consumableCost)}</strong>
+              </div>
+              <div>
+                <span>Net profit</span>
+                <strong>{formatNullableMoneyRange(clientProfit.from, clientProfit.to)}</strong>
+              </div>
+            </div>
+            <InfoList
+              items={[
+                ["Payment method", appointment.paymentMethod],
+                ["Payment status", appointment.paymentStatus],
+                ["Amount source", appointment.amount > 0 ? "actual payment" : "service price estimate"]
+              ]}
+            />
+          </section>
+
+          <section className="appointment-audit-card">
+            <div className="profile-section-heading">
+              <h3>Change history</h3>
+              <span>{appointment.auditLogs.length} events</span>
+            </div>
+            {appointment.auditLogs.length > 0 ? (
+              <div className="appointment-audit-list">
+                {appointment.auditLogs.map((log) => (
+                  <article key={log.id}>
+                    <div>
+                      <strong>{log.summary}</strong>
+                      <span>{log.actor} · {formatShortDate(log.createdAt)}</span>
+                    </div>
+                    <StatusBadge status={log.eventType} />
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="modal-state">No changes have been recorded yet.</div>
+            )}
+          </section>
 
           <div className="appointment-comment-grid">
             <article>
@@ -1555,7 +1920,7 @@ function CompletionPreviewDialog({
 
   return (
     <div className="admin-modal-backdrop" role="presentation">
-      <section aria-modal="true" className="admin-modal" role="dialog">
+      <section aria-modal="true" className="admin-modal completion-modal" role="dialog">
         <div className="panel-header">
           <div>
             <p className="admin-kicker">Completion workflow</p>
@@ -3125,37 +3490,167 @@ function PortfolioPhotoForm({
 }
 
 function ProductsSection({
+  brands,
+  categories,
   products,
   runAction
 }: {
+  brands: AdminData["productBrands"];
+  categories: AdminData["productCategories"];
   products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [isCreatingStockMovement, setIsCreatingStockMovement] = useState(false);
+  const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const editingBrand = brands.find((brand) => brand.id === editingBrandId) ?? null;
+  const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
   const editingProduct = products.find((product) => product.id === editingProductId) ?? null;
 
   return (
     <div className="admin-grid">
+      <Panel title="Product categories" action="Add category" onAction={() => setIsCreatingCategory(true)} wide>
+        <DataTable
+          columns={["Photo", "Category", "Products", "Description", "Actions"]}
+          rows={
+            categories.length > 0
+              ? categories.map((category) => [
+                  <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={category.imageUrl} /> : <Package aria-hidden="true" size={16} />}</span>,
+                  category.name,
+                  String(category.productCount),
+                  category.description || "-",
+                  <InlineActions
+                    labels={["Edit", "Delete"]}
+                    onAction={(label) => {
+                      if (label === "Edit") {
+                        setEditingCategoryId(category.id);
+                        return;
+                      }
+
+                      void runAction(() => deleteAdminProductCategory(category.id));
+                    }}
+                  />
+                ])
+              : [["-", "No product categories yet", "-", "Create a category before adding public products.", "-"]]
+          }
+        />
+      </Panel>
+      <Panel title="Product brands" action="Add brand" onAction={() => setIsCreatingBrand(true)} wide>
+        <DataTable
+          columns={["Brand", "Products", "Description", "Actions"]}
+          rows={
+            brands.length > 0
+              ? brands.map((brand) => [
+                  brand.name,
+                  String(brand.productCount),
+                  brand.description || "-",
+                  <InlineActions
+                    labels={["Edit", "Delete"]}
+                    onAction={(label) => {
+                      if (label === "Edit") {
+                        setEditingBrandId(brand.id);
+                        return;
+                      }
+
+                      void runAction(() => deleteAdminProductBrand(brand.id));
+                    }}
+                  />
+                ])
+              : [["No product brands yet", "-", "Create a brand before adding products.", "-"]]
+          }
+        />
+      </Panel>
       <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)}>
         <DataTable
-          columns={["Category", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
+          columns={["Category", "Brand", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
           rows={products.map((item) => [
             item.category,
+            item.brand || "-",
             item.name,
             adminMoney.format(item.purchase),
             adminMoney.format(item.sale),
             item.stockStatus === "low" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
             item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
             <StatusBadge status={item.stockStatus} />,
-            <InlineActions labels={["Edit"]} onAction={() => setEditingProductId(item.id)} />
+            <InlineActions
+              labels={["Edit", "Delete"]}
+              onAction={(label) => {
+                if (label === "Edit") {
+                  setEditingProductId(item.id);
+                  return;
+                }
+
+                void runAction(() => deleteAdminProduct(item.id));
+              }}
+            />
           ])}
         />
       </Panel>
+      {isCreatingBrand ? (
+        <AdminModal title="New product brand" onClose={() => setIsCreatingBrand(false)}>
+          <ProductBrandForm
+            onCancel={() => setIsCreatingBrand(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminProductBrand(payload);
+                setIsCreatingBrand(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {editingBrand ? (
+        <AdminModal title={`Edit brand: ${editingBrand.name}`} onClose={() => setEditingBrandId(null)}>
+          <ProductBrandForm
+            brand={editingBrand}
+            key={editingBrand.id}
+            onCancel={() => setEditingBrandId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminProductBrand(editingBrand.id, payload);
+                setEditingBrandId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {isCreatingCategory ? (
+        <AdminModal title="New product category" onClose={() => setIsCreatingCategory(false)}>
+          <ProductCategoryForm
+            onCancel={() => setIsCreatingCategory(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminProductCategory(payload);
+                setIsCreatingCategory(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {editingCategory ? (
+        <AdminModal title={`Edit category: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
+          <ProductCategoryForm
+            category={editingCategory}
+            key={editingCategory.id}
+            onCancel={() => setEditingCategoryId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminProductCategory(editingCategory.id, payload);
+                setEditingCategoryId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
       {isCreatingProduct ? (
         <AdminModal title="New product" onClose={() => setIsCreatingProduct(false)}>
           <ProductForm
+            brands={brands}
+            categories={categories}
             onCancel={() => setIsCreatingProduct(false)}
             onSubmit={(payload) =>
               runAction(async () => {
@@ -3169,6 +3664,8 @@ function ProductsSection({
       {editingProduct ? (
         <AdminModal title={`Edit product: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
           <ProductForm
+            brands={brands}
+            categories={categories}
             key={editingProduct.id}
             onCancel={() => setEditingProductId(null)}
             onSubmit={(payload) =>
@@ -3891,20 +4388,156 @@ function formatUnit(unit: MeasurementUnit | null | undefined) {
   return unit === "gram" ? "g" : "ml";
 }
 
+function ProductBrandForm({
+  brand,
+  onCancel,
+  onSubmit
+}: {
+  brand?: AdminData["productBrands"][number];
+  onCancel: () => void;
+  onSubmit: (payload: ProductBrandInput) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    name: brand?.name ?? "",
+    description: brand?.description ?? ""
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      name: form.name,
+      description: form.description || undefined
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Brand name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" type="submit">
+          {brand ? "Save brand" : "Create brand"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ProductCategoryForm({
+  category,
+  onCancel,
+  onSubmit
+}: {
+  category?: AdminData["productCategories"][number];
+  onCancel: () => void;
+  onSubmit: (payload: ProductCategoryInput) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    name: category?.name ?? "",
+    description: category?.description ?? "",
+    imageUrl: category?.imageUrl ?? ""
+  });
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError("");
+
+    try {
+      const result = await uploadAdminProductImage(file);
+      setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      name: form.name,
+      description: form.description || undefined,
+      imageUrl: form.imageUrl
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Category name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      </label>
+      <label>
+        <span>Category photo</span>
+        <input
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          disabled={isUploading}
+          onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)}
+          type="file"
+        />
+      </label>
+      {uploadError ? <p className="form-note">{uploadError}</p> : null}
+      {form.imageUrl ? (
+        <div className="portfolio-form-preview">
+          <img alt="Product category preview" src={form.imageUrl} />
+        </div>
+      ) : null}
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" disabled={isUploading || !form.imageUrl} type="submit">
+          {isUploading ? "Uploading..." : category ? "Save category" : "Create category"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ProductForm({
+  brands,
+  categories,
   onCancel,
   onSubmit,
   product
 }: {
+  brands: AdminData["productBrands"];
+  categories: AdminData["productCategories"];
   onCancel?: () => void;
   onSubmit: (payload: ProductInput) => Promise<void>;
   product?: AdminData["products"][number];
 }) {
   const [form, setForm] = useState({
+    categoryId: product?.categoryId ?? categories[0]?.id ?? "",
+    brandId: product?.brandId ?? brands[0]?.id ?? "",
     category: product?.category ?? "",
     name: product?.name ?? "",
+    description: product?.description ?? "",
+    quote: product?.quote ?? "",
     brand: product?.brand ?? "",
     sku: product?.sku ?? "",
+    imageUrl: product?.imageUrl ?? "",
     purchase: String(product?.purchase ?? 0),
     sale: String(product?.sale ?? 0),
     stock: String(product?.stock ?? 0),
@@ -3912,14 +4545,39 @@ function ProductForm({
     contentAmount: product?.contentAmount ? String(product.contentAmount) : "",
     contentUnit: product?.contentUnit ?? ("ml" as MeasurementUnit)
   });
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError("");
+
+    try {
+      const result = await uploadAdminProductImage(file);
+      setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void onSubmit({
-      category: form.category,
+      categoryId: categories.length > 0 ? form.categoryId : undefined,
+      category: categories.length > 0 ? undefined : form.category,
+      brandId: brands.length > 0 ? form.brandId : undefined,
       name: form.name,
-      brand: form.brand || undefined,
+      description: form.description,
+      quote: form.quote,
+      brand: brands.length > 0 ? undefined : form.brand || undefined,
       sku: form.sku || undefined,
+      imageUrl: form.imageUrl,
       purchase: Number(form.purchase),
       sale: Number(form.sale),
       stock: Number(form.stock),
@@ -3931,22 +4589,78 @@ function ProductForm({
 
   return (
     <form className="admin-form" onSubmit={submit}>
-      <label>
-        <span>Category</span>
-        <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
-      </label>
+      {categories.length > 0 ? (
+        <label>
+          <span>Category</span>
+          <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} required>
+            <option value="">Select category</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label>
+          <span>Category</span>
+          <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
+        </label>
+      )}
       <label>
         <span>Product</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Brand</span>
-        <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
+        <span>Description</span>
+        <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="For all hair types" />
+      </label>
+      {brands.length > 0 ? (
+        <label>
+          <span>Brand</span>
+          <select value={form.brandId} onChange={(event) => setForm({ ...form, brandId: event.target.value })} required>
+            <option value="">Select brand</option>
+            {brands.map((brand) => (
+              <option key={brand.id} value={brand.id}>
+                {brand.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label>
+          <span>Brand</span>
+          <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
+        </label>
+      )}
+      <label>
+        <span>Product quote</span>
+        <textarea
+          value={form.quote}
+          onChange={(event) => setForm({ ...form, quote: event.target.value })}
+          placeholder="A short elegant line for the client product card"
+          rows={3}
+        />
       </label>
       <label>
         <span>SKU</span>
         <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
       </label>
+      <label>
+        <span>Product photo</span>
+        <input
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          disabled={isUploading}
+          onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)}
+          type="file"
+        />
+      </label>
+      {uploadError ? <p className="form-note">{uploadError}</p> : null}
+      {form.imageUrl ? (
+        <div className="portfolio-form-preview">
+          <img alt="Product preview" src={form.imageUrl} />
+        </div>
+      ) : null}
       <label>
         <span>Purchase price</span>
         <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
@@ -3987,8 +4701,12 @@ function ProductForm({
             Cancel
           </button>
         ) : null}
-        <button className="primary-button admin-submit" type="submit">
-          {product ? "Save product" : "Add product"}
+        <button
+          className="primary-button admin-submit"
+          disabled={isUploading || !form.imageUrl || (categories.length > 0 ? !form.categoryId : !form.category.trim()) || (brands.length > 0 ? !form.brandId : false)}
+          type="submit"
+        >
+          {isUploading ? "Uploading..." : product ? "Save product" : "Add product"}
         </button>
       </div>
     </form>
@@ -4377,7 +5095,10 @@ function StatusBadge({ status }: { status: string }) {
     blocked: "blocked",
     ok: "ok",
     low: "low",
-    not_tracked: "not tracked"
+    not_tracked: "not tracked",
+    payment_updated: "payment",
+    status_updated: "status",
+    completion_corrected: "corrected"
   };
 
   return <span className={`status-badge ${status}`}>{statusLabels[status] ?? status}</span>;

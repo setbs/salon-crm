@@ -192,6 +192,7 @@ export function listPortfolio(employeeId?: bigint) {
 
 export function listProducts() {
   return prisma.product.findMany({
+    where: { isActive: true },
     include: {
       category: true,
       stockMovements: { orderBy: { createdAt: "desc" }, take: 12 }

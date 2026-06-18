@@ -5,6 +5,8 @@ import {
   createEmployeeTimeOff,
   createPortfolioPhoto,
   createProduct,
+  createProductBrand,
+  createProductCategory,
   createProductSale,
   createAppointment,
   createService,
@@ -14,6 +16,9 @@ import {
   deleteServiceCategory,
   deleteEmployeeTimeOff,
   deletePortfolioPhoto,
+  deleteProduct,
+  deleteProductBrand,
+  deleteProductCategory,
   getAppointmentConsumablePreview,
   getClientProfile,
   getAppointments,
@@ -23,6 +28,8 @@ import {
   getEmployees,
   getPayments,
   getPortfolio,
+  getProductBrands,
+  getProductCategories,
   getProductSales,
   getProducts,
   getReviews,
@@ -35,15 +42,20 @@ import {
   updatePayment,
   updatePortfolioPhoto,
   updateProduct,
+  updateProductBrand,
+  updateProductCategory,
   updateService,
   updateServiceCategory,
   updateSettings,
-  uploadPortfolioImage
+  uploadPortfolioImage,
+  uploadProductImage
 } from "./admin.service.js";
 import {
   createEmployeeSchema,
   createEmployeeTimeOffSchema,
   createPortfolioPhotoSchema,
+  createProductBrandSchema,
+  createProductCategorySchema,
   createProductSchema,
   createAppointmentSchema,
   createSaleSchema,
@@ -55,6 +67,8 @@ import {
   updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
   updatePortfolioPhotoSchema,
+  updateProductBrandSchema,
+  updateProductCategorySchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
@@ -307,6 +321,94 @@ adminRouter.delete("/admin/portfolio/:id", async (request, response, next) => {
   }
 });
 
+adminRouter.post("/admin/uploads/products", raw({ limit: "6mb", type: ["image/jpeg", "image/png", "image/webp", "image/gif"] }), async (request, response, next) => {
+  try {
+    if (!Buffer.isBuffer(request.body)) {
+      response.status(400).json({ message: "Image upload body is required." });
+      return;
+    }
+
+    response.status(201).json({
+      data: await uploadProductImage(getAuthenticatedUser(request), {
+        contentType: request.headers["content-type"] ?? "",
+        buffer: request.body
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/admin/product-categories", async (request, response, next) => {
+  try {
+    response.json({ data: await getProductCategories(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/product-categories", async (request, response, next) => {
+  try {
+    const body = createProductCategorySchema.parse(request.body);
+    response.status(201).json({ data: await createProductCategory(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/product-categories/:id", async (request, response, next) => {
+  try {
+    const body = updateProductCategorySchema.parse(request.body);
+    response.json({ data: await updateProductCategory(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/product-categories/:id", async (request, response, next) => {
+  try {
+    await deleteProductCategory(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/admin/product-brands", async (request, response, next) => {
+  try {
+    response.json({ data: await getProductBrands(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/product-brands", async (request, response, next) => {
+  try {
+    const body = createProductBrandSchema.parse(request.body);
+    response.status(201).json({ data: await createProductBrand(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/product-brands/:id", async (request, response, next) => {
+  try {
+    const body = updateProductBrandSchema.parse(request.body);
+    response.json({ data: await updateProductBrand(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/product-brands/:id", async (request, response, next) => {
+  try {
+    await deleteProductBrand(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.get("/admin/products", async (request, response, next) => {
   try {
     response.json({ data: await getProducts(getAuthenticatedUser(request)) });
@@ -328,6 +430,15 @@ adminRouter.patch("/admin/products/:id", async (request, response, next) => {
   try {
     const body = updateProductSchema.parse(request.body);
     response.json({ data: await updateProduct(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/products/:id", async (request, response, next) => {
+  try {
+    await deleteProduct(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }

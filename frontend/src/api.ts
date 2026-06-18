@@ -5,6 +5,7 @@ export type Service = {
     id: string;
     name: string;
     description: string | null;
+    imageUrl: string | null;
   } | null;
   name: string;
   description: string | null;
@@ -29,6 +30,25 @@ export type PortfolioPhoto = {
   description: string | null;
   imageUrl: string;
   employee: string;
+};
+
+export type PublicProduct = {
+  id: string;
+  category: {
+    id: string;
+    name: string;
+    description: string | null;
+    imageUrl: string | null;
+  } | null;
+  name: string;
+  brand: string | null;
+  description: string | null;
+  quote: string | null;
+  imageUrl: string | null;
+  price: number;
+  contentAmount: number | null;
+  contentUnit: MeasurementUnit | null;
+  inStock: boolean;
 };
 
 export type Slot = {
@@ -162,6 +182,13 @@ export type AdminAppointment = {
   consumableCost: number | null;
   profitAfterConsumablesFrom: number | null;
   profitAfterConsumablesTo: number | null;
+  auditLogs: Array<{
+    id: string;
+    eventType: string;
+    summary: string;
+    actor: string;
+    createdAt: string;
+  }>;
 };
 
 export type AdminClient = {
@@ -288,10 +315,15 @@ export type AdminPortfolioPhoto = {
 
 export type AdminProduct = {
   id: string;
+  categoryId: string | null;
+  brandId: string | null;
   category: string;
   brand: string | null;
   sku: string | null;
+  imageUrl: string | null;
   name: string;
+  description: string | null;
+  quote: string | null;
   purchase: number;
   sale: number;
   stock: number;
@@ -309,6 +341,21 @@ export type AdminProduct = {
     reason: string | null;
     createdAt: string;
   }>;
+};
+
+export type AdminProductCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  productCount: number;
+};
+
+export type AdminProductBrand = {
+  id: string;
+  name: string;
+  description: string | null;
+  productCount: number;
 };
 
 export type AdminSale = {
@@ -359,6 +406,8 @@ export type AdminData = {
   services: AdminService[];
   employees: AdminEmployee[];
   portfolio: AdminPortfolioPhoto[];
+  productCategories: AdminProductCategory[];
+  productBrands: AdminProductBrand[];
   products: AdminProduct[];
   sales: AdminSale[];
   payments: AdminPayment[];
@@ -439,16 +488,32 @@ export type AdminAppointmentInput = {
 };
 
 export type ProductInput = {
-  category: string;
+  categoryId?: string;
+  category?: string;
+  brandId?: string;
   name: string;
+  description?: string;
+  quote?: string;
   brand?: string;
   sku?: string;
+  imageUrl?: string;
   purchase?: number;
   sale: number;
   stock: number;
   min: number;
   contentAmount?: number;
   contentUnit?: MeasurementUnit;
+};
+
+export type ProductCategoryInput = {
+  name: string;
+  description?: string;
+  imageUrl?: string;
+};
+
+export type ProductBrandInput = {
+  name: string;
+  description?: string;
 };
 
 export type StockMovementInput = {
@@ -540,6 +605,10 @@ export async function fetchPortfolio() {
   return request<ApiResponse<PortfolioPhoto[]>>("/api/portfolio").then((response) => response.data);
 }
 
+export async function fetchProducts() {
+  return request<ApiResponse<PublicProduct[]>>("/api/products").then((response) => response.data);
+}
+
 export async function createAppointment(payload: AppointmentPayload) {
   return request<ApiResponse<{ id: string; startTime: string }>>("/api/appointments", {
     method: "POST",
@@ -549,7 +618,7 @@ export async function createAppointment(payload: AppointmentPayload) {
 }
 
 export async function fetchAdminData(): Promise<AdminData> {
-  const [dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings] = await Promise.all([
+  const [dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings] = await Promise.all([
     getAdmin<AdminDashboard>("dashboard"),
     getAdmin<AdminConsumableAnalytics>("consumable-analytics"),
     getAdmin<AdminAppointment[]>("appointments"),
@@ -558,6 +627,8 @@ export async function fetchAdminData(): Promise<AdminData> {
     getAdmin<AdminService[]>("services"),
     getAdmin<AdminEmployee[]>("employees"),
     getAdmin<AdminPortfolioPhoto[]>("portfolio"),
+    getAdmin<AdminProductCategory[]>("product-categories"),
+    getAdmin<AdminProductBrand[]>("product-brands"),
     getAdmin<AdminProduct[]>("products"),
     getAdmin<AdminSale[]>("sales"),
     getAdmin<AdminPayment[]>("payments"),
@@ -565,7 +636,7 @@ export async function fetchAdminData(): Promise<AdminData> {
     getAdmin<AdminSettings>("settings")
   ]);
 
-  return { dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, products, sales, payments, reviews, settings };
+  return { dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings };
 }
 
 async function getAdmin<T>(resource: string) {
@@ -626,6 +697,14 @@ export async function uploadAdminPortfolioImage(file: File) {
   }).then((response) => response.data);
 }
 
+export async function uploadAdminProductImage(file: File) {
+  return request<ApiResponse<{ imageUrl: string }>>(`/api/admin/uploads/products`, {
+    method: "POST",
+    headers: { "Content-Type": file.type },
+    body: file
+  }).then((response) => response.data);
+}
+
 export async function createAdminService(payload: ServiceInput) {
   return request<ApiResponse<{ id: string }>>("/api/admin/services", jsonRequest("POST", payload)).then((response) => response.data);
 }
@@ -676,6 +755,34 @@ export async function createAdminProduct(payload: ProductInput) {
 
 export async function updateAdminProduct(id: string, payload: Partial<ProductInput>) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/products/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminProduct(id: string) {
+  return request<void>(`/api/admin/products/${id}`, { method: "DELETE" });
+}
+
+export async function createAdminProductCategory(payload: ProductCategoryInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/product-categories", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminProductCategory(id: string, payload: Partial<ProductCategoryInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/product-categories/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminProductCategory(id: string) {
+  return request<void>(`/api/admin/product-categories/${id}`, { method: "DELETE" });
+}
+
+export async function createAdminProductBrand(payload: ProductBrandInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/product-brands", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminProductBrand(id: string, payload: Partial<ProductBrandInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/product-brands/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminProductBrand(id: string) {
+  return request<void>(`/api/admin/product-brands/${id}`, { method: "DELETE" });
 }
 
 export async function createAdminStockMovement(payload: StockMovementInput) {

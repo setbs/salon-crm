@@ -45,8 +45,7 @@ export function listActiveEmployees(serviceIds: bigint[]) {
 export function listVisiblePortfolio() {
   return prisma.portfolioPhoto.findMany({
     where: {
-      isVisible: true,
-      employee: { isActive: true }
+      isVisible: true
     },
     include: {
       employee: { include: { user: true } }
@@ -54,6 +53,34 @@ export function listVisiblePortfolio() {
     orderBy: { createdAt: "desc" },
     take: 12
   });
+}
+
+export function listPublicProducts() {
+  return prisma.$queryRaw<PublicProductRow[]>`
+    SELECT
+      p.id,
+      p.category_id AS "categoryId",
+      pc.name AS "categoryName",
+      pc.description AS "categoryDescription",
+      pc.image_url AS "categoryImageUrl",
+      p.brand_id AS "brandId",
+      pb.name AS "brandName",
+      p.name,
+      p.brand,
+      p.description,
+      p.quote,
+      p.image_url AS "imageUrl",
+      p.selling_price AS price,
+      p.content_amount AS "contentAmount",
+      lower(p.content_unit::text) AS "contentUnit",
+      p.stock_quantity AS "stockQuantity",
+      p.stock_content_amount AS "stockContentAmount"
+    FROM products p
+    LEFT JOIN product_categories pc ON pc.id = p.category_id
+    LEFT JOIN product_brands pb ON pb.id = p.brand_id
+    WHERE p.is_active = true
+    ORDER BY pc.name ASC NULLS LAST, p.name ASC
+  `;
 }
 
 export type ActiveServiceRow = {
@@ -67,4 +94,24 @@ export type ActiveServiceRow = {
   priceTo: Prisma.Decimal | null;
   categoryName: string | null;
   categoryDescription: string | null;
+};
+
+export type PublicProductRow = {
+  id: bigint;
+  categoryId: bigint | null;
+  categoryName: string | null;
+  categoryDescription: string | null;
+  categoryImageUrl: string | null;
+  brandId: bigint | null;
+  brandName: string | null;
+  name: string;
+  brand: string | null;
+  description: string | null;
+  quote: string | null;
+  imageUrl: string | null;
+  price: Prisma.Decimal;
+  contentAmount: Prisma.Decimal | null;
+  contentUnit: string | null;
+  stockQuantity: number;
+  stockContentAmount: Prisma.Decimal | null;
 };

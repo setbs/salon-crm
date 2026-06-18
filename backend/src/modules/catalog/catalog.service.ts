@@ -1,4 +1,4 @@
-import { listActiveEmployees, listActiveServices, listVisiblePortfolio } from "./catalog.repository.js";
+import { listActiveEmployees, listActiveServices, listPublicProducts, listVisiblePortfolio } from "./catalog.repository.js";
 
 export async function getServices() {
   const services = await listActiveServices();
@@ -49,5 +49,30 @@ export async function getPortfolio() {
     description: photo.description,
     imageUrl: photo.imageUrl,
     employee: `${photo.employee.user.firstName} ${photo.employee.user.lastName}`
+  }));
+}
+
+export async function getProducts() {
+  const products = await listPublicProducts();
+
+  return products.map((product) => ({
+    id: product.id.toString(),
+    category: product.categoryId
+      ? {
+          id: product.categoryId.toString(),
+          name: product.categoryName ?? "Home care",
+          description: product.categoryDescription,
+          imageUrl: product.categoryImageUrl
+        }
+      : null,
+    name: product.name,
+    brand: product.brandName ?? product.brand,
+    description: product.description,
+    quote: product.quote,
+    imageUrl: product.imageUrl,
+    price: Number(product.price),
+    contentAmount: product.contentAmount ? Number(product.contentAmount) : null,
+    contentUnit: product.contentUnit,
+    inStock: product.stockQuantity > 0 || (product.stockContentAmount !== null && Number(product.stockContentAmount) > 0)
   }));
 }

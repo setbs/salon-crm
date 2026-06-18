@@ -28,6 +28,8 @@ import type {
   createEmployeeSchema,
   createEmployeeTimeOffSchema,
   createPortfolioPhotoSchema,
+  createProductBrandSchema,
+  createProductCategorySchema,
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
@@ -38,6 +40,8 @@ import type {
   updateEmployeeWorkingHoursSchema,
   updatePaymentSchema,
   updatePortfolioPhotoSchema,
+  updateProductBrandSchema,
+  updateProductCategorySchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
@@ -61,9 +65,17 @@ type AppointmentFinancialSummary = {
   profitAfterConsumablesFrom: number | null;
   profitAfterConsumablesTo: number | null;
 };
+type AppointmentAuditEntry = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actor: string;
+  createdAt: string;
+};
 type AppointmentDisplayExtras = {
   services: AppointmentServiceLine[];
   financials: AppointmentFinancialSummary;
+  auditLogs: AppointmentAuditEntry[];
 };
 const portfolioUploadTypes = new Map([
   ["image/jpeg", "jpg"],
@@ -72,6 +84,7 @@ const portfolioUploadTypes = new Map([
   ["image/gif", "gif"]
 ]);
 const portfolioUploadDir = path.resolve(process.cwd(), "public/uploads/portfolio");
+const productUploadDir = path.resolve(process.cwd(), "public/uploads/products");
 
 export async function getDashboard(actor: CrmAuthenticatedUser) {
   const now = new Date();
@@ -747,6 +760,145 @@ export async function uploadPortfolioImage(
   };
 }
 
+export async function uploadProductImage(
+  actor: CrmAuthenticatedUser,
+  input: {
+    contentType: string;
+    buffer: Buffer;
+  }
+) {
+  assertAdmin(actor);
+
+  const contentType = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const extension = portfolioUploadTypes.get(contentType);
+
+  if (!extension) {
+    throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
+  }
+
+  if (input.buffer.length === 0) {
+    throw new HttpError(400, "Upload file is empty.");
+  }
+
+  await mkdir(productUploadDir, { recursive: true });
+  const fileName = `${Date.now()}-${randomUUID()}.${extension}`;
+  await writeFile(path.join(productUploadDir, fileName), input.buffer, { flag: "wx" });
+
+  return {
+    imageUrl: `/uploads/products/${fileName}`
+  };
+}
+
+export async function getProductCategories(actor: CrmAuthenticatedUser) {
+  assertAdmin(actor);
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: bigint; name: string; description: string | null; imageUrl: string | null; productCount: number }>
+  >`
+    SELECT
+      category.id,
+      category.name,
+      category.description,
+      category.image_url AS "imageUrl",
+      COUNT(product.id) FILTER (WHERE product.is_active = true)::int AS "productCount"
+    FROM product_categories category
+    LEFT JOIN products product ON product.category_id = category.id
+    GROUP BY category.id, category.name, category.description, category.image_url
+    ORDER BY category.name ASC
+  `;
+
+  return rows.map((category) => ({
+    id: category.id.toString(),
+    name: category.name,
+    description: category.description,
+    imageUrl: category.imageUrl,
+    productCount: category.productCount
+  }));
+}
+
+export async function createProductCategory(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductCategorySchema>) {
+  assertAdmin(actor);
+
+  const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
+    INSERT INTO product_categories (name, description, image_url)
+    VALUES (${input.name}, ${input.description || null}, ${input.imageUrl || null})
+    RETURNING id
+  `;
+
+  return { id: category.id.toString() };
+}
+
+export async function updateProductCategory(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateProductCategorySchema>) {
+  assertAdmin(actor);
+
+  const updates: Prisma.Sql[] = [];
+
+  if (input.name !== undefined) {
+    updates.push(Prisma.sql`name = ${input.name}`);
+  }
+
+  if (input.description !== undefined) {
+    updates.push(Prisma.sql`description = ${input.description || null}`);
+  }
+
+  if (input.imageUrl !== undefined) {
+    updates.push(Prisma.sql`image_url = ${input.imageUrl || null}`);
+  }
+
+  if (updates.length === 0) {
+    return { id: id.toString() };
+  }
+
+  const [category] = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+    UPDATE product_categories
+    SET ${Prisma.join(updates, ", ")}
+    WHERE id = ${id}
+    RETURNING id
+  `);
+
+  if (!category) {
+    throw new HttpError(404, "Product category not found.");
+  }
+
+  return { id: category.id.toString() };
+}
+
+export async function deleteProductCategory(actor: CrmAuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const [category] = await prisma.$queryRaw<Array<{ id: bigint; productCount: number }>>`
+    SELECT
+      category.id,
+      COUNT(product.id) FILTER (WHERE product.is_active = true)::int AS "productCount"
+    FROM product_categories category
+    LEFT JOIN products product ON product.category_id = category.id
+    WHERE category.id = ${id}
+    GROUP BY category.id
+  `;
+
+  if (!category) {
+    throw new HttpError(404, "Product category not found.");
+  }
+
+  if (category.productCount > 0) {
+    throw new HttpError(409, "Product category contains products. Move or delete products first.");
+  }
+
+  await prisma.$executeRaw`
+    UPDATE products
+    SET category_id = NULL
+    WHERE category_id = ${id}
+      AND is_active = false
+  `;
+
+  await prisma.$executeRaw`
+    DELETE FROM product_categories
+    WHERE id = ${id}
+  `;
+
+  return { id: id.toString() };
+}
+
 export async function getProducts(actor: CrmAuthenticatedUser) {
   if (actor.role !== "ADMIN") {
     return [];
@@ -754,14 +906,28 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
 
   const products = await listProducts();
   const productContentRows = await prisma.$queryRaw<
-    Array<{ id: bigint; contentAmount: Prisma.Decimal | null; contentUnit: string | null; stockContentAmount: Prisma.Decimal | null }>
+    Array<{
+      id: bigint;
+      brandId: bigint | null;
+      brandName: string | null;
+      imageUrl: string | null;
+      quote: string | null;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      stockContentAmount: Prisma.Decimal | null;
+    }>
   >`
     SELECT
-      id,
-      content_amount AS "contentAmount",
-      lower(content_unit::text) AS "contentUnit",
-      stock_content_amount AS "stockContentAmount"
-    FROM products
+      product.id,
+      product.brand_id AS "brandId",
+      product_brand.name AS "brandName",
+      product.image_url AS "imageUrl",
+      product.quote,
+      product.content_amount AS "contentAmount",
+      lower(product.content_unit::text) AS "contentUnit",
+      product.stock_content_amount AS "stockContentAmount"
+    FROM products product
+    LEFT JOIN product_brands product_brand ON product_brand.id = product.brand_id
   `;
   const productContent = new Map(productContentRows.map((row) => [row.id.toString(), row]));
   const movementContentRows = await prisma.$queryRaw<
@@ -782,10 +948,15 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
 
     return {
       id: product.id.toString(),
+      categoryId: product.category?.id.toString() ?? null,
       category: product.category?.name ?? "Uncategorized",
-      brand: product.brand,
+      brandId: content?.brandId?.toString() ?? null,
+      brand: content?.brandName ?? product.brand,
       sku: product.sku,
+      imageUrl: content?.imageUrl ?? null,
       name: product.name,
+      description: product.description,
+      quote: content?.quote ?? null,
       purchase: Number(product.purchasePrice ?? 0),
       sale: Number(product.sellingPrice),
       stock: product.stockQuantity,
@@ -944,6 +1115,22 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
       });
     }
 
+    const auditEvent = buildAppointmentAuditEvent({
+      currentStatus: current.status,
+      nextStatus,
+      input,
+      shouldCompleteAppointment,
+      shouldSyncConsumables
+    });
+
+    if (auditEvent) {
+      await recordAppointmentAuditLog(transaction, {
+        appointmentId: id,
+        actorUserId: BigInt(actor.id),
+        ...auditEvent
+      });
+    }
+
     return updatedAppointment;
   });
 
@@ -1024,6 +1211,16 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
 
     if (appointmentStatus === AppointmentStatus.COMPLETED) {
       await syncAppointmentConsumables(transaction, createdAppointment.id);
+      await recordAppointmentAuditLog(transaction, {
+        appointmentId: createdAppointment.id,
+        actorUserId: BigInt(actor.id),
+        eventType: "completed",
+        summary: "Appointment was created as completed.",
+        details: {
+          statusTo: "completed",
+          paymentStatus: "paid"
+        }
+      });
     }
 
     return createdAppointment;
@@ -1221,20 +1418,189 @@ export async function deleteServiceCategory(actor: CrmAuthenticatedUser, id: big
   return { id: id.toString() };
 }
 
+export async function getProductBrands(actor: CrmAuthenticatedUser) {
+  assertAdmin(actor);
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: bigint; name: string; description: string | null; productCount: number }>
+  >`
+    SELECT
+      brand.id,
+      brand.name,
+      brand.description,
+      COUNT(product.id) FILTER (WHERE product.is_active = true)::int AS "productCount"
+    FROM product_brands brand
+    LEFT JOIN products product ON product.brand_id = brand.id
+    GROUP BY brand.id, brand.name, brand.description
+    ORDER BY brand.name ASC
+  `;
+
+  return rows.map((brand) => ({
+    id: brand.id.toString(),
+    name: brand.name,
+    description: brand.description,
+    productCount: brand.productCount
+  }));
+}
+
+export async function createProductBrand(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductBrandSchema>) {
+  assertAdmin(actor);
+
+  const [brand] = await prisma.$queryRaw<{ id: bigint }[]>`
+    INSERT INTO product_brands (name, description)
+    VALUES (${input.name}, ${input.description || null})
+    RETURNING id
+  `;
+
+  return { id: brand.id.toString() };
+}
+
+export async function updateProductBrand(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateProductBrandSchema>) {
+  assertAdmin(actor);
+
+  const updates: Prisma.Sql[] = [];
+
+  if (input.name !== undefined) {
+    updates.push(Prisma.sql`name = ${input.name}`);
+  }
+
+  if (input.description !== undefined) {
+    updates.push(Prisma.sql`description = ${input.description || null}`);
+  }
+
+  if (updates.length === 0) {
+    return { id: id.toString() };
+  }
+
+  const [brand] = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+    UPDATE product_brands
+    SET ${Prisma.join(updates, ", ")}
+    WHERE id = ${id}
+    RETURNING id
+  `);
+
+  if (!brand) {
+    throw new HttpError(404, "Product brand not found.");
+  }
+
+  await prisma.$executeRaw`
+    UPDATE products
+    SET brand = (SELECT name FROM product_brands WHERE id = ${id})
+    WHERE brand_id = ${id}
+  `;
+
+  return { id: brand.id.toString() };
+}
+
+export async function deleteProductBrand(actor: CrmAuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const [brand] = await prisma.$queryRaw<Array<{ id: bigint; productCount: number }>>`
+    SELECT
+      brand.id,
+      COUNT(product.id) FILTER (WHERE product.is_active = true)::int AS "productCount"
+    FROM product_brands brand
+    LEFT JOIN products product ON product.brand_id = brand.id
+    WHERE brand.id = ${id}
+    GROUP BY brand.id
+  `;
+
+  if (!brand) {
+    throw new HttpError(404, "Product brand not found.");
+  }
+
+  if (brand.productCount > 0) {
+    throw new HttpError(409, "Product brand is used by products. Move products to another brand first.");
+  }
+
+  await prisma.$executeRaw`
+    UPDATE products
+    SET brand_id = NULL
+    WHERE brand_id = ${id}
+      AND is_active = false
+  `;
+
+  await prisma.$executeRaw`
+    DELETE FROM product_brands
+    WHERE id = ${id}
+  `;
+
+  return { id: id.toString() };
+}
+
+async function resolveProductCategoryId(input: { categoryId?: string; category?: string }, required: boolean) {
+  if (input.categoryId) {
+    const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
+      SELECT id
+      FROM product_categories
+      WHERE id = ${BigInt(input.categoryId)}
+    `;
+
+    if (!category) {
+      throw new HttpError(400, "Product category does not exist.");
+    }
+
+    return category.id;
+  }
+
+  if (input.category?.trim()) {
+    const category = await prisma.productCategory.upsert({
+      where: { name: input.category },
+      update: {},
+      create: { name: input.category }
+    });
+
+    return category.id;
+  }
+
+  if (required) {
+    throw new HttpError(400, "Product category is required.");
+  }
+
+  return undefined;
+}
+
+async function resolveProductBrand(input: { brandId?: string; brand?: string }) {
+  if (input.brandId) {
+    const [brand] = await prisma.$queryRaw<{ id: bigint; name: string }[]>`
+      SELECT id, name
+      FROM product_brands
+      WHERE id = ${BigInt(input.brandId)}
+    `;
+
+    if (!brand) {
+      throw new HttpError(400, "Product brand does not exist.");
+    }
+
+    return brand;
+  }
+
+  if (input.brand?.trim()) {
+    const [brand] = await prisma.$queryRaw<{ id: bigint; name: string }[]>`
+      INSERT INTO product_brands (name)
+      VALUES (${input.brand})
+      ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+      RETURNING id, name
+    `;
+
+    return brand;
+  }
+
+  return null;
+}
+
 export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductSchema>) {
   assertAdmin(actor);
 
-  const category = await prisma.productCategory.upsert({
-    where: { name: input.category },
-    update: {},
-    create: { name: input.category }
-  });
+  const categoryId = await resolveProductCategoryId(input, true);
+  const brand = await resolveProductBrand(input);
 
   const product = await prisma.product.create({
     data: {
-      categoryId: category.id,
+      categoryId,
       name: input.name,
-      brand: input.brand,
+      description: input.description || null,
+      brand: brand?.name ?? input.brand,
       sku: input.sku || null,
       purchasePrice: input.purchase,
       sellingPrice: input.sale,
@@ -1254,6 +1620,25 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
     `;
   }
 
+  if (input.imageUrl) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET
+        image_url = ${input.imageUrl},
+        brand_id = ${brand?.id ?? null},
+        quote = ${input.quote || null}
+      WHERE id = ${product.id}
+    `;
+  } else {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET
+        brand_id = ${brand?.id ?? null},
+        quote = ${input.quote || null}
+      WHERE id = ${product.id}
+    `;
+  }
+
   await insertStockMovement(prisma, {
     productId: product.id,
     movementType: StockMovementType.PURCHASE,
@@ -1269,21 +1654,16 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
 export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateProductSchema>) {
   assertAdmin(actor);
 
-  const category =
-    input.category !== undefined
-      ? await prisma.productCategory.upsert({
-          where: { name: input.category },
-          update: {},
-          create: { name: input.category }
-        })
-      : null;
+  const categoryId = input.categoryId !== undefined || input.category !== undefined ? await resolveProductCategoryId(input, false) : undefined;
+  const brand = input.brandId !== undefined || input.brand !== undefined ? await resolveProductBrand(input) : undefined;
 
   const product = await prisma.product.update({
     where: { id },
     data: {
-      categoryId: category?.id,
+      categoryId,
       name: input.name,
-      brand: input.brand,
+      description: input.description === undefined ? undefined : input.description || null,
+      brand: brand === undefined ? undefined : brand?.name ?? input.brand ?? null,
       sku: input.sku,
       purchasePrice: input.purchase,
       sellingPrice: input.sale,
@@ -1310,7 +1690,73 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
     `;
   }
 
+  if (input.imageUrl !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET image_url = ${input.imageUrl || null}
+      WHERE id = ${id}
+    `;
+  }
+
+  const detailUpdates: Prisma.Sql[] = [];
+
+  if (brand !== undefined) {
+    detailUpdates.push(Prisma.sql`brand_id = ${brand?.id ?? null}`);
+  }
+
+  if (input.quote !== undefined) {
+    detailUpdates.push(Prisma.sql`quote = ${input.quote || null}`);
+  }
+
+  if (detailUpdates.length > 0) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE products
+      SET ${Prisma.join(detailUpdates, ", ")}
+      WHERE id = ${id}
+    `);
+  }
+
   return { id: product.id.toString() };
+}
+
+export async function deleteProduct(actor: CrmAuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const [product] = await prisma.$queryRaw<{ id: bigint }[]>`
+    SELECT id
+    FROM products
+    WHERE id = ${id}
+      AND is_active = true
+  `;
+
+  if (!product) {
+    throw new HttpError(404, "Product not found.");
+  }
+
+  const [references] = await prisma.$queryRaw<
+    Array<{ saleItems: number; serviceConsumables: number; consumptionLogs: number }>
+  >`
+    SELECT
+      (SELECT COUNT(*)::int FROM product_sale_items WHERE product_id = ${id}) AS "saleItems",
+      (SELECT COUNT(*)::int FROM service_consumables WHERE product_id = ${id}) AS "serviceConsumables",
+      (SELECT COUNT(*)::int FROM service_consumption_logs WHERE product_id = ${id}) AS "consumptionLogs"
+  `;
+
+  const referenceCount = (references?.saleItems ?? 0) + (references?.serviceConsumables ?? 0) + (references?.consumptionLogs ?? 0);
+
+  if (referenceCount > 0) {
+    await prisma.$executeRaw`
+      UPDATE products
+      SET is_active = false
+      WHERE id = ${id}
+    `;
+
+    return { id: id.toString(), deleted: false };
+  }
+
+  await prisma.product.delete({ where: { id } });
+
+  return { id: id.toString(), deleted: true };
 }
 
 export async function createStockMovement(actor: CrmAuthenticatedUser, input: z.infer<typeof createStockMovementSchema>) {
@@ -1872,6 +2318,7 @@ async function getAppointmentDisplayExtras(appointmentIds: bigint[]) {
   }
 
   const costByAppointment = await getAppointmentConsumableCosts(uniqueIds);
+  const auditLogsByAppointment = await getAppointmentAuditLogs(uniqueIds);
 
   for (const id of uniqueIds) {
     const key = id.toString();
@@ -1879,7 +2326,8 @@ async function getAppointmentDisplayExtras(appointmentIds: bigint[]) {
     const consumableCost = costByAppointment.has(key) ? (costByAppointment.get(key) ?? null) : 0;
     extras.set(key, {
       services,
-      financials: createAppointmentFinancialSummary(services, consumableCost)
+      financials: createAppointmentFinancialSummary(services, consumableCost),
+      auditLogs: auditLogsByAppointment.get(key) ?? []
     });
   }
 
@@ -2006,6 +2454,147 @@ function createAppointmentFinancialSummary(services: AppointmentServiceLine[], c
     profitAfterConsumablesFrom: consumableCost === null ? null : roundMoney(revenueFrom - consumableCost),
     profitAfterConsumablesTo: consumableCost === null ? null : roundMoney(revenueTo - consumableCost)
   };
+}
+
+async function getAppointmentAuditLogs(appointmentIds: bigint[]) {
+  const logsByAppointment = new Map<string, AppointmentAuditEntry[]>();
+
+  if (appointmentIds.length === 0) {
+    return logsByAppointment;
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: bigint;
+      appointmentId: bigint;
+      eventType: string;
+      summary: string;
+      actor: string | null;
+      createdAt: Date;
+    }>
+  >`
+    SELECT
+      log.id,
+      log.appointment_id AS "appointmentId",
+      log.event_type AS "eventType",
+      log.summary,
+      trim(concat_ws(' ', actor.first_name, actor.last_name)) AS actor,
+      log.created_at AS "createdAt"
+    FROM appointment_audit_logs log
+    LEFT JOIN users actor ON actor.id = log.actor_user_id
+    WHERE log.appointment_id IN (${Prisma.join(appointmentIds)})
+    ORDER BY log.created_at DESC, log.id DESC
+  `;
+
+  for (const row of rows) {
+    const key = row.appointmentId.toString();
+    const logs = logsByAppointment.get(key) ?? [];
+
+    if (logs.length < 8) {
+      logs.push({
+        id: row.id.toString(),
+        eventType: row.eventType,
+        summary: row.summary,
+        actor: row.actor || "System",
+        createdAt: row.createdAt.toISOString()
+      });
+      logsByAppointment.set(key, logs);
+    }
+  }
+
+  return logsByAppointment;
+}
+
+function buildAppointmentAuditEvent(input: {
+  currentStatus: AppointmentStatus;
+  nextStatus?: AppointmentStatus;
+  input: z.infer<typeof updateAppointmentSchema>;
+  shouldCompleteAppointment: boolean;
+  shouldSyncConsumables: boolean;
+}) {
+  const paymentChanged = input.input.paymentAmount !== undefined || input.input.paymentMethod !== undefined || input.input.paymentStatus !== undefined;
+  const consumablesChanged = input.input.consumables !== undefined;
+
+  if (input.shouldCompleteAppointment) {
+    return {
+      eventType: "completed",
+      summary: "Appointment completed: payment and consumables were confirmed.",
+      details: {
+        statusFrom: mapAppointmentStatus(input.currentStatus),
+        statusTo: "completed",
+        paymentAmount: input.input.paymentAmount ?? null,
+        paymentMethod: input.input.paymentMethod ?? null,
+        paymentStatus: input.input.paymentStatus ?? "paid",
+        consumables: input.input.consumables ?? []
+      }
+    };
+  }
+
+  if (input.currentStatus === AppointmentStatus.COMPLETED && (paymentChanged || consumablesChanged)) {
+    return {
+      eventType: "completion_corrected",
+      summary: "Completed appointment was corrected: payment or consumables changed.",
+      details: {
+        paymentAmount: input.input.paymentAmount ?? null,
+        paymentMethod: input.input.paymentMethod ?? null,
+        paymentStatus: input.input.paymentStatus ?? null,
+        consumables: input.input.consumables ?? null
+      }
+    };
+  }
+
+  if (paymentChanged) {
+    return {
+      eventType: "payment_updated",
+      summary: "Payment data was updated.",
+      details: {
+        paymentAmount: input.input.paymentAmount ?? null,
+        paymentMethod: input.input.paymentMethod ?? null,
+        paymentStatus: input.input.paymentStatus ?? null
+      }
+    };
+  }
+
+  if (input.nextStatus && input.nextStatus !== input.currentStatus) {
+    return {
+      eventType: "status_updated",
+      summary: `Appointment status changed to ${mapAppointmentStatus(input.nextStatus)}.`,
+      details: {
+        statusFrom: mapAppointmentStatus(input.currentStatus),
+        statusTo: mapAppointmentStatus(input.nextStatus)
+      }
+    };
+  }
+
+  return null;
+}
+
+async function recordAppointmentAuditLog(
+  client: Prisma.TransactionClient,
+  input: {
+    appointmentId: bigint;
+    actorUserId: bigint;
+    eventType: string;
+    summary: string;
+    details: Record<string, unknown>;
+  }
+) {
+  await client.$executeRaw`
+    INSERT INTO appointment_audit_logs (
+      appointment_id,
+      actor_user_id,
+      event_type,
+      summary,
+      details
+    )
+    VALUES (
+      ${input.appointmentId},
+      ${input.actorUserId},
+      ${input.eventType},
+      ${input.summary},
+      ${JSON.stringify(input.details)}::jsonb
+    )
+  `;
 }
 
 function roundMoney(value: number) {
@@ -2593,7 +3182,8 @@ function mapAppointment(appointment: Awaited<ReturnType<typeof listAppointments>
     revenueTo: financials.revenueTo,
     consumableCost: financials.consumableCost,
     profitAfterConsumablesFrom: financials.profitAfterConsumablesFrom,
-    profitAfterConsumablesTo: financials.profitAfterConsumablesTo
+    profitAfterConsumablesTo: financials.profitAfterConsumablesTo,
+    auditLogs: extras?.auditLogs ?? []
   };
 }
 

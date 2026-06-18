@@ -62,6 +62,7 @@ model User {
   productSales       ProductSale[]     @relation("ClientProductSales")
   notificationLogs   NotificationLog[]
   reportExportLogs   ReportExportLog[] @relation("AdminReportExports")
+  appointmentAuditLogs AppointmentAuditLog[] @relation("AppointmentAuditActor")
 
   @@map("users")
 }
@@ -149,6 +150,7 @@ model Appointment {
   review                 Review?
   notificationLogs       NotificationLog[]
   serviceConsumptionLogs ServiceConsumptionLog[]
+  auditLogs              AppointmentAuditLog[]
 
   @@index([employeeId, startTime, endTime])
   @@map("appointments")
@@ -264,6 +266,7 @@ model ProductCategory {
   id          BigInt   @id @default(autoincrement())
   name        String   @unique @db.VarChar(255)
   description String?
+  imageUrl    String?  @map("image_url") @db.VarChar(1000)
   createdAt   DateTime @default(now()) @map("created_at")
 
   products Product[]
@@ -271,13 +274,27 @@ model ProductCategory {
   @@map("product_categories")
 }
 
+model ProductBrand {
+  id          BigInt   @id @default(autoincrement())
+  name        String   @unique @db.VarChar(255)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  products Product[]
+
+  @@map("product_brands")
+}
+
 model Product {
   id                 BigInt          @id @default(autoincrement())
   categoryId         BigInt?         @map("category_id")
+  brandId            BigInt?         @map("brand_id")
   name               String          @db.VarChar(255)
   brand              String?         @db.VarChar(255)
   description        String?
+  quote              String?
   sku                String?         @unique @db.VarChar(100)
+  imageUrl           String?         @map("image_url") @db.VarChar(1000)
   purchasePrice      Decimal?        @map("purchase_price") @db.Decimal(10, 2)
   sellingPrice       Decimal         @map("selling_price") @db.Decimal(10, 2)
   stockQuantity      Int             @map("stock_quantity")
@@ -290,6 +307,7 @@ model Product {
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
   category               ProductCategory?        @relation(fields: [categoryId], references: [id])
+  brandRef               ProductBrand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
   saleItems              ProductSaleItem[]
   stockMovements         StockMovement[]
   serviceConsumables     ServiceConsumable[]
@@ -332,6 +350,24 @@ model ServiceConsumptionLog {
   @@index([appointmentId])
   @@index([productId])
   @@map("service_consumption_logs")
+}
+
+model AppointmentAuditLog {
+  id            BigInt   @id @default(autoincrement())
+  appointmentId BigInt   @map("appointment_id")
+  actorUserId   BigInt?  @map("actor_user_id")
+  eventType     String   @map("event_type") @db.VarChar(80)
+  summary       String   @db.VarChar(500)
+  details       Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actor       User?       @relation("AppointmentAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("appointment_audit_logs")
 }
 
 model ProductSale {
