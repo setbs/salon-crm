@@ -70,6 +70,7 @@ export async function getProducts() {
     description: product.description,
     quote: product.quote,
     imageUrl: product.imageUrl,
+    purpose: product.purpose === "SALE" ? "sale" : product.purpose === "PROCEDURE" ? "procedure" : "both",
     price: Number(product.price),
     contentAmount: product.contentAmount ? Number(product.contentAmount) : null,
     contentUnit: product.contentUnit,

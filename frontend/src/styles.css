@@ -2499,6 +2499,10 @@ textarea {
   max-height: min(840px, calc(100vh - 48px));
 }
 
+.stock-history-modal {
+  width: min(1120px, calc(100vw - 48px));
+}
+
 .appointment-detail {
   display: grid;
   gap: 14px;
@@ -3075,12 +3079,73 @@ textarea {
   min-width: min(260px, 100%);
 }
 
+.table-toolbar .table-search {
+  min-width: min(320px, 100%);
+}
+
+.table-toolbar .table-search input {
+  width: 100%;
+  min-width: 0;
+}
+
 .table-toolbar span {
   color: #75695d;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.stock-history-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #ded3c4;
+  border-radius: 6px;
+  background: rgba(222, 215, 202, 0.38);
+  padding: 14px;
+}
+
+.stock-history-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.stock-history-summary strong {
+  color: #302820;
+  font-size: 1.25rem;
+}
+
+.stock-history-summary span {
+  color: #6d6258;
+  font-size: 0.92rem;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #ded3c4;
+  padding-top: 12px;
+}
+
+.pagination-controls > span {
+  color: #75695d;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.pagination-controls div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pagination-controls strong {
+  min-width: 48px;
+  text-align: center;
 }
 
 .admin-form {

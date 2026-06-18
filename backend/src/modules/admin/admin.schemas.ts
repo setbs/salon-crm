@@ -5,6 +5,7 @@ const optionalCategoryIdSchema = idStringSchema.optional().or(z.literal(""));
 const optionalDisplayPriceSchema = z.preprocess((value) => (value === "" ? null : value), z.coerce.number().nonnegative().nullable()).optional();
 const timeStringSchema = z.string().regex(/^\d{2}:\d{2}$/);
 const consumableUnitSchema = z.enum(["ml", "gram"]);
+const productPurposeSchema = z.enum(["sale", "procedure", "both"]);
 const paymentMethodSchema = z.enum(["cash", "card", "blik", "transfer"]);
 const paymentStatusSchema = z.enum(["pending", "paid", "refunded"]);
 const serviceConsumableSchema = z.object({
@@ -189,6 +190,7 @@ export const createProductSchema = z.object({
   brand: z.string().trim().max(255).optional(),
   sku: z.string().trim().max(100).optional(),
   imageUrl: z.string().trim().max(1000).optional(),
+  purpose: productPurposeSchema.optional(),
   purchase: z.coerce.number().nonnegative().optional(),
   sale: z.coerce.number().nonnegative(),
   stock: z.coerce.number().int(),

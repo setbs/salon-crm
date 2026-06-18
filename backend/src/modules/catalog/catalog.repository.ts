@@ -70,6 +70,7 @@ export function listPublicProducts() {
       p.description,
       p.quote,
       p.image_url AS "imageUrl",
+      p.product_purpose AS "purpose",
       p.selling_price AS price,
       p.content_amount AS "contentAmount",
       lower(p.content_unit::text) AS "contentUnit",
@@ -79,6 +80,7 @@ export function listPublicProducts() {
     LEFT JOIN product_categories pc ON pc.id = p.category_id
     LEFT JOIN product_brands pb ON pb.id = p.brand_id
     WHERE p.is_active = true
+      AND p.product_purpose IN ('SALE', 'BOTH')
     ORDER BY pc.name ASC NULLS LAST, p.name ASC
   `;
 }
@@ -109,6 +111,7 @@ export type PublicProductRow = {
   description: string | null;
   quote: string | null;
   imageUrl: string | null;
+  purpose: string;
   price: Prisma.Decimal;
   contentAmount: Prisma.Decimal | null;
   contentUnit: string | null;

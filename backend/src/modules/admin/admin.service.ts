@@ -50,6 +50,8 @@ import type {
 import type { z } from "zod";
 
 type ConsumableUnitValue = "ML" | "GRAM";
+type ProductPurposeValue = "SALE" | "PROCEDURE" | "BOTH";
+type PublicProductPurpose = "sale" | "procedure" | "both";
 type AppointmentServiceLine = {
   id: string;
   name: string;
@@ -912,6 +914,7 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       brandName: string | null;
       imageUrl: string | null;
       quote: string | null;
+      purpose: string | null;
       contentAmount: Prisma.Decimal | null;
       contentUnit: string | null;
       stockContentAmount: Prisma.Decimal | null;
@@ -923,6 +926,7 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       product_brand.name AS "brandName",
       product.image_url AS "imageUrl",
       product.quote,
+      product.product_purpose AS "purpose",
       product.content_amount AS "contentAmount",
       lower(product.content_unit::text) AS "contentUnit",
       product.stock_content_amount AS "stockContentAmount"
@@ -957,6 +961,7 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       name: product.name,
       description: product.description,
       quote: content?.quote ?? null,
+      purpose: toPublicProductPurpose(content?.purpose),
       purchase: Number(product.purchasePrice ?? 0),
       sale: Number(product.sellingPrice),
       stock: product.stockQuantity,
@@ -1626,7 +1631,8 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
       SET
         image_url = ${input.imageUrl},
         brand_id = ${brand?.id ?? null},
-        quote = ${input.quote || null}
+        quote = ${input.quote || null},
+        product_purpose = ${toProductPurpose(input.purpose)}
       WHERE id = ${product.id}
     `;
   } else {
@@ -1634,7 +1640,8 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
       UPDATE products
       SET
         brand_id = ${brand?.id ?? null},
-        quote = ${input.quote || null}
+        quote = ${input.quote || null},
+        product_purpose = ${toProductPurpose(input.purpose)}
       WHERE id = ${product.id}
     `;
   }
@@ -1706,6 +1713,10 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
 
   if (input.quote !== undefined) {
     detailUpdates.push(Prisma.sql`quote = ${input.quote || null}`);
+  }
+
+  if (input.purpose !== undefined) {
+    detailUpdates.push(Prisma.sql`product_purpose = ${toProductPurpose(input.purpose)}`);
   }
 
   if (detailUpdates.length > 0) {
@@ -2248,6 +2259,30 @@ async function syncServiceConsumables(
 
 function toConsumableUnit(unit: "ml" | "gram") {
   return unit === "gram" ? "GRAM" : "ML";
+}
+
+function toProductPurpose(purpose: PublicProductPurpose | undefined): ProductPurposeValue {
+  if (purpose === "sale") {
+    return "SALE";
+  }
+
+  if (purpose === "procedure") {
+    return "PROCEDURE";
+  }
+
+  return "BOTH";
+}
+
+function toPublicProductPurpose(purpose: string | null | undefined): PublicProductPurpose {
+  if (purpose === "SALE") {
+    return "sale";
+  }
+
+  if (purpose === "PROCEDURE") {
+    return "procedure";
+  }
+
+  return "both";
 }
 
 function toPublicUnit(unit: ConsumableUnitValue) {

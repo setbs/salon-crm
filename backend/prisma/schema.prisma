@@ -295,6 +295,7 @@ model Product {
   quote              String?
   sku                String?         @unique @db.VarChar(100)
   imageUrl           String?         @map("image_url") @db.VarChar(1000)
+  productPurpose     String          @default("BOTH") @map("product_purpose") @db.VarChar(20)
   purchasePrice      Decimal?        @map("purchase_price") @db.Decimal(10, 2)
   sellingPrice       Decimal         @map("selling_price") @db.Decimal(10, 2)
   stockQuantity      Int             @map("stock_quantity")

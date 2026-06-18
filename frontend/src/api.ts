@@ -45,6 +45,7 @@ export type PublicProduct = {
   description: string | null;
   quote: string | null;
   imageUrl: string | null;
+  purpose: ProductPurpose;
   price: number;
   contentAmount: number | null;
   contentUnit: MeasurementUnit | null;
@@ -248,6 +249,7 @@ export type AdminService = {
 };
 
 export type MeasurementUnit = "ml" | "gram";
+export type ProductPurpose = "sale" | "procedure" | "both";
 
 export type AdminServiceConsumable = {
   productId: string;
@@ -324,6 +326,7 @@ export type AdminProduct = {
   name: string;
   description: string | null;
   quote: string | null;
+  purpose: ProductPurpose;
   purchase: number;
   sale: number;
   stock: number;
@@ -497,6 +500,7 @@ export type ProductInput = {
   brand?: string;
   sku?: string;
   imageUrl?: string;
+  purpose?: ProductPurpose;
   purchase?: number;
   sale: number;
   stock: number;

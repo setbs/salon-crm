@@ -89,6 +89,7 @@ import {
   type ProductInput,
   type ProductBrandInput,
   type ProductCategoryInput,
+  type ProductPurpose,
   type PublicProduct,
   type SaleInput,
   type Service,
@@ -115,8 +116,42 @@ type DisplayPrice = {
   priceTo?: number | null;
 };
 
+type StockMovementHistoryRow = {
+  id: string;
+  amount: string;
+  brand: string | null;
+  category: string;
+  createdAt: string;
+  product: string;
+  reason: string | null;
+  type: string;
+};
+
+const PRODUCTS_PAGE_SIZE = 7;
+const STOCK_MOVEMENT_PAGE_SIZE = 8;
+
 function formatHryvnia(value: number) {
   return `${plainHryvnia.format(value)} ₴`;
+}
+
+function canSellProduct(product: { purpose?: ProductPurpose }) {
+  return !product.purpose || product.purpose === "sale" || product.purpose === "both";
+}
+
+function canUseProductInProcedure(product: { purpose?: ProductPurpose }) {
+  return !product.purpose || product.purpose === "procedure" || product.purpose === "both";
+}
+
+function formatProductPurpose(purpose: ProductPurpose | undefined) {
+  if (purpose === "sale") {
+    return "For sale";
+  }
+
+  if (purpose === "procedure") {
+    return "For procedures";
+  }
+
+  return "Both";
 }
 
 function formatServicePrice(value: DisplayPrice) {
@@ -433,6 +468,7 @@ const shopProductFallback: PublicProduct[] = [
     description: "For all hair types",
     quote: "A clean start for hair that needs lightness and shine.",
     imageUrl: null,
+    purpose: "sale",
     price: 950,
     contentAmount: 250,
     contentUnit: "ml",
@@ -446,6 +482,7 @@ const shopProductFallback: PublicProduct[] = [
     description: "Soft cleansing and shine",
     quote: "A daily ritual for softness without heaviness.",
     imageUrl: null,
+    purpose: "sale",
     price: 900,
     contentAmount: 250,
     contentUnit: "ml",
@@ -459,6 +496,7 @@ const shopProductFallback: PublicProduct[] = [
     description: "For dry and sensitive hair",
     quote: "Care that leaves the hair calm, smooth and easier to style.",
     imageUrl: null,
+    purpose: "sale",
     price: 1050,
     contentAmount: 250,
     contentUnit: "ml",
@@ -472,6 +510,7 @@ const shopProductFallback: PublicProduct[] = [
     description: "Light care without heaviness",
     quote: "A soft finish for hair that should move naturally.",
     imageUrl: null,
+    purpose: "sale",
     price: 1050,
     contentAmount: 250,
     contentUnit: "ml",
@@ -1896,7 +1935,12 @@ function CompletionPreviewDialog({
   const actualItems = [...baseItems, ...extraItems];
   const usedProductIds = new Set([...baseItems.map((item) => item.productId), ...extraConsumables.map((item) => item.productId)]);
   const availableExtraProducts = products.filter(
-    (product) => product.contentAmount !== null && product.contentUnit !== null && product.stockContentAmount !== null && !usedProductIds.has(product.id)
+    (product) =>
+      canUseProductInProcedure(product) &&
+      product.contentAmount !== null &&
+      product.contentUnit !== null &&
+      product.stockContentAmount !== null &&
+      !usedProductIds.has(product.id)
   );
   const actualConsumableCost = actualItems.some((item) => item.cost === null && item.quantity > 0)
     ? null
@@ -3504,12 +3548,41 @@ function ProductsSection({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [isCreatingStockMovement, setIsCreatingStockMovement] = useState(false);
+  const [productCategoryFilter, setProductCategoryFilter] = useState("all");
+  const [productBrandFilter, setProductBrandFilter] = useState("all");
+  const [productPurposeFilter, setProductPurposeFilter] = useState("all");
+  const [productSearch, setProductSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const [isViewingStockHistory, setIsViewingStockHistory] = useState(false);
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const editingBrand = brands.find((brand) => brand.id === editingBrandId) ?? null;
   const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
   const editingProduct = products.find((product) => product.id === editingProductId) ?? null;
+  const normalizedProductSearch = productSearch.trim().toLowerCase();
+  const filteredProducts = products.filter((product) => {
+    const matchesCategory =
+      productCategoryFilter === "all" ||
+      (productCategoryFilter === "" ? product.categoryId === null : product.categoryId === productCategoryFilter);
+    const matchesBrand = productBrandFilter === "all" || (productBrandFilter === "" ? product.brandId === null : product.brandId === productBrandFilter);
+    const matchesPurpose = productPurposeFilter === "all" || product.purpose === productPurposeFilter;
+    const matchesSearch =
+      normalizedProductSearch.length === 0 ||
+      [product.name, product.category, product.brand ?? "", product.sku ?? "", product.description ?? "", formatProductPurpose(product.purpose)]
+        .some((value) => value.toLowerCase().includes(normalizedProductSearch));
+
+    return matchesCategory && matchesBrand && matchesPurpose && matchesSearch;
+  });
+  const productPageCount = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE));
+  const currentProductPage = Math.min(productPage, productPageCount);
+  const pagedProducts = filteredProducts.slice((currentProductPage - 1) * PRODUCTS_PAGE_SIZE, currentProductPage * PRODUCTS_PAGE_SIZE);
+  const stockMovementRows = buildStockMovementHistoryRows(products);
+  const latestStockMovementRows = stockMovementRows.slice(0, 4);
+
+  useEffect(() => {
+    setProductPage(1);
+  }, [productBrandFilter, productCategoryFilter, productPurposeFilter, productSearch]);
 
   return (
     <div className="admin-grid">
@@ -3564,30 +3637,113 @@ function ProductsSection({
           }
         />
       </Panel>
-      <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)}>
+      <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)} wide>
+        <div className="table-toolbar">
+          <label>
+            <span>Search</span>
+            <div className="admin-search table-search">
+              <Search aria-hidden="true" size={17} />
+              <input
+                placeholder="Name, SKU, brand"
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+              />
+            </div>
+          </label>
+          <label>
+            <span>Category filter</span>
+            <select value={productCategoryFilter} onChange={(event) => setProductCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              <option value="">Uncategorized</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Brand filter</span>
+            <select value={productBrandFilter} onChange={(event) => setProductBrandFilter(event.target.value)}>
+              <option value="all">All brands</option>
+              <option value="">No brand</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Purpose filter</span>
+            <select value={productPurposeFilter} onChange={(event) => setProductPurposeFilter(event.target.value)}>
+              <option value="all">All purposes</option>
+              <option value="sale">For sale</option>
+              <option value="procedure">For procedures</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+        </div>
         <DataTable
-          columns={["Category", "Brand", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
-          rows={products.map((item) => [
-            item.category,
-            item.brand || "-",
-            item.name,
-            adminMoney.format(item.purchase),
-            adminMoney.format(item.sale),
-            item.stockStatus === "low" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
-            item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
-            <StatusBadge status={item.stockStatus} />,
-            <InlineActions
-              labels={["Edit", "Delete"]}
-              onAction={(label) => {
-                if (label === "Edit") {
-                  setEditingProductId(item.id);
-                  return;
-                }
+          columns={["Category", "Brand", "Purpose", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
+          rows={
+            pagedProducts.length > 0
+              ? pagedProducts.map((item) => [
+                  item.category,
+                  item.brand || "-",
+                  formatProductPurpose(item.purpose),
+                  item.name,
+                  adminMoney.format(item.purchase),
+                  adminMoney.format(item.sale),
+                  item.stockStatus === "low" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
+                  item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
+                  <StatusBadge status={item.stockStatus} />,
+                  <InlineActions
+                    labels={["Edit", "Delete"]}
+                    onAction={(label) => {
+                      if (label === "Edit") {
+                        setEditingProductId(item.id);
+                        return;
+                      }
 
-                void runAction(() => deleteAdminProduct(item.id));
-              }}
-            />
-          ])}
+                      void runAction(() => deleteAdminProduct(item.id));
+                    }}
+                  />
+                ])
+              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-", "-"]]
+          }
+        />
+        <PaginationControls
+          currentPage={currentProductPage}
+          label={`${filteredProducts.length} products`}
+          onPageChange={setProductPage}
+          pageCount={productPageCount}
+        />
+      </Panel>
+      <Panel title="Stock movement history" action="Add movement" onAction={() => setIsCreatingStockMovement(true)} wide>
+        <div className="stock-history-summary">
+          <div>
+            <p className="admin-kicker">Inventory logistics</p>
+            <strong>{stockMovementRows.length} movements</strong>
+            <span>Track purchases, returns, adjustments and material balance changes.</span>
+          </div>
+          <button className="secondary-button compact-button" onClick={() => setIsViewingStockHistory(true)} type="button">
+            View full history
+          </button>
+        </div>
+        <DataTable
+          columns={["Date", "Type", "Product", "Amount", "Reason"]}
+          rows={
+            latestStockMovementRows.length > 0
+              ? latestStockMovementRows.map((movement) => [
+                  formatStockMovementDateTime(movement.createdAt),
+                  movement.type,
+                  movement.product,
+                  movement.amount,
+                  movement.reason || "-"
+                ])
+              : [["No stock movements yet.", "-", "-", "-", "-"]]
+          }
         />
       </Panel>
       {isCreatingBrand ? (
@@ -3692,19 +3848,97 @@ function ProductsSection({
           />
         </AdminModal>
       ) : null}
-      <Panel title="Stock movement history" action="Add movement" onAction={() => setIsCreatingStockMovement(true)}>
-        <InfoList
-          items={products
-            .flatMap((product) =>
-              product.movements.map((movement) => [
-                movement.type,
-                `${formatStockMovementAmount(movement)} ${product.name}${movement.reason ? ` · ${movement.reason}` : ""}`
-              ] as [string, string])
-            )
-            .slice(0, 6)}
-        />
-      </Panel>
+      {isViewingStockHistory ? (
+        <StockMovementHistoryModal movements={stockMovementRows} onClose={() => setIsViewingStockHistory(false)} />
+      ) : null}
     </div>
+  );
+}
+
+function buildStockMovementHistoryRows(products: AdminData["products"]): StockMovementHistoryRow[] {
+  return products
+    .flatMap((product) =>
+      product.movements.map((movement, index) => ({
+        id: `${product.id}-${movement.createdAt}-${movement.type}-${index}`,
+        amount: formatStockMovementAmount(movement),
+        brand: product.brand,
+        category: product.category,
+        createdAt: movement.createdAt,
+        product: product.name,
+        reason: movement.reason,
+        type: movement.type
+      }))
+    )
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+function StockMovementHistoryModal({ movements, onClose }: { movements: StockMovementHistoryRow[]; onClose: () => void }) {
+  const [period, setPeriod] = useState<"week" | "month" | "date">("week");
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [page, setPage] = useState(1);
+  const filteredMovements = movements.filter((movement) => {
+    const movementDate = new Date(movement.createdAt);
+
+    if (period === "date") {
+      return toDateTimeFields(movement.createdAt).date === selectedDate;
+    }
+
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - (period === "week" ? 7 : 30));
+
+    return movementDate >= cutoff;
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredMovements.length / STOCK_MOVEMENT_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedMovements = filteredMovements.slice((currentPage - 1) * STOCK_MOVEMENT_PAGE_SIZE, currentPage * STOCK_MOVEMENT_PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [period, selectedDate]);
+
+  return (
+    <AdminModal className="stock-history-modal" title="Stock movement history" onClose={onClose}>
+      <div className="table-toolbar">
+        <label>
+          <span>Period</span>
+          <select value={period} onChange={(event) => setPeriod(event.target.value as "week" | "month" | "date")}>
+            <option value="week">Last week</option>
+            <option value="month">Last month</option>
+            <option value="date">Specific date</option>
+          </select>
+        </label>
+        {period === "date" ? (
+          <label>
+            <span>Date</span>
+            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+          </label>
+        ) : null}
+      </div>
+      <DataTable
+        columns={["Date", "Time", "Type", "Category", "Brand", "Product", "Amount", "Reason"]}
+        rows={
+          pagedMovements.length > 0
+            ? pagedMovements.map((movement) => [
+                formatStockMovementDate(movement.createdAt),
+                formatStockMovementTime(movement.createdAt),
+                movement.type,
+                movement.category,
+                movement.brand || "-",
+                movement.product,
+                movement.amount,
+                movement.reason || "-"
+              ])
+            : [["No stock movements for this period.", "-", "-", "-", "-", "-", "-", "-"]]
+        }
+      />
+      <PaginationControls
+        currentPage={currentPage}
+        label={`${filteredMovements.length} movements`}
+        onPageChange={setPage}
+        pageCount={pageCount}
+      />
+    </AdminModal>
   );
 }
 
@@ -3721,6 +3955,8 @@ function SalesSection({
   employees: AdminData["employees"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const saleProducts = products.filter(canSellProduct);
+
   return (
     <div className="admin-grid">
       <Panel title="Product sales" action="Create sale">
@@ -3729,7 +3965,7 @@ function SalesSection({
           rows={sales.map((item) => [item.product, item.qty, item.client, item.payment, adminMoney.format(item.total)])}
         />
       </Panel>
-      <SaleForm products={products} clients={clients} employees={employees} onSubmit={(payload) => runAction(() => createAdminSale(payload))} />
+      <SaleForm products={saleProducts} clients={clients} employees={employees} onSubmit={(payload) => runAction(() => createAdminSale(payload))} />
     </div>
   );
 }
@@ -4160,7 +4396,8 @@ function ConsumableSelector({
   onChange: (items: ConsumableFormItem[]) => void;
   products: AdminData["products"];
 }) {
-  const defaultProductId = products[0]?.id ?? "";
+  const availableProducts = products.filter(canUseProductInProcedure);
+  const defaultProductId = availableProducts[0]?.id ?? "";
 
   function addItem() {
     if (!defaultProductId) {
@@ -4187,13 +4424,13 @@ function ConsumableSelector({
         </button>
       </div>
       <small className="form-note">Internal service parameters for analytics. Clients do not see these values.</small>
-      {products.length === 0 ? <small className="form-note">Add products first to use them as consumables.</small> : null}
+      {availableProducts.length === 0 ? <small className="form-note">Add products for procedures first to use them as consumables.</small> : null}
       {items.map((item, index) => (
         <div className="consumable-row" key={`${item.productId}-${index}`}>
           <label>
             <span>Product</span>
             <select value={item.productId} onChange={(event) => updateItem(index, { productId: event.target.value })}>
-              {products.map((product) => (
+              {availableProducts.map((product) => (
                 <option key={product.id} value={product.id}>
                   {formatProductOption(product)}
                 </option>
@@ -4310,6 +4547,25 @@ function formatShortDate(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatStockMovementDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function formatStockMovementTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatStockMovementDateTime(value: string) {
+  return `${formatStockMovementDate(value)}, ${formatStockMovementTime(value)}`;
 }
 
 function formatAppointmentDateTimeRange(appointment: AdminData["appointments"][number]) {
@@ -4538,6 +4794,7 @@ function ProductForm({
     brand: product?.brand ?? "",
     sku: product?.sku ?? "",
     imageUrl: product?.imageUrl ?? "",
+    purpose: product?.purpose ?? ("both" as ProductPurpose),
     purchase: String(product?.purchase ?? 0),
     sale: String(product?.sale ?? 0),
     stock: String(product?.stock ?? 0),
@@ -4578,6 +4835,7 @@ function ProductForm({
       brand: brands.length > 0 ? undefined : form.brand || undefined,
       sku: form.sku || undefined,
       imageUrl: form.imageUrl,
+      purpose: form.purpose,
       purchase: Number(form.purchase),
       sale: Number(form.sale),
       stock: Number(form.stock),
@@ -4645,6 +4903,14 @@ function ProductForm({
       <label>
         <span>SKU</span>
         <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
+      </label>
+      <label>
+        <span>Purpose</span>
+        <select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}>
+          <option value="sale">For sale</option>
+          <option value="procedure">For procedures</option>
+          <option value="both">Both</option>
+        </select>
       </label>
       <label>
         <span>Product photo</span>
@@ -4722,15 +4988,55 @@ function StockMovementForm({
   onSubmit: (payload: StockMovementInput) => Promise<void>;
   products: AdminData["products"];
 }) {
+  const initialProduct = products[0];
   const [form, setForm] = useState({
-    productId: products[0]?.id ?? "",
+    categoryId: initialProduct?.categoryId ?? "",
+    productId: initialProduct?.id ?? "",
     movementType: "purchase" as StockMovementInput["movementType"],
     amountMode: "packages" as StockMovementInput["amountMode"],
     amount: "1",
     reason: ""
   });
-  const selectedProduct = products.find((product) => product.id === form.productId) ?? products[0];
+  const productCategories = useMemo(() => {
+    const categoryMap = new Map<string, string>();
+
+    products.forEach((product) => {
+      const categoryId = product.categoryId ?? "";
+      if (!categoryMap.has(categoryId)) {
+        categoryMap.set(categoryId, product.category || "Uncategorized");
+      }
+    });
+
+    return Array.from(categoryMap, ([id, name]) => ({ id, name })).sort((left, right) => {
+      if (left.id === "") {
+        return 1;
+      }
+
+      if (right.id === "") {
+        return -1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [products]);
+  const categoryProducts = products.filter((product) => (product.categoryId ?? "") === form.categoryId);
+  const selectedProduct = categoryProducts.find((product) => product.id === form.productId) ?? categoryProducts[0];
   const canUseContent = Boolean(selectedProduct?.contentAmount && selectedProduct.contentUnit);
+
+  useEffect(() => {
+    const categoryExists = productCategories.some((category) => category.id === form.categoryId);
+    const nextCategoryId = categoryExists ? form.categoryId : productCategories[0]?.id ?? "";
+    const nextCategoryProducts = products.filter((product) => (product.categoryId ?? "") === nextCategoryId);
+    const productExists = nextCategoryProducts.some((product) => product.id === form.productId);
+
+    if (nextCategoryId !== form.categoryId || !productExists) {
+      setForm((current) => ({
+        ...current,
+        categoryId: nextCategoryId,
+        productId: nextCategoryProducts[0]?.id ?? ""
+      }));
+    }
+  }, [form.categoryId, form.productId, productCategories, products]);
 
   useEffect(() => {
     if (form.amountMode === "content" && !canUseContent) {
@@ -4757,9 +5063,26 @@ function StockMovementForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
+        <span>Category</span>
+        <select
+          value={form.categoryId}
+          onChange={(event) => {
+            const categoryId = event.target.value;
+            const firstProduct = products.find((product) => (product.categoryId ?? "") === categoryId);
+            setForm({ ...form, categoryId, productId: firstProduct?.id ?? "" });
+          }}
+        >
+          {productCategories.map((category) => (
+            <option key={category.id || "uncategorized"} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         <span>Product</span>
         <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
-          {products.map((product) => (
+          {categoryProducts.map((product) => (
             <option key={product.id} value={product.id}>
               {formatProductOption(product)}
             </option>
@@ -4824,8 +5147,18 @@ function SaleForm({
 }) {
   const [form, setForm] = useState({ productId: products[0]?.id ?? "", quantity: "1", clientId: "", employeeId: "", paymentMethod: "cash" });
 
+  useEffect(() => {
+    if (!products.some((product) => product.id === form.productId)) {
+      setForm((current) => ({ ...current, productId: products[0]?.id ?? "" }));
+    }
+  }, [form.productId, products]);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!form.productId) {
+      return;
+    }
+
     void onSubmit({
       productId: form.productId,
       quantity: Number(form.quantity),
@@ -4841,6 +5174,7 @@ function SaleForm({
         <label>
           <span>Product</span>
           <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
+            {products.length === 0 ? <option value="">No products for sale</option> : null}
             {products.map((product) => (
               <option key={product.id} value={product.id}>
                 {product.name} · stock {product.stock}
@@ -4883,7 +5217,7 @@ function SaleForm({
             <option value="transfer">transfer</option>
           </select>
         </label>
-        <button className="primary-button admin-submit" type="submit">
+        <button className="primary-button admin-submit" disabled={!form.productId} type="submit">
           Create sale
         </button>
       </form>
@@ -4957,10 +5291,20 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
   );
 }
 
-function AdminModal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+function AdminModal({
+  children,
+  className,
+  onClose,
+  title
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClose: () => void;
+  title: string;
+}) {
   return (
     <div className="admin-modal-backdrop" role="presentation">
-      <section aria-modal="true" className="admin-modal" role="dialog">
+      <section aria-modal="true" className={className ? `admin-modal ${className}` : "admin-modal"} role="dialog">
         <div className="panel-header">
           <h2>{title}</h2>
           <button aria-label="Close modal" className="icon-only-button" onClick={onClose} title="Close" type="button">
@@ -5041,6 +5385,35 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<Rea
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PaginationControls({
+  currentPage,
+  label,
+  onPageChange,
+  pageCount
+}: {
+  currentPage: number;
+  label: string;
+  onPageChange: (page: number) => void;
+  pageCount: number;
+}) {
+  return (
+    <div className="pagination-controls">
+      <span>{label}</span>
+      <div>
+        <button className="secondary-button compact-button" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)} type="button">
+          Previous
+        </button>
+        <strong>
+          {currentPage} / {pageCount}
+        </strong>
+        <button className="secondary-button compact-button" disabled={currentPage >= pageCount} onClick={() => onPageChange(currentPage + 1)} type="button">
+          Next
+        </button>
+      </div>
     </div>
   );
 }
