@@ -148,6 +148,47 @@ export type AdminConsumableAnalytics = {
   }>;
 };
 
+export type AdminBusinessAnalytics = {
+  periodLabel: string;
+  services: Array<{
+    serviceId: string;
+    serviceName: string;
+    appointmentCount: number;
+    revenueFrom: number;
+    revenueTo: number;
+    consumableCost: number | null;
+    profitFrom: number | null;
+    profitTo: number | null;
+  }>;
+  productSalesByBrand: Array<{
+    name: string;
+    quantity: number;
+    revenue: number;
+    profit: number | null;
+  }>;
+  productSalesByCategory: Array<{
+    name: string;
+    quantity: number;
+    revenue: number;
+    profit: number | null;
+  }>;
+  restock: Array<{
+    productId: string;
+    productName: string;
+    categoryName: string | null;
+    brandName: string | null;
+    stockQuantity: number;
+    minStockQuantity: number;
+    contentAmount: number | null;
+    contentUnit: MeasurementUnit | null;
+    stockContentAmount: number | null;
+    stockPackageEquivalent: number | null;
+    packagesToBuy: number;
+  }>;
+};
+
+export type AdminBusinessAnalyticsPeriod = "week" | "month" | "custom";
+
 export type AdminAppointment = {
   id: string;
   time: string;
@@ -403,6 +444,7 @@ export type AdminSettings = {
 export type AdminData = {
   dashboard: AdminDashboard;
   consumableAnalytics: AdminConsumableAnalytics;
+  businessAnalytics: AdminBusinessAnalytics;
   appointments: AdminAppointment[];
   clients: AdminClient[];
   serviceCategories: AdminServiceCategory[];
@@ -622,9 +664,10 @@ export async function createAppointment(payload: AppointmentPayload) {
 }
 
 export async function fetchAdminData(): Promise<AdminData> {
-  const [dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings] = await Promise.all([
+  const [dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings] = await Promise.all([
     getAdmin<AdminDashboard>("dashboard"),
     getAdmin<AdminConsumableAnalytics>("consumable-analytics"),
+    getAdmin<AdminBusinessAnalytics>("business-analytics"),
     getAdmin<AdminAppointment[]>("appointments"),
     getAdmin<AdminClient[]>("clients"),
     getAdmin<AdminServiceCategory[]>("service-categories"),
@@ -640,7 +683,23 @@ export async function fetchAdminData(): Promise<AdminData> {
     getAdmin<AdminSettings>("settings")
   ]);
 
-  return { dashboard, consumableAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings };
+  return { dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings };
+}
+
+export async function fetchAdminBusinessAnalytics(input: { period: AdminBusinessAnalyticsPeriod; from?: string; to?: string }) {
+  const params = new URLSearchParams({ period: input.period });
+
+  if (input.period === "custom") {
+    if (input.from) {
+      params.set("from", input.from);
+    }
+
+    if (input.to) {
+      params.set("to", input.to);
+    }
+  }
+
+  return getAdmin<AdminBusinessAnalytics>(`business-analytics?${params}`);
 }
 
 async function getAdmin<T>(resource: string) {

@@ -20,6 +20,7 @@ import {
   deleteProductBrand,
   deleteProductCategory,
   getAppointmentConsumablePreview,
+  getBusinessAnalytics,
   getClientProfile,
   getAppointments,
   getClients,
@@ -90,6 +91,20 @@ adminRouter.get("/admin/dashboard", async (request, response, next) => {
 adminRouter.get("/admin/consumable-analytics", async (request, response, next) => {
   try {
     response.json({ data: await getConsumableAnalytics(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/admin/business-analytics", async (request, response, next) => {
+  try {
+    response.json({
+      data: await getBusinessAnalytics(getAuthenticatedUser(request), {
+        period: typeof request.query.period === "string" ? request.query.period : undefined,
+        from: typeof request.query.from === "string" ? request.query.from : undefined,
+        to: typeof request.query.to === "string" ? request.query.to : undefined
+      })
+    });
   } catch (error) {
     next(error);
   }

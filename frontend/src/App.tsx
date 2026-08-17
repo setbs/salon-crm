@@ -37,6 +37,7 @@ import {
   createAppointment,
   deleteAdminEmployeeTimeOff,
   deleteAdminPortfolioPhoto,
+  fetchAdminBusinessAnalytics,
   fetchAdminData,
   fetchAvailability,
   fetchCurrentUser,
@@ -54,6 +55,7 @@ import {
   updateAdminSettings,
   uploadAdminPortfolioImage,
   type AdminData,
+  type AdminBusinessAnalyticsPeriod,
   type AuthUser,
   type Employee,
   type EmployeeInput,
@@ -1086,11 +1088,11 @@ function AdminContent({
   user: AuthUser;
 }) {
   if (user.role !== "ADMIN" && !employeeSections.includes(section)) {
-    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} appointments={data.appointments} />;
+    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} businessAnalytics={data.businessAnalytics} appointments={data.appointments} />;
   }
 
   if (section === "dashboard") {
-    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} appointments={data.appointments} />;
+    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} businessAnalytics={data.businessAnalytics} appointments={data.appointments} />;
   }
 
   if (section === "calendar") {
@@ -1160,60 +1162,227 @@ function AdminContent({
 function DashboardSection({
   dashboard,
   analytics,
+  businessAnalytics,
   appointments
 }: {
   dashboard: AdminData["dashboard"];
   analytics: AdminData["consumableAnalytics"];
+  businessAnalytics: AdminData["businessAnalytics"];
   appointments: AdminData["appointments"];
 }) {
+  const [selectedBusinessPeriod, setSelectedBusinessPeriod] = useState<AdminBusinessAnalyticsPeriod>("month");
+  const [customBusinessFrom, setCustomBusinessFrom] = useState(() => getRelativeDateInputValue(-30));
+  const [customBusinessTo, setCustomBusinessTo] = useState(() => getDateInputValue(new Date()));
+  const [visibleBusinessAnalytics, setVisibleBusinessAnalytics] = useState(businessAnalytics);
+  const [isBusinessAnalyticsLoading, setIsBusinessAnalyticsLoading] = useState(false);
+  const [businessAnalyticsError, setBusinessAnalyticsError] = useState("");
+
+  useEffect(() => {
+    setVisibleBusinessAnalytics(businessAnalytics);
+  }, [businessAnalytics]);
+
+  const loadBusinessAnalytics = async (period: AdminBusinessAnalyticsPeriod, from = customBusinessFrom, to = customBusinessTo) => {
+    setSelectedBusinessPeriod(period);
+    setIsBusinessAnalyticsLoading(true);
+    setBusinessAnalyticsError("");
+
+    try {
+      const nextAnalytics = await fetchAdminBusinessAnalytics({ period, from, to });
+      setVisibleBusinessAnalytics(nextAnalytics);
+    } catch (error) {
+      setBusinessAnalyticsError(error instanceof Error ? error.message : "Request failed.");
+    } finally {
+      setIsBusinessAnalyticsLoading(false);
+    }
+  };
+  const completedVisits = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.appointmentCount, 0);
+  const serviceRevenueFrom = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.revenueFrom, 0);
+  const serviceRevenueTo = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.revenueTo, 0);
+  const hasUnknownServiceProfit = visibleBusinessAnalytics.services.some((item) => item.profitFrom === null || item.profitTo === null);
+  const serviceProfitFrom = hasUnknownServiceProfit ? null : visibleBusinessAnalytics.services.reduce((sum, item) => sum + (item.profitFrom ?? 0), 0);
+  const serviceProfitTo = hasUnknownServiceProfit ? null : visibleBusinessAnalytics.services.reduce((sum, item) => sum + (item.profitTo ?? 0), 0);
+  const productRevenue = visibleBusinessAnalytics.productSalesByCategory.reduce((sum, item) => sum + item.revenue, 0);
+  const todayAppointments = appointments
+    .filter((appointment) => isSameLocalDate(appointment.date, new Date()))
+    .sort((first, second) => new Date(first.date).getTime() - new Date(second.date).getTime());
+
   return (
-    <div className="admin-grid">
-      <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
-      <MetricCard label="Daily revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid services + products" />
-      <MetricCard
-        label="Next appointment"
-        value={dashboard.nextAppointment?.time ?? "-"}
-        note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
-      />
-      <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
-      <MetricCard label="Consumables used" value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} write-offs · ${analytics.periodLabel.toLowerCase()}`} />
-      <MetricCard label="Low consumables" value={String(analytics.lowConsumableProducts)} note="package-content stock alerts" />
-
-      <Panel title="Today's appointments" action="Create appointment">
-        <DataTable
-          columns={["Time", "Client", "Service", "Employee", "Status"]}
-          rows={appointments.map((item) => [item.time, item.client, item.service, item.master, <StatusBadge status={item.status} />])}
+    <div className="dashboard-page">
+      <section className="dashboard-metrics" aria-label="Dashboard overview">
+        <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
+        <MetricCard label="Daily revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid services + products" />
+        <MetricCard
+          label="Next appointment"
+          value={dashboard.nextAppointment?.time ?? "-"}
+          note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
         />
-      </Panel>
+        <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
+        <MetricCard label="Consumables used" value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} write-offs · ${analytics.periodLabel.toLowerCase()}`} />
+        <MetricCard label="Low consumables" value={String(analytics.lowConsumableProducts)} note="package-content stock alerts" />
+      </section>
 
-      <Panel title="Consumable analytics">
-        <DataTable
-          columns={["Product", "Used", "Appointments", "Current stock"]}
-          rows={
-            analytics.products.length > 0
-              ? analytics.products.map((item) => [
-                  item.productCategory ? `${item.productName} · ${item.productCategory}` : item.productName,
-                  `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)}`,
-                  `${item.appointmentCount} appointments`,
-                  formatAnalyticsStock(item)
-                ])
-              : [["No write-offs yet", "-", "-", "-"]]
-          }
-        />
-      </Panel>
+      <section className="admin-panel dashboard-analytics-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span>Financial report</span>
+            <h2>Business analytics</h2>
+          </div>
+          <span>{isBusinessAnalyticsLoading ? "Loading..." : visibleBusinessAnalytics.periodLabel}</span>
+        </div>
 
-      <Panel title="Recent write-offs">
-        <InfoList
-          items={
-            analytics.recentLogs.length > 0
-              ? analytics.recentLogs.map((log) => [
-                  `${formatShortDate(log.createdAt)} · ${log.productName}`,
-                  `${formatPlainNumber(log.quantity)} ${formatUnit(log.unit)} · ${log.serviceName} · ${log.clientName}`
-                ])
-              : [["No data", "Complete an appointment with consumables to see write-offs here."]]
-          }
-        />
-      </Panel>
+        <div className="analytics-period-toolbar">
+          <div className="segmented-control analytics-period-tabs" aria-label="Business analytics period">
+            <button className={selectedBusinessPeriod === "week" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("week")} type="button">
+              Week
+            </button>
+            <button className={selectedBusinessPeriod === "month" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("month")} type="button">
+              Month
+            </button>
+            <button className={selectedBusinessPeriod === "custom" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => setSelectedBusinessPeriod("custom")} type="button">
+              Custom
+            </button>
+          </div>
+
+          {selectedBusinessPeriod === "custom" ? (
+            <div className="analytics-custom-range">
+              <label>
+                <span>From</span>
+                <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessFrom(event.target.value)} type="date" value={customBusinessFrom} />
+              </label>
+              <label>
+                <span>To</span>
+                <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessTo(event.target.value)} type="date" value={customBusinessTo} />
+              </label>
+              <button className="panel-action" disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("custom")} type="button">
+                Apply
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {businessAnalyticsError ? <div className="form-error">{businessAnalyticsError}</div> : null}
+
+        <div className="dashboard-insight-grid">
+          <article>
+            <span>Completed visits</span>
+            <strong>{completedVisits}</strong>
+          </article>
+          <article>
+            <span>Service revenue</span>
+            <strong>{formatMoneyRange(serviceRevenueFrom, serviceRevenueTo)}</strong>
+          </article>
+          <article>
+            <span>Net service profit</span>
+            <strong>{formatNullableMoneyRange(serviceProfitFrom, serviceProfitTo)}</strong>
+          </article>
+          <article>
+            <span>Product revenue</span>
+            <strong>{adminMoney.format(productRevenue)}</strong>
+          </article>
+        </div>
+
+        <div className="dashboard-report-grid">
+          <section className="dashboard-report-card wide">
+            <h3>Service profit</h3>
+            <DataTable
+              columns={["Service", "Visits", "Revenue", "Consumables", "Profit"]}
+              rows={
+                visibleBusinessAnalytics.services.length > 0
+                  ? visibleBusinessAnalytics.services.map((item) => [
+                      item.serviceName,
+                      `${item.appointmentCount} visits`,
+                      formatMoneyRange(item.revenueFrom, item.revenueTo),
+                      formatNullableMoney(item.consumableCost),
+                      formatNullableMoneyRange(item.profitFrom, item.profitTo)
+                    ])
+                  : [["No completed services", "-", "-", "-", "-"]]
+              }
+            />
+          </section>
+
+          <section className="dashboard-report-card">
+            <h3>Product sales</h3>
+            <DataTable
+              columns={["Category", "Units", "Revenue", "Profit"]}
+              rows={
+                visibleBusinessAnalytics.productSalesByCategory.length > 0
+                  ? visibleBusinessAnalytics.productSalesByCategory.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
+                  : [["No product sales", "-", "-", "-"]]
+              }
+            />
+          </section>
+
+          <section className="dashboard-report-card">
+            <h3>Brand performance</h3>
+            <DataTable
+              columns={["Brand", "Units", "Revenue", "Profit"]}
+              rows={
+                visibleBusinessAnalytics.productSalesByBrand.length > 0
+                  ? visibleBusinessAnalytics.productSalesByBrand.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
+                  : [["No product sales", "-", "-", "-"]]
+              }
+            />
+          </section>
+        </div>
+      </section>
+
+      <section className="dashboard-secondary-grid">
+        <Panel title="Today's appointments" action="Create appointment">
+          <DataTable
+            columns={["Time", "Client", "Service", "Employee", "Status"]}
+            rows={
+              todayAppointments.length > 0
+                ? todayAppointments.map((item) => [item.time, item.client, item.service, item.master, <StatusBadge status={item.status} />])
+                : [["No appointments today", "-", "-", "-", "-"]]
+            }
+          />
+        </Panel>
+
+        <Panel title="Restock suggestions">
+          <DataTable
+            columns={["Product", "Stock", "Minimum", "Buy"]}
+            rows={
+              visibleBusinessAnalytics.restock.length > 0
+                ? visibleBusinessAnalytics.restock.map((item) => [
+                    item.categoryName ? `${item.productName} · ${item.categoryName}` : item.productName,
+                    formatBusinessStock(item),
+                    `${item.minStockQuantity} packs`,
+                    item.packagesToBuy > 0 ? `${item.packagesToBuy} packs` : "check stock"
+                  ])
+                : [["Stock is healthy", "-", "-", "-"]]
+            }
+          />
+        </Panel>
+
+        <Panel title="Consumable analytics">
+          <DataTable
+            columns={["Product", "Used", "Appointments", "Current stock"]}
+            rows={
+              analytics.products.length > 0
+                ? analytics.products.map((item) => [
+                    item.productCategory ? `${item.productName} · ${item.productCategory}` : item.productName,
+                    `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)}`,
+                    `${item.appointmentCount} appointments`,
+                    formatAnalyticsStock(item)
+                  ])
+                : [["No write-offs yet", "-", "-", "-"]]
+            }
+          />
+        </Panel>
+
+        <Panel title="Recent write-offs">
+          <InfoList
+            items={
+              analytics.recentLogs.length > 0
+                ? analytics.recentLogs.map((log) => [
+                    `${formatShortDate(log.createdAt)} · ${log.productName}`,
+                    `${formatPlainNumber(log.quantity)} ${formatUnit(log.unit)} · ${log.serviceName} · ${log.clientName}`
+                  ])
+                : [["No data", "Complete an appointment with consumables to see write-offs here."]]
+            }
+          />
+        </Panel>
+      </section>
     </div>
   );
 }
@@ -1971,6 +2140,34 @@ function formatAnalyticsStock(item: AdminData["consumableAnalytics"]["products"]
   }
 
   return "not tracked";
+}
+
+function formatBusinessStock(item: AdminData["businessAnalytics"]["restock"][number]) {
+  if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null && item.contentUnit !== null) {
+    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.contentUnit)}`;
+  }
+
+  return `${item.stockQuantity} packs`;
+}
+
+function getDateInputValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getRelativeDateInputValue(dayOffset: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  return getDateInputValue(date);
+}
+
+function isSameLocalDate(value: string, reference: Date) {
+  const date = new Date(value);
+
+  return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth() && date.getDate() === reference.getDate();
 }
 
 function formatShortDate(value: string) {
