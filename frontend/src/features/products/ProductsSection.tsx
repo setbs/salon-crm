@@ -62,9 +62,11 @@ export function ProductsSection({
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const editingBrand = brands.find((brand) => brand.id === editingBrandId) ?? null;
   const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
   const editingProduct = products.find((product) => product.id === editingProductId) ?? null;
+  const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const normalizedProductSearch = productSearch.trim().toLowerCase();
   const filteredProducts = products.filter((product) => {
     const matchesCategory =
@@ -85,6 +87,7 @@ export function ProductsSection({
   const pagedProducts = filteredProducts.slice((currentProductPage - 1) * PRODUCTS_PAGE_SIZE, currentProductPage * PRODUCTS_PAGE_SIZE);
   const stockMovementRows = buildStockMovementHistoryRows(products);
   const latestStockMovementRows = stockMovementRows.slice(0, 4);
+  const inventorySummary = useMemo(() => buildInventorySummary(products), [products]);
 
   useEffect(() => {
     setProductPage(1);
@@ -92,58 +95,101 @@ export function ProductsSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Product categories" action="Add category" onAction={() => setIsCreatingCategory(true)} wide>
-        <DataTable
-          columns={["Photo", "Category", "Products", "Description", "Actions"]}
-          rows={
-            categories.length > 0
-              ? categories.map((category) => [
-                  <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={category.imageUrl} /> : <Package aria-hidden="true" size={16} />}</span>,
-                  category.name,
-                  String(category.productCount),
-                  category.description || "-",
-                  <InlineActions
-                    labels={["Edit", "Delete"]}
-                    onAction={(label) => {
-                      if (label === "Edit") {
-                        setEditingCategoryId(category.id);
-                        return;
-                      }
+      <Panel title="Catalog setup" wide>
+        <div className="compact-management-grid">
+          <section className="compact-management-card">
+            <div className="compact-management-header">
+              <div>
+                <p className="admin-kicker">Categories</p>
+                <strong>{categories.length}</strong>
+              </div>
+              <button className="panel-action" onClick={() => setIsCreatingCategory(true)} type="button">
+                + Add category
+              </button>
+            </div>
+            <DataTable
+              columns={["Photo", "Category", "Products", "Actions"]}
+              rows={
+                categories.length > 0
+                  ? categories.map((category) => [
+                      <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={category.imageUrl} /> : <Package aria-hidden="true" size={16} />}</span>,
+                      category.name,
+                      String(category.productCount),
+                      <InlineActions
+                        labels={["Edit", "Delete"]}
+                        onAction={(label) => {
+                          if (label === "Edit") {
+                            setEditingCategoryId(category.id);
+                            return;
+                          }
 
-                      void runAction(() => deleteAdminProductCategory(category.id));
-                    }}
-                  />
-                ])
-              : [["-", "No product categories yet", "-", "Create a category before adding public products.", "-"]]
-          }
-        />
-      </Panel>
-      <Panel title="Product brands" action="Add brand" onAction={() => setIsCreatingBrand(true)} wide>
-        <DataTable
-          columns={["Brand", "Products", "Description", "Actions"]}
-          rows={
-            brands.length > 0
-              ? brands.map((brand) => [
-                  brand.name,
-                  String(brand.productCount),
-                  brand.description || "-",
-                  <InlineActions
-                    labels={["Edit", "Delete"]}
-                    onAction={(label) => {
-                      if (label === "Edit") {
-                        setEditingBrandId(brand.id);
-                        return;
-                      }
+                          void runAction(() => deleteAdminProductCategory(category.id));
+                        }}
+                      />
+                    ])
+                  : [["-", "No categories yet", "-", "-"]]
+              }
+            />
+          </section>
 
-                      void runAction(() => deleteAdminProductBrand(brand.id));
-                    }}
-                  />
-                ])
-              : [["No product brands yet", "-", "Create a brand before adding products.", "-"]]
-          }
-        />
+          <section className="compact-management-card">
+            <div className="compact-management-header">
+              <div>
+                <p className="admin-kicker">Brands</p>
+                <strong>{brands.length}</strong>
+              </div>
+              <button className="panel-action" onClick={() => setIsCreatingBrand(true)} type="button">
+                + Add brand
+              </button>
+            </div>
+            <DataTable
+              columns={["Brand", "Products", "Actions"]}
+              rows={
+                brands.length > 0
+                  ? brands.map((brand) => [
+                      brand.name,
+                      String(brand.productCount),
+                      <InlineActions
+                        labels={["Edit", "Delete"]}
+                        onAction={(label) => {
+                          if (label === "Edit") {
+                            setEditingBrandId(brand.id);
+                            return;
+                          }
+
+                          void runAction(() => deleteAdminProductBrand(brand.id));
+                        }}
+                      />
+                    ])
+                  : [["No brands yet", "-", "-"]]
+              }
+            />
+          </section>
+        </div>
       </Panel>
       <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)} wide>
+        <div className="inventory-summary-grid">
+          <article>
+            <span>Total products</span>
+            <strong>{inventorySummary.totalProducts}</strong>
+            <small>{inventorySummary.trackedProducts} tracked in stock</small>
+          </article>
+          <article>
+            <span>Low stock</span>
+            <strong>{inventorySummary.lowStockProducts}</strong>
+            <small>{inventorySummary.outOfStockProducts} out of stock</small>
+          </article>
+          <article>
+            <span>Procedure materials</span>
+            <strong>{inventorySummary.procedureProducts}</strong>
+            <small>Products used in services</small>
+          </article>
+          <article>
+            <span>Retail stock value</span>
+            <strong>{adminMoney.format(inventorySummary.retailValue)}</strong>
+            <small>Estimated by sale price</small>
+          </article>
+        </div>
         <div className="table-toolbar">
           <label>
             <span>Search</span>
@@ -187,32 +233,42 @@ export function ProductsSection({
           </label>
         </div>
         <DataTable
-          columns={["Category", "Brand", "Purpose", "Product", "Purchase", "Sale", "Stock", "Package", "Status", "Actions"]}
+          columns={["Category", "Brand", "Purpose", "Product", "Margin", "Stock", "Package", "Status", "Actions"]}
           rows={
             pagedProducts.length > 0
-              ? pagedProducts.map((item) => [
-                  item.category,
-                  item.brand || "-",
-                  formatProductPurpose(item.purpose),
-                  item.name,
-                  adminMoney.format(item.purchase),
-                  adminMoney.format(item.sale),
-                  item.stockStatus === "low" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
-                  item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
-                  <StatusBadge status={item.stockStatus} />,
-                  <InlineActions
-                    labels={["Edit", "Delete"]}
-                    onAction={(label) => {
-                      if (label === "Edit") {
-                        setEditingProductId(item.id);
-                        return;
-                      }
+              ? pagedProducts.map((item) => {
+                  const stockLevel = getProductStockLevel(item);
 
-                      void runAction(() => deleteAdminProduct(item.id));
-                    }}
-                  />
-                ])
-              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-", "-"]]
+                  return [
+                    item.category,
+                    item.brand || "-",
+                    formatProductPurpose(item.purpose),
+                    <button className="table-link-button" onClick={() => setSelectedProductId(item.id)} type="button">
+                      {item.name}
+                    </button>,
+                    formatProductMargin(item),
+                    stockLevel === "low" || stockLevel === "out" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
+                    item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
+                    <StatusBadge status={stockLevel} />,
+                    <InlineActions
+                      labels={["Details", "Edit", "Delete"]}
+                      onAction={(label) => {
+                        if (label === "Details") {
+                          setSelectedProductId(item.id);
+                          return;
+                        }
+
+                        if (label === "Edit") {
+                          setEditingProductId(item.id);
+                          return;
+                        }
+
+                        void runAction(() => deleteAdminProduct(item.id));
+                      }}
+                    />
+                  ];
+                })
+              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-"]]
           }
         />
         <PaginationControls currentPage={currentProductPage} label={`${filteredProducts.length} products`} onPageChange={setProductPage} pageCount={productPageCount} />
@@ -346,6 +402,23 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isViewingStockHistory ? <StockMovementHistoryModal movements={stockMovementRows} onClose={() => setIsViewingStockHistory(false)} /> : null}
+      {selectedProduct ? (
+        <ProductInventoryModal
+          onClose={() => setSelectedProductId(null)}
+          onDelete={() =>
+            runAction(async () => {
+              await deleteAdminProduct(selectedProduct.id);
+              setSelectedProductId(null);
+            })
+          }
+          onEdit={() => {
+            setEditingProductId(selectedProduct.id);
+            setSelectedProductId(null);
+          }}
+          product={selectedProduct}
+          runAction={runAction}
+        />
+      ) : null}
     </div>
   );
 }
@@ -877,6 +950,212 @@ function StockMovementHistoryModal({ movements, onClose }: { movements: StockMov
   );
 }
 
+function ProductInventoryModal({
+  onClose,
+  onDelete,
+  onEdit,
+  product,
+  runAction
+}: {
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  onEdit: () => void;
+  product: AdminData["products"][number];
+  runAction: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const productMovements = buildStockMovementHistoryRows([product]);
+  const latestMovements = productMovements.slice(0, 6);
+  const stockLevel = getProductStockLevel(product);
+
+  return (
+    <AdminModal className="product-inventory-modal" title="Product card" onClose={onClose}>
+      <div className="product-inventory-detail">
+        <section className="product-inventory-hero">
+          <div className="product-inventory-image">
+            {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <Package aria-hidden="true" size={30} />}
+          </div>
+          <div className="product-inventory-title">
+            <p className="admin-kicker">{product.brand || "No brand"}</p>
+            <h3>{product.name}</h3>
+            <span>{product.description || "No product description."}</span>
+          </div>
+          <StatusBadge status={stockLevel} />
+        </section>
+
+        <div className="product-inventory-layout">
+          <section className="product-inventory-panel">
+            <div className="product-stat-grid">
+              <div>
+                <span>Category</span>
+                <strong>{product.category}</strong>
+              </div>
+              <div>
+                <span>Purpose</span>
+                <strong>{formatProductPurpose(product.purpose)}</strong>
+              </div>
+              <div>
+                <span>SKU</span>
+                <strong>{product.sku || "-"}</strong>
+              </div>
+              <div>
+                <span>Package</span>
+                <strong>{product.contentAmount ? `${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}` : "not set"}</strong>
+              </div>
+              <div>
+                <span>Purchase</span>
+                <strong>{adminMoney.format(product.purchase)}</strong>
+              </div>
+              <div>
+                <span>Sale</span>
+                <strong>{adminMoney.format(product.sale)}</strong>
+              </div>
+              <div>
+                <span>Margin</span>
+                <strong>{formatProductMargin(product)}</strong>
+              </div>
+              <div>
+                <span>Stock</span>
+                <strong>{formatProductStock(product)}</strong>
+              </div>
+            </div>
+            {product.quote ? <blockquote>{product.quote}</blockquote> : null}
+            <div className="product-card-actions">
+              <button className="secondary-button compact-button" onClick={onEdit} type="button">
+                Edit product
+              </button>
+              <button
+                className="secondary-button compact-button danger-action"
+                onClick={() => {
+                  if (window.confirm("Remove this product? If it is used in history, it will be deactivated instead.")) {
+                    void onDelete();
+                  }
+                }}
+                type="button"
+              >
+                Remove / deactivate
+              </button>
+            </div>
+          </section>
+
+          <section className="product-inventory-panel">
+            <p className="admin-kicker">Quick stock action</p>
+            <QuickProductMovementForm product={product} runAction={runAction} />
+          </section>
+        </div>
+
+        <section className="product-inventory-panel">
+          <div className="product-history-header">
+            <div>
+              <p className="admin-kicker">Local movement history</p>
+              <strong>{productMovements.length} movements</strong>
+            </div>
+            <small>Latest changes for this product only.</small>
+          </div>
+          <DataTable
+            columns={["Date", "Type", "Amount", "Reason"]}
+            rows={
+              latestMovements.length > 0
+                ? latestMovements.map((movement) => [formatStockMovementDateTime(movement.createdAt), movement.type, movement.amount, movement.reason || "-"])
+                : [["No movements for this product yet.", "-", "-", "-"]]
+            }
+          />
+        </section>
+      </div>
+    </AdminModal>
+  );
+}
+
+function QuickProductMovementForm({
+  product,
+  runAction
+}: {
+  product: AdminData["products"][number];
+  runAction: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [action, setAction] = useState<"restock" | "write_off" | "correct">("restock");
+  const [amountMode, setAmountMode] = useState<StockMovementInput["amountMode"]>(product.contentAmount ? "content" : "packages");
+  const [amount, setAmount] = useState("1");
+  const [reason, setReason] = useState("");
+  const canUseContent = Boolean(product.contentAmount && product.contentUnit);
+
+  useEffect(() => {
+    setAmountMode(product.contentAmount ? "content" : "packages");
+    setAmount("1");
+    setReason("");
+  }, [product.id, product.contentAmount]);
+
+  useEffect(() => {
+    if (amountMode === "content" && !canUseContent) {
+      setAmountMode("packages");
+    }
+  }, [amountMode, canUseContent]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const rawAmount = Math.abs(Number(amount));
+    const signedAmount = action === "write_off" ? -rawAmount : action === "correct" ? Number(amount) : rawAmount;
+
+    void runAction(async () => {
+      await createAdminStockMovement({
+        productId: product.id,
+        movementType: action === "restock" ? "purchase" : "adjustment",
+        amountMode,
+        amount: signedAmount,
+        reason: reason || defaultStockReason(action)
+      });
+      setAmount("1");
+      setReason("");
+    });
+  }
+
+  return (
+    <form className="quick-stock-form" onSubmit={submit}>
+      <div className="segmented-control" role="group" aria-label="Stock action">
+        <button className={action === "restock" ? "active" : ""} onClick={() => setAction("restock")} type="button">
+          Restock
+        </button>
+        <button className={action === "write_off" ? "active" : ""} onClick={() => setAction("write_off")} type="button">
+          Write off
+        </button>
+        <button className={action === "correct" ? "active" : ""} onClick={() => setAction("correct")} type="button">
+          Correct
+        </button>
+      </div>
+      <div className="quick-stock-grid">
+        <label>
+          <span>Amount mode</span>
+          <select value={amountMode} onChange={(event) => setAmountMode(event.target.value as StockMovementInput["amountMode"])}>
+            <option value="packages">Packages</option>
+            <option value="content" disabled={!canUseContent}>
+              {product.contentUnit ? formatUnit(product.contentUnit) : "ml/g"}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span>{amountMode === "content" ? `Amount, ${formatUnit(product.contentUnit)}` : "Packages"}</span>
+          <input
+            step={amountMode === "content" ? "0.01" : "1"}
+            type="number"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+          />
+        </label>
+      </div>
+      <label>
+        <span>Reason</span>
+        <textarea placeholder={defaultStockReason(action)} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
+      </label>
+      {action === "correct" ? <small className="form-note">Use a positive number to add stock or a negative number to reduce it.</small> : null}
+      {!canUseContent ? <small className="form-note">Package content is not configured, so only package movements are available.</small> : null}
+      <button className="primary-button admin-submit" disabled={!Number(amount)} type="submit">
+        Save stock action
+      </button>
+    </form>
+  );
+}
+
 function buildStockMovementHistoryRows(products: AdminData["products"]): StockMovementHistoryRow[] {
   return products
     .flatMap((product) =>
@@ -892,6 +1171,44 @@ function buildStockMovementHistoryRows(products: AdminData["products"]): StockMo
       }))
     )
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+function buildInventorySummary(products: AdminData["products"]) {
+  return products.reduce(
+    (summary, product) => {
+      const stockLevel = getProductStockLevel(product);
+      const packageEquivalent = product.stockPackageEquivalent ?? product.stock;
+
+      summary.totalProducts += 1;
+      summary.retailValue += product.sale * packageEquivalent;
+
+      if (product.stockStatus !== "not_tracked") {
+        summary.trackedProducts += 1;
+      }
+
+      if (stockLevel === "low") {
+        summary.lowStockProducts += 1;
+      }
+
+      if (stockLevel === "out") {
+        summary.outOfStockProducts += 1;
+      }
+
+      if (product.purpose === "procedure" || product.purpose === "both") {
+        summary.procedureProducts += 1;
+      }
+
+      return summary;
+    },
+    {
+      lowStockProducts: 0,
+      outOfStockProducts: 0,
+      procedureProducts: 0,
+      retailValue: 0,
+      totalProducts: 0,
+      trackedProducts: 0
+    }
+  );
 }
 
 function formatProductPurpose(purpose: ProductPurpose | undefined) {
@@ -917,6 +1234,34 @@ function formatProductStock(product: AdminData["products"][number]) {
   }
 
   return String(product.stock);
+}
+
+function getProductStockLevel(product: AdminData["products"][number]) {
+  if (product.stockStatus === "not_tracked") {
+    return "not_tracked";
+  }
+
+  if (product.stockContentAmount !== null) {
+    return product.stockContentAmount <= 0 ? "out" : product.stockStatus;
+  }
+
+  return product.stock <= 0 ? "out" : product.stockStatus;
+}
+
+function formatProductMargin(product: AdminData["products"][number]) {
+  return adminMoney.format(product.sale - product.purchase);
+}
+
+function defaultStockReason(action: "restock" | "write_off" | "correct") {
+  if (action === "write_off") {
+    return "Manual write-off";
+  }
+
+  if (action === "correct") {
+    return "Stock correction";
+  }
+
+  return "Stock replenishment";
 }
 
 function formatStockMovementAmount(movement: AdminData["products"][number]["movements"][number]) {

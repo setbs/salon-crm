@@ -20,13 +20,14 @@ The project is built as a diploma and portfolio application with a practical bus
   - employee selection, skipped automatically when only one employee fits;
   - date and time selection;
   - contact details step.
+- Booking flow includes clear empty states, client-friendly error messages, nearest-slot suggestions, and a confirmation screen.
 - Public availability respects employee working hours, existing appointments, and time off.
 
 ### CRM panel
 
 - JWT authentication.
 - Role-based access for admins and employees.
-- Admin dashboard.
+- Admin dashboard with financial analytics, charts, period filters, period comparison, and attention alerts.
 - Appointment management.
 - Client database with search and client profiles.
 - Employee profiles with service assignment and activation control.
@@ -34,9 +35,11 @@ The project is built as a diploma and portfolio application with a practical bus
 - Portfolio management for public website gallery, with image URL or local file upload.
 - Service and service category management.
 - Product inventory and product sales.
+- Product categories, brands, product photos, public product detail modals, and internal product purpose control.
 - Product editing and manual stock movements.
 - Appointment completion workflow with consumable write-off preview.
-- Consumable analytics for the last 30 days.
+- Consumable analytics with week, month, and custom period views.
+- CSV export for business analytics, appointments, inventory, and consumables.
 - Payments and reviews overview.
 - Salon settings.
 
@@ -55,7 +58,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Services can define consumable products and usage amount, for example `20 ml` of a peeling product.
 - Completing an appointment writes off configured service consumables from product stock and stores the write-off in `service_consumption_logs`.
 - Before completing an appointment, CRM users can preview the exact consumables to be written off and whether stock is sufficient.
-- The dashboard shows recent consumable write-offs and top used products for the last 30 days.
+- The dashboard shows service profitability, product sales, material pressure by service, low-stock forecast, recent write-offs, employee performance placeholders, and restock suggestions.
 - Consumables are internal CRM data and are not shown to public booking users.
 
 ## Technology Stack
@@ -177,7 +180,26 @@ npm run db:up
 npm run db:down
 npm run prisma:generate
 npm run prisma:seed
+npm test
 ```
+
+Run backend API tests against a real PostgreSQL test database:
+
+```bash
+TEST_DATABASE_URL="postgresql://user:password@localhost:5432/salon_crm_test" npm run test --workspace backend
+```
+
+## Demo Data
+
+`npm run prisma:seed` creates a practical demo setup:
+
+- admin and employee accounts;
+- service categories and services with optional public price ranges;
+- employees with working hours;
+- clients and appointments, including completed appointments for analytics;
+- professional cosmetics categories, product brand, products with package volume, stock, and stock movements;
+- service consumable definitions and completed write-off logs;
+- product sale, payments, portfolio entries, review, business hours, and salon settings.
 
 ## Documentation
 
@@ -194,6 +216,7 @@ npm run prisma:seed
 - Consumable stock is tracked in ml/g and shown as package-equivalent stock in the CRM inventory.
 - Low-stock alerts use ml/g content stock for consumable products and package stock for regular retail products.
 - Consumable write-off is idempotent: moving an already completed appointment through updates does not subtract the same materials twice.
+- Build output such as `backend/dist/` and `frontend/dist/` is ignored and should not be edited manually.
 
 ## License
 

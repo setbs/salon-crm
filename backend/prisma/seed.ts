@@ -1,4 +1,4 @@
-import { AppointmentStatus, PaymentMethod, PaymentStatus, PrismaClient, StockMovementType, UserRole } from "@prisma/client";
+import { AppointmentStatus, ConsumableUnit, PaymentMethod, PaymentStatus, PrismaClient, StockMovementType, UserRole } from "@prisma/client";
 import { hashPassword } from "../src/modules/auth/auth.crypto.js";
 
 const prisma = new PrismaClient();
@@ -10,20 +10,28 @@ async function main() {
     upsertServiceCategory(1n, "Haircuts", "Women and men haircuts"),
     upsertServiceCategory(2n, "Manicure", "Nail care and polish"),
     upsertServiceCategory(3n, "Coloring", "Coloring, toning, and color change"),
-    upsertServiceCategory(4n, "Trichology", "Scalp diagnostics and care")
+    upsertServiceCategory(4n, "Trichology", "Scalp diagnostics and care"),
+    upsertServiceCategory(5n, "Restoration", "Hair restoration and reconstruction")
   ]);
 
   const haircut = await prisma.service.upsert({
     where: { id: 1n },
     update: {
       name: "Women's haircut",
-      description: "Consultation, wash, haircut, and styling."
+      description: "Consultation, wash, haircut, and styling.",
+      durationMinutes: 60,
+      price: "650.00",
+      priceFrom: "500.00",
+      priceTo: "800.00"
     },
     create: {
+      id: 1n,
       name: "Women's haircut",
       description: "Consultation, wash, haircut, and styling.",
       durationMinutes: 60,
-      price: "120.00"
+      price: "650.00",
+      priceFrom: "500.00",
+      priceTo: "800.00"
     }
   });
 
@@ -31,13 +39,20 @@ async function main() {
     where: { id: 2n },
     update: {
       name: "Classic manicure",
-      description: "Nail shaping, cuticle care, and polish."
+      description: "Nail shaping, cuticle care, and polish.",
+      durationMinutes: 45,
+      price: "500.00",
+      priceFrom: "400.00",
+      priceTo: "600.00"
     },
     create: {
+      id: 2n,
       name: "Classic manicure",
       description: "Nail shaping, cuticle care, and polish.",
       durationMinutes: 45,
-      price: "80.00"
+      price: "500.00",
+      priceFrom: "400.00",
+      priceTo: "600.00"
     }
   });
 
@@ -45,20 +60,71 @@ async function main() {
     where: { id: 3n },
     update: {
       name: "Hair coloring",
-      description: "Color consultation and full color service."
+      description: "Color consultation and full color service.",
+      durationMinutes: 150,
+      price: "3000.00",
+      priceFrom: "1800.00",
+      priceTo: "4500.00"
     },
     create: {
+      id: 3n,
       name: "Hair coloring",
       description: "Color consultation and full color service.",
-      durationMinutes: 120,
-      price: "260.00"
+      durationMinutes: 150,
+      price: "3000.00",
+      priceFrom: "1800.00",
+      priceTo: "4500.00"
+    }
+  });
+
+  const scalpPeeling = await prisma.service.upsert({
+    where: { id: 4n },
+    update: {
+      name: "Scalp peeling",
+      description: "Scalp cleansing and care with professional cosmetics.",
+      durationMinutes: 60,
+      price: "1500.00",
+      priceFrom: "1200.00",
+      priceTo: "1800.00"
+    },
+    create: {
+      id: 4n,
+      name: "Scalp peeling",
+      description: "Scalp cleansing and care with professional cosmetics.",
+      durationMinutes: 60,
+      price: "1500.00",
+      priceFrom: "1200.00",
+      priceTo: "1800.00"
+    }
+  });
+
+  const reconstruction = await prisma.service.upsert({
+    where: { id: 5n },
+    update: {
+      name: "Deep reconstruction",
+      description: "Intensive restoration treatment for damaged length.",
+      durationMinutes: 90,
+      price: "2200.00",
+      priceFrom: "1800.00",
+      priceTo: "3400.00"
+    },
+    create: {
+      id: 5n,
+      name: "Deep reconstruction",
+      description: "Intensive restoration treatment for damaged length.",
+      durationMinutes: 90,
+      price: "2200.00",
+      priceFrom: "1800.00",
+      priceTo: "3400.00"
     }
   });
 
   await Promise.all([
     assignServiceCategory(haircut.id, serviceCategories[0].id),
     assignServiceCategory(manicure.id, serviceCategories[1].id),
-    assignServiceCategory(coloring.id, serviceCategories[2].id)
+    assignServiceCategory(coloring.id, serviceCategories[2].id),
+    assignServiceCategory(scalpPeeling.id, serviceCategories[3].id),
+    assignServiceCategory(reconstruction.id, serviceCategories[4].id)
   ]);
 
   await translateLegacyDemoServices();
@@ -140,7 +206,7 @@ async function main() {
     }
   });
 
-  for (const service of [haircut, coloring]) {
+  for (const service of [haircut, coloring, scalpPeeling, reconstruction]) {
     await prisma.employeeService.upsert({
       where: { employeeId_serviceId: { employeeId: anna.id, serviceId: service.id } },
       update: {},
@@ -208,6 +274,12 @@ async function main() {
     date.setHours(hours, minutes, 0, 0);
     return date;
   };
+  const atDayOffset = (dayOffset: number, hours: number, minutes: number) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(hours, minutes, 0, 0);
+    return date;
+  };
 
   const appointmentData = [
     {
@@ -236,9 +308,39 @@ async function main() {
       employeeId: anna.id,
       serviceIds: [coloring.id],
       startTime: atToday(14, 30),
-      endTime: atToday(16, 30),
+      endTime: atToday(17, 0),
       status: AppointmentStatus.PENDING,
       comment: "Coloring, cool shade"
+    },
+    {
+      id: 4n,
+      clientId: clients[0].id,
+      employeeId: anna.id,
+      serviceIds: [scalpPeeling.id],
+      startTime: atDayOffset(-1, 11, 0),
+      endTime: atDayOffset(-1, 12, 0),
+      status: AppointmentStatus.COMPLETED,
+      comment: "Sensitive scalp, cooling peeling"
+    },
+    {
+      id: 5n,
+      clientId: clients[1].id,
+      employeeId: anna.id,
+      serviceIds: [coloring.id, reconstruction.id],
+      startTime: atDayOffset(-3, 13, 0),
+      endTime: atDayOffset(-3, 17, 0),
+      status: AppointmentStatus.COMPLETED,
+      comment: "Color correction with reconstruction"
+    },
+    {
+      id: 6n,
+      clientId: clients[2].id,
+      employeeId: anna.id,
+      serviceIds: [haircut.id, reconstruction.id],
+      startTime: atDayOffset(-8, 10, 0),
+      endTime: atDayOffset(-8, 12, 30),
+      status: AppointmentStatus.COMPLETED,
+      comment: "Length refresh and treatment"
     }
   ];
 
@@ -282,10 +384,10 @@ async function main() {
 
   await prisma.payment.upsert({
     where: { appointmentId: 2n },
-    update: { amount: "80.00", paymentMethod: PaymentMethod.CARD, paymentStatus: PaymentStatus.PAID, paidAt: atToday(13, 5) },
+    update: { amount: "500.00", paymentMethod: PaymentMethod.CARD, paymentStatus: PaymentStatus.PAID, paidAt: atToday(13, 5) },
     create: {
       appointmentId: 2n,
-      amount: "80.00",
+      amount: "500.00",
       paymentMethod: PaymentMethod.CARD,
       paymentStatus: PaymentStatus.PAID,
       paidAt: atToday(13, 5)
@@ -294,107 +396,266 @@ async function main() {
 
   await prisma.payment.upsert({
     where: { appointmentId: 3n },
-    update: { amount: "260.00", paymentMethod: PaymentMethod.BLIK, paymentStatus: PaymentStatus.PENDING },
+    update: { amount: "3000.00", paymentMethod: PaymentMethod.BLIK, paymentStatus: PaymentStatus.PENDING },
     create: {
       appointmentId: 3n,
-      amount: "260.00",
+      amount: "3000.00",
       paymentMethod: PaymentMethod.BLIK,
       paymentStatus: PaymentStatus.PENDING
     }
   });
 
+  for (const payment of [
+    { appointmentId: 4n, amount: "1500.00", paymentMethod: PaymentMethod.CASH, paidAt: atDayOffset(-1, 12, 5) },
+    { appointmentId: 5n, amount: "4800.00", paymentMethod: PaymentMethod.CARD, paidAt: atDayOffset(-3, 17, 10) },
+    { appointmentId: 6n, amount: "2700.00", paymentMethod: PaymentMethod.BLIK, paidAt: atDayOffset(-8, 12, 40) }
+  ]) {
+    await prisma.payment.upsert({
+      where: { appointmentId: payment.appointmentId },
+      update: {
+        amount: payment.amount,
+        paymentMethod: payment.paymentMethod,
+        paymentStatus: PaymentStatus.PAID,
+        paidAt: payment.paidAt
+      },
+      create: {
+        appointmentId: payment.appointmentId,
+        amount: payment.amount,
+        paymentMethod: payment.paymentMethod,
+        paymentStatus: PaymentStatus.PAID,
+        paidAt: payment.paidAt
+      }
+    });
+  }
+
   const categories = await Promise.all([
     prisma.productCategory.upsert({
       where: { id: 1n },
-      update: { name: "Shampoos", description: "Home care" },
-      create: { id: 1n, name: "Shampoos", description: "Home care" }
+      update: { name: "Hair shampoos", description: "Professional home care", imageUrl: null },
+      create: { id: 1n, name: "Hair shampoos", description: "Professional home care", imageUrl: null }
     }),
     prisma.productCategory.upsert({
       where: { id: 2n },
-      update: { name: "Masks", description: "Hair restoration" },
-      create: { id: 2n, name: "Masks", description: "Hair restoration" }
+      update: { name: "Hair conditioners", description: "Smoothness and easy combing", imageUrl: null },
+      create: { id: 2n, name: "Hair conditioners", description: "Smoothness and easy combing", imageUrl: null }
     }),
     prisma.productCategory.upsert({
       where: { id: 3n },
-      update: { name: "Styling", description: "Finishing products" },
-      create: { id: 3n, name: "Styling", description: "Finishing products" }
+      update: { name: "Treatment products", description: "Masks, peelings, and reconstruction care", imageUrl: null },
+      create: { id: 3n, name: "Treatment products", description: "Masks, peelings, and reconstruction care", imageUrl: null }
     })
   ]);
 
+  const professionalBrand = await prisma.productBrand.upsert({
+    where: { name: "Na Golovu" },
+    update: { description: "Professional cosmetics used in salon services and retail." },
+    create: { name: "Na Golovu", description: "Professional cosmetics used in salon services and retail." }
+  });
+
   const shampoo = await prisma.product.upsert({
     where: { sku: "SL-SH-001" },
-    update: { stockQuantity: 2, minStockQuantity: 4 },
+    update: {
+      categoryId: categories[0].id,
+      brandId: professionalBrand.id,
+      brand: professionalBrand.name,
+      name: "Hyaluronic acid shampoo",
+      description: "Professional shampoo for all hair types with hyaluronic acid.",
+      quote: "Clean hair is the beginning of a good color story.",
+      purchasePrice: "600.00",
+      sellingPrice: "950.00",
+      stockQuantity: 5,
+      minStockQuantity: 3,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1475.00",
+      productPurpose: "BOTH",
+      imageUrl: null
+    },
     create: {
       categoryId: categories[0].id,
-      name: "Color Care Shampoo",
-      brand: "SL",
+      brandId: professionalBrand.id,
+      name: "Hyaluronic acid shampoo",
+      brand: professionalBrand.name,
+      description: "Professional shampoo for all hair types with hyaluronic acid.",
+      quote: "Clean hair is the beginning of a good color story.",
       sku: "SL-SH-001",
-      purchasePrice: "42.00",
-      sellingPrice: "75.00",
-      stockQuantity: 2,
-      minStockQuantity: 4
+      purchasePrice: "600.00",
+      sellingPrice: "950.00",
+      stockQuantity: 5,
+      minStockQuantity: 3,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1475.00",
+      productPurpose: "BOTH",
+      imageUrl: null
     }
   });
 
   const mask = await prisma.product.upsert({
     where: { sku: "SL-MASK-001" },
-    update: { stockQuantity: 7, minStockQuantity: 3 },
+    update: {
+      categoryId: categories[2].id,
+      brandId: professionalBrand.id,
+      brand: professionalBrand.name,
+      name: "Repair mask",
+      description: "Restoration mask for dry and damaged length.",
+      quote: "Softness should be measurable, not accidental.",
+      purchasePrice: "720.00",
+      sellingPrice: "1100.00",
+      stockQuantity: 4,
+      minStockQuantity: 2,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1210.00",
+      productPurpose: "BOTH",
+      imageUrl: null
+    },
     create: {
-      categoryId: categories[1].id,
-      name: "Repair Mask",
-      brand: "SL",
+      categoryId: categories[2].id,
+      brandId: professionalBrand.id,
+      name: "Repair mask",
+      brand: professionalBrand.name,
+      description: "Restoration mask for dry and damaged length.",
+      quote: "Softness should be measurable, not accidental.",
       sku: "SL-MASK-001",
-      purchasePrice: "58.00",
-      sellingPrice: "110.00",
-      stockQuantity: 7,
-      minStockQuantity: 3
+      purchasePrice: "720.00",
+      sellingPrice: "1100.00",
+      stockQuantity: 4,
+      minStockQuantity: 2,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1210.00",
+      productPurpose: "BOTH",
+      imageUrl: null
     }
   });
 
-  const spray = await prisma.product.upsert({
+  const conditioner = await prisma.product.upsert({
     where: { sku: "SL-SPRAY-001" },
-    update: { stockQuantity: 1, minStockQuantity: 5 },
+    update: {
+      categoryId: categories[1].id,
+      brandId: professionalBrand.id,
+      brand: professionalBrand.name,
+      name: "Betaine conditioner",
+      description: "Conditioner for smoothness, shine, and easier combing.",
+      quote: "Light care is still serious care.",
+      purchasePrice: "700.00",
+      sellingPrice: "1050.00",
+      stockQuantity: 5,
+      minStockQuantity: 3,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1250.00",
+      productPurpose: "BOTH",
+      imageUrl: null
+    },
     create: {
-      categoryId: categories[2].id,
-      name: "Thermo Spray",
-      brand: "SL",
+      categoryId: categories[1].id,
+      brandId: professionalBrand.id,
+      name: "Betaine conditioner",
+      brand: professionalBrand.name,
+      description: "Conditioner for smoothness, shine, and easier combing.",
+      quote: "Light care is still serious care.",
       sku: "SL-SPRAY-001",
-      purchasePrice: "36.00",
-      sellingPrice: "70.00",
-      stockQuantity: 1,
-      minStockQuantity: 5
+      purchasePrice: "700.00",
+      sellingPrice: "1050.00",
+      stockQuantity: 5,
+      minStockQuantity: 3,
+      contentAmount: "250.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "1250.00",
+      productPurpose: "BOTH",
+      imageUrl: null
     }
   });
+
+  const peelingProduct = await prisma.product.upsert({
+    where: { sku: "NG-PEEL-COOL-060" },
+    update: {
+      categoryId: categories[2].id,
+      brandId: professionalBrand.id,
+      brand: professionalBrand.name,
+      name: "Cooling scalp peeling",
+      description: "Professional peeling for scalp cleansing before care procedures.",
+      quote: "A clean scalp makes every treatment more precise.",
+      purchasePrice: "1200.00",
+      sellingPrice: "1800.00",
+      stockQuantity: 2,
+      minStockQuantity: 2,
+      contentAmount: "60.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "140.00",
+      productPurpose: "PROCEDURE",
+      imageUrl: null
+    },
+    create: {
+      categoryId: categories[2].id,
+      brandId: professionalBrand.id,
+      name: "Cooling scalp peeling",
+      brand: professionalBrand.name,
+      description: "Professional peeling for scalp cleansing before care procedures.",
+      quote: "A clean scalp makes every treatment more precise.",
+      sku: "NG-PEEL-COOL-060",
+      purchasePrice: "1200.00",
+      sellingPrice: "1800.00",
+      stockQuantity: 2,
+      minStockQuantity: 2,
+      contentAmount: "60.00",
+      contentUnit: ConsumableUnit.ML,
+      stockContentAmount: "140.00",
+      productPurpose: "PROCEDURE",
+      imageUrl: null
+    }
+  });
+
+  for (const consumable of [
+    { serviceId: coloring.id, productId: shampoo.id, quantity: "25.00", unit: ConsumableUnit.ML },
+    { serviceId: scalpPeeling.id, productId: peelingProduct.id, quantity: "20.00", unit: ConsumableUnit.ML },
+    { serviceId: reconstruction.id, productId: mask.id, quantity: "30.00", unit: ConsumableUnit.ML }
+  ]) {
+    await prisma.serviceConsumable.upsert({
+      where: { serviceId_productId: { serviceId: consumable.serviceId, productId: consumable.productId } },
+      update: { quantity: consumable.quantity, unit: consumable.unit },
+      create: consumable
+    });
+  }
 
   const sale = await prisma.productSale.upsert({
     where: { id: 1n },
     update: {
       clientId: clients[0].id,
       employeeId: anna.id,
-      totalAmount: "110.00",
+      totalAmount: "1050.00",
       saleDate: atToday(13, 20)
     },
     create: {
       id: 1n,
       clientId: clients[0].id,
       employeeId: anna.id,
-      totalAmount: "110.00",
+      totalAmount: "1050.00",
       saleDate: atToday(13, 20)
     }
   });
 
+  await prisma.productSaleItem.deleteMany({
+    where: {
+      saleId: sale.id,
+      productId: { not: conditioner.id }
+    }
+  });
+
   await prisma.productSaleItem.upsert({
-    where: { saleId_productId: { saleId: sale.id, productId: mask.id } },
-    update: { quantity: 1, unitPrice: "110.00" },
-    create: { saleId: sale.id, productId: mask.id, quantity: 1, unitPrice: "110.00" }
+    where: { saleId_productId: { saleId: sale.id, productId: conditioner.id } },
+    update: { quantity: 1, unitPrice: "1050.00" },
+    create: { saleId: sale.id, productId: conditioner.id, quantity: 1, unitPrice: "1050.00" }
   });
 
   await prisma.payment.upsert({
     where: { productSaleId: sale.id },
-    update: { amount: "110.00", paymentMethod: PaymentMethod.CASH, paymentStatus: PaymentStatus.PAID, paidAt: atToday(13, 25) },
+    update: { amount: "1050.00", paymentMethod: PaymentMethod.CASH, paymentStatus: PaymentStatus.PAID, paidAt: atToday(13, 25) },
     create: {
       productSaleId: sale.id,
-      amount: "110.00",
+      amount: "1050.00",
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PAID,
       paidAt: atToday(13, 25)
@@ -402,14 +663,145 @@ async function main() {
   });
 
   for (const movement of [
-    { id: 1n, productId: shampoo.id, movementType: StockMovementType.SALE, quantity: -2, reason: "Client sale" },
-    { id: 2n, productId: mask.id, movementType: StockMovementType.PURCHASE, quantity: 6, reason: "Stock replenishment" },
-    { id: 3n, productId: spray.id, movementType: StockMovementType.ADJUSTMENT, quantity: -1, reason: "Stock adjustment" }
+    {
+      id: 1n,
+      productId: shampoo.id,
+      movementType: StockMovementType.PURCHASE,
+      quantity: 6,
+      contentQuantity: "1500.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Initial stock"
+    },
+    {
+      id: 2n,
+      productId: shampoo.id,
+      movementType: StockMovementType.SALE,
+      quantity: 0,
+      contentQuantity: "-25.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Procedure write-off: hair coloring"
+    },
+    {
+      id: 3n,
+      productId: mask.id,
+      movementType: StockMovementType.PURCHASE,
+      quantity: 5,
+      contentQuantity: "1250.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Initial stock"
+    },
+    {
+      id: 4n,
+      productId: mask.id,
+      movementType: StockMovementType.SALE,
+      quantity: 0,
+      contentQuantity: "-25.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Procedure write-off: reconstruction"
+    },
+    {
+      id: 5n,
+      productId: mask.id,
+      movementType: StockMovementType.SALE,
+      quantity: 0,
+      contentQuantity: "-15.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Procedure write-off: reconstruction correction"
+    },
+    {
+      id: 6n,
+      productId: conditioner.id,
+      movementType: StockMovementType.PURCHASE,
+      quantity: 6,
+      contentQuantity: "1500.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Initial stock"
+    },
+    {
+      id: 7n,
+      productId: conditioner.id,
+      movementType: StockMovementType.SALE,
+      quantity: -1,
+      contentQuantity: "-250.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Client retail sale"
+    },
+    {
+      id: 8n,
+      productId: peelingProduct.id,
+      movementType: StockMovementType.PURCHASE,
+      quantity: 3,
+      contentQuantity: "180.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Initial stock"
+    },
+    {
+      id: 9n,
+      productId: peelingProduct.id,
+      movementType: StockMovementType.SALE,
+      quantity: 0,
+      contentQuantity: "-20.00",
+      contentUnit: ConsumableUnit.ML,
+      reason: "Procedure write-off: scalp peeling"
+    }
   ]) {
     await prisma.stockMovement.upsert({
       where: { id: movement.id },
       update: movement,
       create: movement
+    });
+  }
+
+  for (const log of [
+    {
+      id: 1n,
+      appointmentId: 4n,
+      serviceId: scalpPeeling.id,
+      productId: peelingProduct.id,
+      quantity: "20.00",
+      unit: ConsumableUnit.ML,
+      stockContentBefore: "160.00",
+      stockContentAfter: "140.00",
+      createdAt: atDayOffset(-1, 12, 5)
+    },
+    {
+      id: 2n,
+      appointmentId: 5n,
+      serviceId: coloring.id,
+      productId: shampoo.id,
+      quantity: "25.00",
+      unit: ConsumableUnit.ML,
+      stockContentBefore: "1500.00",
+      stockContentAfter: "1475.00",
+      createdAt: atDayOffset(-3, 17, 8)
+    },
+    {
+      id: 3n,
+      appointmentId: 5n,
+      serviceId: reconstruction.id,
+      productId: mask.id,
+      quantity: "25.00",
+      unit: ConsumableUnit.ML,
+      stockContentBefore: "1250.00",
+      stockContentAfter: "1225.00",
+      createdAt: atDayOffset(-3, 17, 9)
+    },
+    {
+      id: 4n,
+      appointmentId: 6n,
+      serviceId: reconstruction.id,
+      productId: mask.id,
+      quantity: "15.00",
+      unit: ConsumableUnit.ML,
+      stockContentBefore: "1225.00",
+      stockContentAfter: "1210.00",
+      createdAt: atDayOffset(-8, 12, 35)
+    }
+  ]) {
+    await prisma.serviceConsumptionLog.upsert({
+      where: { id: log.id },
+      update: log,
+      create: log
     });
   }
 
@@ -487,8 +879,11 @@ async function main() {
     "services",
     "appointments",
     "product_categories",
+    "product_brands",
     "product_sales",
     "stock_movements",
+    "service_consumables",
+    "service_consumption_logs",
     "portfolio_photos",
     "employee_time_off",
     "salon_settings"

@@ -171,6 +171,7 @@ export function StatusBadge({ status }: { status: string }) {
     blocked: "blocked",
     ok: "ok",
     low: "low",
+    out: "out",
     not_tracked: "not tracked",
     payment_updated: "payment",
     status_updated: "status",

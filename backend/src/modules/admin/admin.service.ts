@@ -52,12 +52,6 @@ import type { z } from "zod";
 type ConsumableUnitValue = "ML" | "GRAM";
 type ProductPurposeValue = "SALE" | "PROCEDURE" | "BOTH";
 type PublicProductPurpose = "sale" | "procedure" | "both";
-type BusinessAnalyticsPeriod = "week" | "month" | "custom";
-type BusinessAnalyticsPeriodInput = {
-  period?: string;
-  from?: string;
-  to?: string;
-};
 type AppointmentServiceLine = {
   id: string;
   name: string;
@@ -102,7 +96,7 @@ export async function getDashboard(actor: CrmAuthenticatedUser) {
   dayEnd.setDate(dayEnd.getDate() + 1);
   const scopedEmployeeId = employeeScope(actor);
 
-  const [todayAppointments, revenue, nextAppointment, lowStockProducts] = await Promise.all([
+  const [todayAppointments, revenueRows, nextAppointment, lowStockProducts] = await Promise.all([
     countTodayAppointments(dayStart, dayEnd, scopedEmployeeId),
     sumTodayPaidRevenue(dayStart, dayEnd, scopedEmployeeId),
     findNextAppointment(now, scopedEmployeeId),
@@ -112,386 +106,9 @@ export async function getDashboard(actor: CrmAuthenticatedUser) {
 
   return {
     todayAppointments,
-    dailyRevenue: Number(revenue._sum.amount ?? 0),
+    dailyRevenue: roundMoney(toNumber(revenueRows[0]?.amount)),
     nextAppointment: nextAppointment ? mapAppointment(nextAppointment, nextAppointmentExtras.get(nextAppointment.id.toString())) : null,
     lowStockProducts
-  };
-}
-
-export async function getConsumableAnalytics(actor: CrmAuthenticatedUser) {
-  const scopedEmployeeId = employeeScope(actor);
-  const employeeFilter = scopedEmployeeId ? Prisma.sql`AND appointment.employee_id = ${scopedEmployeeId}` : Prisma.empty;
-
-  const [summary] = await prisma.$queryRaw<
-    Array<{ logsCount: number; totalMl: Prisma.Decimal | null; totalGram: Prisma.Decimal | null }>
-  >(Prisma.sql`
-    SELECT
-      COUNT(*)::int AS "logsCount",
-      COALESCE(SUM(consumption.quantity) FILTER (WHERE consumption.unit = 'ML'::"ConsumableUnit"), 0) AS "totalMl",
-      COALESCE(SUM(consumption.quantity) FILTER (WHERE consumption.unit = 'GRAM'::"ConsumableUnit"), 0) AS "totalGram"
-    FROM service_consumption_logs consumption
-    JOIN appointments appointment ON appointment.id = consumption.appointment_id
-    WHERE consumption.created_at >= now() - interval '30 days'
-    ${employeeFilter}
-  `);
-
-  const productRows = await prisma.$queryRaw<
-    Array<{
-      productId: bigint;
-      productName: string;
-      productCategory: string | null;
-      unit: string;
-      usedQuantity: Prisma.Decimal;
-      appointmentCount: number;
-      serviceCount: number;
-      stockContentAmount: Prisma.Decimal | null;
-      contentAmount: Prisma.Decimal | null;
-    }>
-  >(Prisma.sql`
-    SELECT
-      product.id AS "productId",
-      product.name AS "productName",
-      product_category.name AS "productCategory",
-      lower(consumption.unit::text) AS unit,
-      SUM(consumption.quantity) AS "usedQuantity",
-      COUNT(DISTINCT consumption.appointment_id)::int AS "appointmentCount",
-      COUNT(DISTINCT consumption.service_id)::int AS "serviceCount",
-      product.stock_content_amount AS "stockContentAmount",
-      product.content_amount AS "contentAmount"
-    FROM service_consumption_logs consumption
-    JOIN appointments appointment ON appointment.id = consumption.appointment_id
-    JOIN products product ON product.id = consumption.product_id
-    LEFT JOIN product_categories product_category ON product_category.id = product.category_id
-    WHERE consumption.created_at >= now() - interval '30 days'
-    ${employeeFilter}
-    GROUP BY product.id, product_category.name, consumption.unit
-    ORDER BY SUM(consumption.quantity) DESC, product.name ASC
-    LIMIT 8
-  `);
-
-  const recentRows = await prisma.$queryRaw<
-    Array<{
-      id: bigint;
-      createdAt: Date;
-      productName: string;
-      serviceName: string;
-      clientName: string;
-      quantity: Prisma.Decimal;
-      unit: string;
-    }>
-  >(Prisma.sql`
-    SELECT
-      consumption.id,
-      consumption.created_at AS "createdAt",
-      product.name AS "productName",
-      service.name AS "serviceName",
-      trim(concat_ws(' ', client.first_name, client.last_name)) AS "clientName",
-      consumption.quantity,
-      lower(consumption.unit::text) AS unit
-    FROM service_consumption_logs consumption
-    JOIN appointments appointment ON appointment.id = consumption.appointment_id
-    JOIN users client ON client.id = appointment.client_id
-    JOIN services service ON service.id = consumption.service_id
-    JOIN products product ON product.id = consumption.product_id
-    WHERE consumption.created_at >= now() - interval '30 days'
-    ${employeeFilter}
-    ORDER BY consumption.created_at DESC
-    LIMIT 8
-  `);
-
-  const [lowStock] = await prisma.$queryRaw<Array<{ count: number }>>`
-    SELECT COUNT(*)::int AS count
-    FROM products
-    WHERE is_active = true
-      AND content_amount IS NOT NULL
-      AND stock_content_amount IS NOT NULL
-      AND stock_content_amount <= min_stock_quantity * content_amount
-  `;
-
-  return {
-    periodLabel: "Last 30 days",
-    logsCount: summary?.logsCount ?? 0,
-    totalMl: summary?.totalMl ? toNumber(summary.totalMl) : 0,
-    totalGram: summary?.totalGram ? toNumber(summary.totalGram) : 0,
-    lowConsumableProducts: actor.role === "ADMIN" ? (lowStock?.count ?? 0) : 0,
-    products: productRows.map((row) => {
-      const stockContentAmount = row.stockContentAmount ? toNumber(row.stockContentAmount) : null;
-      const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
-
-      return {
-        productId: row.productId.toString(),
-        productName: row.productName,
-        productCategory: row.productCategory,
-        usedQuantity: toNumber(row.usedQuantity),
-        unit: toPublicMeasurementUnit(row.unit),
-        appointmentCount: row.appointmentCount,
-        serviceCount: row.serviceCount,
-        stockContentAmount,
-        stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null
-      };
-    }),
-    recentLogs: recentRows.map((row) => ({
-      id: row.id.toString(),
-      createdAt: row.createdAt.toISOString(),
-      productName: row.productName,
-      serviceName: row.serviceName,
-      clientName: row.clientName,
-      quantity: toNumber(row.quantity),
-      unit: toPublicMeasurementUnit(row.unit)
-    }))
-  };
-}
-
-export async function getBusinessAnalytics(actor: CrmAuthenticatedUser, input: BusinessAnalyticsPeriodInput = {}) {
-  const period = resolveBusinessAnalyticsPeriod(input);
-  const scopedEmployeeId = employeeScope(actor);
-  const appointmentEmployeeFilter = scopedEmployeeId ? Prisma.sql`AND appointment.employee_id = ${scopedEmployeeId}` : Prisma.empty;
-  const saleEmployeeFilter = scopedEmployeeId ? Prisma.sql`AND sale.employee_id = ${scopedEmployeeId}` : Prisma.empty;
-  const appointmentPeriodFilter = Prisma.sql`AND appointment.start_time >= ${period.from} AND appointment.start_time <= ${period.to}`;
-  const salePeriodFilter = Prisma.sql`AND sale.sale_date >= ${period.from} AND sale.sale_date <= ${period.to}`;
-
-  const serviceRows = await prisma.$queryRaw<
-    Array<{
-      serviceId: bigint;
-      serviceName: string;
-      appointmentCount: number;
-      revenueFrom: Prisma.Decimal | null;
-      revenueTo: Prisma.Decimal | null;
-      consumableCost: Prisma.Decimal | null;
-      consumableItemCount: number | null;
-      pricedConsumableCount: number | null;
-    }>
-  >(Prisma.sql`
-    WITH service_visits AS (
-      SELECT
-        service.id AS "serviceId",
-        service.name AS "serviceName",
-        COUNT(*)::int AS "appointmentCount",
-        COALESCE(SUM(COALESCE(service.price_from, service.price)), 0) AS "revenueFrom",
-        COALESCE(SUM(COALESCE(service.price_to, service.price_from, service.price)), 0) AS "revenueTo"
-      FROM appointment_services appointment_service
-      JOIN appointments appointment ON appointment.id = appointment_service.appointment_id
-      JOIN services service ON service.id = appointment_service.service_id
-      WHERE appointment.status = ${AppointmentStatus.COMPLETED}::"AppointmentStatus"
-        ${appointmentPeriodFilter}
-        ${appointmentEmployeeFilter}
-      GROUP BY service.id, service.name
-    ),
-    service_costs AS (
-      SELECT
-        consumption.service_id AS "serviceId",
-        COALESCE(SUM(
-          CASE
-            WHEN product.purchase_price IS NOT NULL
-              AND product.content_amount IS NOT NULL
-              AND product.content_amount > 0
-              AND lower(product.content_unit::text) = lower(consumption.unit::text)
-            THEN consumption.quantity * product.purchase_price / product.content_amount
-            ELSE 0
-          END
-        ), 0) AS "consumableCost",
-        COUNT(*)::int AS "consumableItemCount",
-        COUNT(
-          CASE
-            WHEN product.purchase_price IS NOT NULL
-              AND product.content_amount IS NOT NULL
-              AND product.content_amount > 0
-              AND lower(product.content_unit::text) = lower(consumption.unit::text)
-            THEN 1
-          END
-        )::int AS "pricedConsumableCount"
-      FROM service_consumption_logs consumption
-      JOIN appointments appointment ON appointment.id = consumption.appointment_id
-      JOIN products product ON product.id = consumption.product_id
-      WHERE appointment.status = ${AppointmentStatus.COMPLETED}::"AppointmentStatus"
-        ${appointmentPeriodFilter}
-        ${appointmentEmployeeFilter}
-      GROUP BY consumption.service_id
-    )
-    SELECT
-      visit."serviceId",
-      visit."serviceName",
-      visit."appointmentCount",
-      visit."revenueFrom",
-      visit."revenueTo",
-      COALESCE(cost."consumableCost", 0) AS "consumableCost",
-      COALESCE(cost."consumableItemCount", 0)::int AS "consumableItemCount",
-      COALESCE(cost."pricedConsumableCount", 0)::int AS "pricedConsumableCount"
-    FROM service_visits visit
-    LEFT JOIN service_costs cost ON cost."serviceId" = visit."serviceId"
-    ORDER BY visit."revenueTo" DESC, visit."appointmentCount" DESC, visit."serviceName" ASC
-    LIMIT 8
-  `);
-
-  const productBrandRows = await prisma.$queryRaw<
-    Array<{
-      brandName: string;
-      quantity: number;
-      revenue: Prisma.Decimal | null;
-      profit: Prisma.Decimal | null;
-      itemCount: number;
-      pricedCount: number;
-    }>
-  >(Prisma.sql`
-    SELECT
-      COALESCE(product_brand.name, NULLIF(product.brand, ''), 'No brand') AS "brandName",
-      COALESCE(SUM(item.quantity), 0)::int AS quantity,
-      COALESCE(SUM(item.quantity * item.unit_price), 0) AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN product.purchase_price IS NOT NULL THEN item.quantity * (item.unit_price - product.purchase_price)
-          ELSE 0
-        END
-      ), 0) AS profit,
-      COUNT(*)::int AS "itemCount",
-      COUNT(product.purchase_price)::int AS "pricedCount"
-    FROM product_sale_items item
-    JOIN product_sales sale ON sale.id = item.sale_id
-    JOIN products product ON product.id = item.product_id
-    LEFT JOIN product_brands product_brand ON product_brand.id = product.brand_id
-    WHERE 1 = 1
-      ${salePeriodFilter}
-      ${saleEmployeeFilter}
-    GROUP BY COALESCE(product_brand.name, NULLIF(product.brand, ''), 'No brand')
-    ORDER BY revenue DESC, quantity DESC, "brandName" ASC
-    LIMIT 8
-  `);
-
-  const productCategoryRows = await prisma.$queryRaw<
-    Array<{
-      categoryName: string;
-      quantity: number;
-      revenue: Prisma.Decimal | null;
-      profit: Prisma.Decimal | null;
-      itemCount: number;
-      pricedCount: number;
-    }>
-  >(Prisma.sql`
-    SELECT
-      COALESCE(product_category.name, 'Uncategorized') AS "categoryName",
-      COALESCE(SUM(item.quantity), 0)::int AS quantity,
-      COALESCE(SUM(item.quantity * item.unit_price), 0) AS revenue,
-      COALESCE(SUM(
-        CASE
-          WHEN product.purchase_price IS NOT NULL THEN item.quantity * (item.unit_price - product.purchase_price)
-          ELSE 0
-        END
-      ), 0) AS profit,
-      COUNT(*)::int AS "itemCount",
-      COUNT(product.purchase_price)::int AS "pricedCount"
-    FROM product_sale_items item
-    JOIN product_sales sale ON sale.id = item.sale_id
-    JOIN products product ON product.id = item.product_id
-    LEFT JOIN product_categories product_category ON product_category.id = product.category_id
-    WHERE 1 = 1
-      ${salePeriodFilter}
-      ${saleEmployeeFilter}
-    GROUP BY COALESCE(product_category.name, 'Uncategorized')
-    ORDER BY revenue DESC, quantity DESC, "categoryName" ASC
-    LIMIT 8
-  `);
-
-  const restockRows =
-    actor.role === "ADMIN"
-      ? await prisma.$queryRaw<
-          Array<{
-            productId: bigint;
-            productName: string;
-            categoryName: string | null;
-            brandName: string | null;
-            stockQuantity: number;
-            minStockQuantity: number;
-            contentAmount: Prisma.Decimal | null;
-            contentUnit: string | null;
-            stockContentAmount: Prisma.Decimal | null;
-          }>
-        >(Prisma.sql`
-          SELECT
-            product.id AS "productId",
-            product.name AS "productName",
-            product_category.name AS "categoryName",
-            COALESCE(product_brand.name, NULLIF(product.brand, '')) AS "brandName",
-            product.stock_quantity AS "stockQuantity",
-            product.min_stock_quantity AS "minStockQuantity",
-            product.content_amount AS "contentAmount",
-            lower(product.content_unit::text) AS "contentUnit",
-            product.stock_content_amount AS "stockContentAmount"
-          FROM products product
-          LEFT JOIN product_categories product_category ON product_category.id = product.category_id
-          LEFT JOIN product_brands product_brand ON product_brand.id = product.brand_id
-          WHERE product.is_active = true
-            AND (
-              product.stock_quantity <= product.min_stock_quantity
-              OR (
-                product.content_amount IS NOT NULL
-                AND product.stock_content_amount IS NOT NULL
-                AND product.stock_content_amount <= product.min_stock_quantity * product.content_amount
-              )
-            )
-          ORDER BY
-            CASE
-              WHEN product.content_amount IS NOT NULL AND product.stock_content_amount IS NOT NULL
-              THEN product.stock_content_amount / product.content_amount
-              ELSE product.stock_quantity
-            END ASC,
-            product.name ASC
-          LIMIT 10
-        `)
-      : [];
-
-  return {
-    periodLabel: period.label,
-    services: serviceRows.map((row) => {
-      const revenueFrom = roundMoney(toNumber(row.revenueFrom));
-      const revenueTo = roundMoney(toNumber(row.revenueTo));
-      const consumableCost =
-        (row.consumableItemCount ?? 0) > 0 && (row.pricedConsumableCount ?? 0) < (row.consumableItemCount ?? 0)
-          ? null
-          : roundMoney(toNumber(row.consumableCost));
-
-      return {
-        serviceId: row.serviceId.toString(),
-        serviceName: row.serviceName,
-        appointmentCount: row.appointmentCount,
-        revenueFrom,
-        revenueTo,
-        consumableCost,
-        profitFrom: consumableCost === null ? null : roundMoney(revenueFrom - consumableCost),
-        profitTo: consumableCost === null ? null : roundMoney(revenueTo - consumableCost)
-      };
-    }),
-    productSalesByBrand: productBrandRows.map((row) => ({
-      name: row.brandName,
-      quantity: row.quantity,
-      revenue: roundMoney(toNumber(row.revenue)),
-      profit: row.pricedCount < row.itemCount ? null : roundMoney(toNumber(row.profit))
-    })),
-    productSalesByCategory: productCategoryRows.map((row) => ({
-      name: row.categoryName,
-      quantity: row.quantity,
-      revenue: roundMoney(toNumber(row.revenue)),
-      profit: row.pricedCount < row.itemCount ? null : roundMoney(toNumber(row.profit))
-    })),
-    restock: restockRows.map((row) => {
-      const contentAmount = row.contentAmount ? toNumber(row.contentAmount) : null;
-      const stockContentAmount = row.stockContentAmount ? toNumber(row.stockContentAmount) : null;
-      const currentPackages = contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : row.stockQuantity;
-      const packagesToBuy = Math.max(0, Math.ceil(row.minStockQuantity - currentPackages));
-
-      return {
-        productId: row.productId.toString(),
-        productName: row.productName,
-        categoryName: row.categoryName,
-        brandName: row.brandName,
-        stockQuantity: row.stockQuantity,
-        minStockQuantity: row.minStockQuantity,
-        contentAmount,
-        contentUnit: row.contentUnit ? toPublicMeasurementUnit(row.contentUnit) : null,
-        stockContentAmount,
-        stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
-        packagesToBuy
-      };
-    })
   };
 }
 
@@ -574,8 +191,8 @@ export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
   const clients = await listClients(search, employeeScope(actor));
 
   return clients.map((client) => {
-    const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + Number(appointment.payment?.amount ?? 0), 0);
-    const productSpend = client.productSales.reduce((sum, sale) => sum + Number(sale.totalAmount), 0);
+    const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + getNetPaymentAmount(appointment.payment), 0);
+    const productSpend = client.productSales.reduce((sum, sale) => sum + getNetPaymentAmount(sale.payment), 0);
 
     return {
       id: client.id.toString(),
@@ -628,8 +245,8 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
     throw new HttpError(404, "Client not found.");
   }
 
-  const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + Number(appointment.payment?.amount ?? 0), 0);
-  const productSpend = client.productSales.reduce((sum, sale) => sum + Number(sale.totalAmount), 0);
+  const appointmentSpend = client.clientAppointments.reduce((sum, appointment) => sum + getNetPaymentAmount(appointment.payment), 0);
+  const productSpend = client.productSales.reduce((sum, sale) => sum + getNetPaymentAmount(sale.payment), 0);
 
   return {
     id: client.id.toString(),
@@ -2227,13 +1844,14 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
 
 export async function updatePayment(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updatePaymentSchema>) {
   await assertPaymentAccess(actor, id);
+  const status = toPaymentStatus(input.status);
 
   const payment = await prisma.payment.update({
     where: { id },
     data: {
-      paymentStatus: toPaymentStatus(input.status),
+      paymentStatus: status,
       paymentMethod: input.method ? toPaymentMethod(input.method) : undefined,
-      paidAt: input.status === "paid" ? new Date() : undefined
+      paidAt: getPaymentEventDate(status)
     }
   });
 
@@ -2317,75 +1935,6 @@ function toNumber(value: unknown) {
   }
 
   return 0;
-}
-
-function resolveBusinessAnalyticsPeriod(input: BusinessAnalyticsPeriodInput) {
-  const now = new Date();
-  const period = input.period === "week" || input.period === "custom" ? input.period : "month";
-
-  if (period === "custom") {
-    const from = parseBusinessAnalyticsDate(input.from, "from") ?? startOfLocalDay(now);
-    const to = parseBusinessAnalyticsDate(input.to, "to") ?? endOfLocalDay(now);
-
-    if (from > to) {
-      throw new HttpError(400, "Analytics start date cannot be after end date.");
-    }
-
-    return {
-      type: "custom" satisfies BusinessAnalyticsPeriod,
-      from,
-      to,
-      label: `${formatBusinessAnalyticsDate(from)} - ${formatBusinessAnalyticsDate(to)}`
-    };
-  }
-
-  const from = new Date(now);
-  from.setDate(now.getDate() - (period === "week" ? 7 : 30));
-
-  return {
-    type: period satisfies BusinessAnalyticsPeriod,
-    from,
-    to: now,
-    label: period === "week" ? "Last 7 days" : "Last 30 days"
-  };
-}
-
-function parseBusinessAnalyticsDate(value: string | undefined, boundary: "from" | "to") {
-  if (!value) {
-    return null;
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new HttpError(400, "Analytics date must use YYYY-MM-DD format.");
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new HttpError(400, "Analytics date is invalid.");
-  }
-
-  return boundary === "from" ? startOfLocalDay(date) : endOfLocalDay(date);
-}
-
-function startOfLocalDay(value: Date) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function endOfLocalDay(value: Date) {
-  const date = new Date(value);
-  date.setHours(23, 59, 59, 999);
-  return date;
-}
-
-function formatBusinessAnalyticsDate(value: Date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  }).format(value);
 }
 
 function getProductStockStatus(input: {
@@ -2964,6 +2513,22 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function getNetPaymentAmount(payment: { amount: Prisma.Decimal | number | null; paymentStatus: PaymentStatus } | null | undefined) {
+  if (!payment) {
+    return 0;
+  }
+
+  if (payment.paymentStatus === PaymentStatus.PAID) {
+    return Number(payment.amount ?? 0);
+  }
+
+  if (payment.paymentStatus === PaymentStatus.REFUNDED) {
+    return -Number(payment.amount ?? 0);
+  }
+
+  return 0;
+}
+
 async function getAppointmentRevenueTo(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {
   const [row] = await client.$queryRaw<Array<{ amount: Prisma.Decimal | null }>>`
     SELECT COALESCE(SUM(COALESCE(service.price_to, service.price_from, service.price)), 0) AS amount
@@ -2996,7 +2561,7 @@ async function upsertAppointmentPayment(
   const amount = input.amount ?? (current ? Number(current.amount) : await getAppointmentRevenueTo(client, appointmentId));
   const method = input.method ? toPaymentMethod(input.method) : current?.paymentMethod ?? PaymentMethod.CASH;
   const status = input.status ? toPaymentStatus(input.status) : current?.paymentStatus ?? PaymentStatus.PAID;
-  const paidAt = status === PaymentStatus.PAID ? current?.paidAt ?? new Date() : status === PaymentStatus.REFUNDED ? current?.paidAt ?? new Date() : null;
+  const paidAt = getPaymentEventDate(status, current?.paymentStatus, current?.paidAt);
 
   await client.payment.upsert({
     where: { appointmentId },
@@ -3014,6 +2579,18 @@ async function upsertAppointmentPayment(
       paidAt
     }
   });
+}
+
+function getPaymentEventDate(status: PaymentStatus, currentStatus?: PaymentStatus, currentPaidAt?: Date | null) {
+  if (status === PaymentStatus.PENDING) {
+    return null;
+  }
+
+  if (status === currentStatus && currentPaidAt) {
+    return currentPaidAt;
+  }
+
+  return new Date();
 }
 
 async function buildAppointmentActualConsumablePreviewItems(client: Pick<Prisma.TransactionClient, "$queryRaw">, appointmentId: bigint) {

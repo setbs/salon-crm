@@ -389,20 +389,25 @@ export function CalendarSection({
                 <small>{group.appointments.length} appointments</small>
               </header>
               {group.appointments.length > 0 ? (
-                <DataTable
-                  columns={["Time", "Client", "Service", "Employee", "Comment", "Actions", "Status"]}
-                  rows={group.appointments.map((item) => [
-                    <button className="appointment-open-button" onClick={() => setSelectedAppointmentId(item.id)} type="button">
-                      {item.time}
-                    </button>,
-                    item.client,
-                    item.service,
-                    item.master,
-                    item.comment || "-",
-                    renderAppointmentActions(item),
-                    <StatusBadge status={item.status} />
-                  ])}
-                />
+                <div className="calendar-appointment-list">
+                  {group.appointments.map((item) => (
+                    <article className="calendar-appointment-row" key={item.id}>
+                      <button className="appointment-open-button" onClick={() => setSelectedAppointmentId(item.id)} type="button">
+                        {item.time}
+                      </button>
+                      <div className="calendar-appointment-main">
+                        <strong>{item.client}</strong>
+                        <span>{item.service}</span>
+                      </div>
+                      <div className="calendar-appointment-meta">
+                        <span>{item.master}</span>
+                        {item.comment ? <small>{item.comment}</small> : null}
+                      </div>
+                      <StatusBadge status={item.status} />
+                      {renderAppointmentActions(item)}
+                    </article>
+                  ))}
+                </div>
               ) : (
                 <div className="empty-state">No appointments match these filters.</div>
               )}

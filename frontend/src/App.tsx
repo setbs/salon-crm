@@ -22,10 +22,11 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AdminModal, DataTable, InfoList, InlineActions, MetricCard, Panel, StatusBadge } from "./components/admin-ui";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { AdminModal, DataTable, InfoList, InlineActions, Panel, StatusBadge } from "./components/admin-ui";
 import { CalendarSection } from "./features/calendar/CalendarSection";
 import { ClientsSection } from "./features/clients/ClientsSection";
+import { DashboardSection } from "./features/dashboard/DashboardSection";
 import { ProductsSection } from "./features/products/ProductsSection";
 import { ServicesSection } from "./features/services/ServicesSection";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "./utils/format";
@@ -37,7 +38,6 @@ import {
   createAppointment,
   deleteAdminEmployeeTimeOff,
   deleteAdminPortfolioPhoto,
-  fetchAdminBusinessAnalytics,
   fetchAdminData,
   fetchAvailability,
   fetchCurrentUser,
@@ -55,7 +55,6 @@ import {
   updateAdminSettings,
   uploadAdminPortfolioImage,
   type AdminData,
-  type AdminBusinessAnalyticsPeriod,
   type AuthUser,
   type Employee,
   type EmployeeInput,
@@ -117,18 +116,6 @@ function formatSelectedServicesPrice(services: DisplayPrice[], fallbackPrice: nu
   return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
 }
 
-function formatMoneyRange(from: number, to: number) {
-  return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
-}
-
-function formatNullableMoney(value: number | null) {
-  return value === null ? "not tracked" : formatHryvnia(value);
-}
-
-function formatNullableMoneyRange(from: number | null, to: number | null) {
-  return from === null || to === null ? "not tracked" : formatMoneyRange(from, to);
-}
-
 const serviceCopy: Record<string, { name: string; description: string }> = {
   "Women's haircut": {
     name: "Women's haircut",
@@ -171,6 +158,63 @@ type SuggestedDay = {
   slotCount: number;
 };
 
+type BookingClientForm = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+};
+
+type BookingContactField = keyof BookingClientForm | "comment";
+type BookingContactErrors = Partial<Record<BookingContactField, string>>;
+
+function BookingEmptyState({ action, detail, title }: { action?: ReactNode; detail: string; title: string }) {
+  return (
+    <div className="booking-empty-state">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+      {action ? <div>{action}</div> : null}
+    </div>
+  );
+}
+
+function getBookingContactErrors(client: BookingClientForm, comment: string): BookingContactErrors {
+  const errors: BookingContactErrors = {};
+  const firstName = client.firstName.trim();
+  const lastName = client.lastName.trim();
+  const phone = client.phone.trim();
+  const email = client.email.trim();
+  const digitCount = phone.replace(/\D/g, "").length;
+
+  if (!firstName) {
+    errors.firstName = "First name is required.";
+  } else if (firstName.length > 100) {
+    errors.firstName = "First name must be 100 characters or fewer.";
+  }
+
+  if (!lastName) {
+    errors.lastName = "Last name is required.";
+  } else if (lastName.length > 100) {
+    errors.lastName = "Last name must be 100 characters or fewer.";
+  }
+
+  if (!phone) {
+    errors.phone = "Phone number is required.";
+  } else if (phone.length < 5 || phone.length > 20 || digitCount < 5 || !/^[+\d\s()-]+$/.test(phone)) {
+    errors.phone = "Phone must contain 5-20 digits or phone symbols.";
+  }
+
+  if (email && (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email))) {
+    errors.email = "Email must include a valid domain, for example name@example.com.";
+  }
+
+  if (comment.trim().length > 1000) {
+    errors.comment = "Comment must be 1000 characters or fewer.";
+  }
+
+  return errors;
+}
+
 async function fetchNearestAvailabilitySuggestions(employeeId: string, serviceIds: string[], startDate: string, slotLimit = 3, dayLimit = 2) {
   const slots: SuggestedSlot[] = [];
   const days: SuggestedDay[] = [];
@@ -204,6 +248,24 @@ function formatSlotCount(value: number) {
   }
 
   return `${value} times`;
+}
+
+function getBookingErrorMessage(error: unknown, fallback: string) {
+  const rawMessage = error instanceof Error ? error.message.trim() : "";
+
+  if (!rawMessage) {
+    return fallback;
+  }
+
+  if (/request failed|internal server/i.test(rawMessage)) {
+    return "Something went wrong. Please try again in a moment or contact the salon.";
+  }
+
+  if (/slot|available|overlap|time/i.test(rawMessage)) {
+    return "This time is no longer available. Please choose another slot.";
+  }
+
+  return rawMessage;
 }
 
 function addDaysToDateString(value: string, days: number) {
@@ -530,6 +592,33 @@ function HomeView({
             <a href="#price-list">View price list</a>
           </div>
         </div>
+        <aside className="home-hero-card" aria-label="Salon visit highlights">
+          <span>Next visit</span>
+          <strong>Consultation, service, care plan</strong>
+          <div>
+            <small>Clear timing</small>
+            <small>Online booking</small>
+            <small>Professional cosmetics</small>
+          </div>
+        </aside>
+      </section>
+
+      <section className="home-experience-strip" aria-label="Salon experience">
+        <article>
+          <CalendarDays aria-hidden="true" size={20} />
+          <span>Book without calls</span>
+          <p>Choose a service, specialist and time in a few steps.</p>
+        </article>
+        <article>
+          <Scissors aria-hidden="true" size={20} />
+          <span>Price before visit</span>
+          <p>Categories are grouped in a clean price list.</p>
+        </article>
+        <article>
+          <Package aria-hidden="true" size={20} />
+          <span>Care after salon</span>
+          <p>Professional cosmetics are kept in a separate catalog.</p>
+        </article>
       </section>
 
       <section className="home-section home-about" id="about">
@@ -553,7 +642,29 @@ function HomeView({
               <span>Structured price list</span>
               <span>CRM-ready workflow</span>
             </div>
+            <blockquote className="home-about-quote">
+              A visit should feel easy before the client even sits in the chair.
+            </blockquote>
           </div>
+        </div>
+      </section>
+
+      <section className="home-atmosphere">
+        <div className="home-atmosphere-copy">
+          <p className="eyebrow">Salon rhythm</p>
+          <h2>Soft visuals, precise work and a calmer flow</h2>
+          <p>
+            The public page keeps the client focused: atmosphere first, then examples of work, then prices and contact.
+            Behind it, CRM keeps the operational part tidy.
+          </p>
+          <button className="secondary-button" onClick={onOpenBooking} type="button">
+            Start booking
+          </button>
+        </div>
+        <div className="home-atmosphere-collage" aria-hidden="true">
+          <img alt="" src={homeImages.color} />
+          <img alt="" src={homeImages.manicure} />
+          <img alt="" src={homeImages.products} />
         </div>
       </section>
 
@@ -1088,11 +1199,27 @@ function AdminContent({
   user: AuthUser;
 }) {
   if (user.role !== "ADMIN" && !employeeSections.includes(section)) {
-    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} businessAnalytics={data.businessAnalytics} appointments={data.appointments} />;
+    return (
+      <DashboardSection
+        dashboard={data.dashboard}
+        analytics={data.consumableAnalytics}
+        businessAnalytics={data.businessAnalytics}
+        appointments={data.appointments}
+        products={data.products}
+      />
+    );
   }
 
   if (section === "dashboard") {
-    return <DashboardSection dashboard={data.dashboard} analytics={data.consumableAnalytics} businessAnalytics={data.businessAnalytics} appointments={data.appointments} />;
+    return (
+      <DashboardSection
+        dashboard={data.dashboard}
+        analytics={data.consumableAnalytics}
+        businessAnalytics={data.businessAnalytics}
+        appointments={data.appointments}
+        products={data.products}
+      />
+    );
   }
 
   if (section === "calendar") {
@@ -1157,234 +1284,6 @@ function AdminContent({
   }
 
   return <SettingsSection settings={data.settings} runAction={runAction} />;
-}
-
-function DashboardSection({
-  dashboard,
-  analytics,
-  businessAnalytics,
-  appointments
-}: {
-  dashboard: AdminData["dashboard"];
-  analytics: AdminData["consumableAnalytics"];
-  businessAnalytics: AdminData["businessAnalytics"];
-  appointments: AdminData["appointments"];
-}) {
-  const [selectedBusinessPeriod, setSelectedBusinessPeriod] = useState<AdminBusinessAnalyticsPeriod>("month");
-  const [customBusinessFrom, setCustomBusinessFrom] = useState(() => getRelativeDateInputValue(-30));
-  const [customBusinessTo, setCustomBusinessTo] = useState(() => getDateInputValue(new Date()));
-  const [visibleBusinessAnalytics, setVisibleBusinessAnalytics] = useState(businessAnalytics);
-  const [isBusinessAnalyticsLoading, setIsBusinessAnalyticsLoading] = useState(false);
-  const [businessAnalyticsError, setBusinessAnalyticsError] = useState("");
-
-  useEffect(() => {
-    setVisibleBusinessAnalytics(businessAnalytics);
-  }, [businessAnalytics]);
-
-  const loadBusinessAnalytics = async (period: AdminBusinessAnalyticsPeriod, from = customBusinessFrom, to = customBusinessTo) => {
-    setSelectedBusinessPeriod(period);
-    setIsBusinessAnalyticsLoading(true);
-    setBusinessAnalyticsError("");
-
-    try {
-      const nextAnalytics = await fetchAdminBusinessAnalytics({ period, from, to });
-      setVisibleBusinessAnalytics(nextAnalytics);
-    } catch (error) {
-      setBusinessAnalyticsError(error instanceof Error ? error.message : "Request failed.");
-    } finally {
-      setIsBusinessAnalyticsLoading(false);
-    }
-  };
-  const completedVisits = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.appointmentCount, 0);
-  const serviceRevenueFrom = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.revenueFrom, 0);
-  const serviceRevenueTo = visibleBusinessAnalytics.services.reduce((sum, item) => sum + item.revenueTo, 0);
-  const hasUnknownServiceProfit = visibleBusinessAnalytics.services.some((item) => item.profitFrom === null || item.profitTo === null);
-  const serviceProfitFrom = hasUnknownServiceProfit ? null : visibleBusinessAnalytics.services.reduce((sum, item) => sum + (item.profitFrom ?? 0), 0);
-  const serviceProfitTo = hasUnknownServiceProfit ? null : visibleBusinessAnalytics.services.reduce((sum, item) => sum + (item.profitTo ?? 0), 0);
-  const productRevenue = visibleBusinessAnalytics.productSalesByCategory.reduce((sum, item) => sum + item.revenue, 0);
-  const todayAppointments = appointments
-    .filter((appointment) => isSameLocalDate(appointment.date, new Date()))
-    .sort((first, second) => new Date(first.date).getTime() - new Date(second.date).getTime());
-
-  return (
-    <div className="dashboard-page">
-      <section className="dashboard-metrics" aria-label="Dashboard overview">
-        <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
-        <MetricCard label="Daily revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid services + products" />
-        <MetricCard
-          label="Next appointment"
-          value={dashboard.nextAppointment?.time ?? "-"}
-          note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
-        />
-        <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
-        <MetricCard label="Consumables used" value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} write-offs · ${analytics.periodLabel.toLowerCase()}`} />
-        <MetricCard label="Low consumables" value={String(analytics.lowConsumableProducts)} note="package-content stock alerts" />
-      </section>
-
-      <section className="admin-panel dashboard-analytics-panel">
-        <div className="dashboard-panel-heading">
-          <div>
-            <span>Financial report</span>
-            <h2>Business analytics</h2>
-          </div>
-          <span>{isBusinessAnalyticsLoading ? "Loading..." : visibleBusinessAnalytics.periodLabel}</span>
-        </div>
-
-        <div className="analytics-period-toolbar">
-          <div className="segmented-control analytics-period-tabs" aria-label="Business analytics period">
-            <button className={selectedBusinessPeriod === "week" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("week")} type="button">
-              Week
-            </button>
-            <button className={selectedBusinessPeriod === "month" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("month")} type="button">
-              Month
-            </button>
-            <button className={selectedBusinessPeriod === "custom" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => setSelectedBusinessPeriod("custom")} type="button">
-              Custom
-            </button>
-          </div>
-
-          {selectedBusinessPeriod === "custom" ? (
-            <div className="analytics-custom-range">
-              <label>
-                <span>From</span>
-                <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessFrom(event.target.value)} type="date" value={customBusinessFrom} />
-              </label>
-              <label>
-                <span>To</span>
-                <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessTo(event.target.value)} type="date" value={customBusinessTo} />
-              </label>
-              <button className="panel-action" disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("custom")} type="button">
-                Apply
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        {businessAnalyticsError ? <div className="form-error">{businessAnalyticsError}</div> : null}
-
-        <div className="dashboard-insight-grid">
-          <article>
-            <span>Completed visits</span>
-            <strong>{completedVisits}</strong>
-          </article>
-          <article>
-            <span>Service revenue</span>
-            <strong>{formatMoneyRange(serviceRevenueFrom, serviceRevenueTo)}</strong>
-          </article>
-          <article>
-            <span>Net service profit</span>
-            <strong>{formatNullableMoneyRange(serviceProfitFrom, serviceProfitTo)}</strong>
-          </article>
-          <article>
-            <span>Product revenue</span>
-            <strong>{adminMoney.format(productRevenue)}</strong>
-          </article>
-        </div>
-
-        <div className="dashboard-report-grid">
-          <section className="dashboard-report-card wide">
-            <h3>Service profit</h3>
-            <DataTable
-              columns={["Service", "Visits", "Revenue", "Consumables", "Profit"]}
-              rows={
-                visibleBusinessAnalytics.services.length > 0
-                  ? visibleBusinessAnalytics.services.map((item) => [
-                      item.serviceName,
-                      `${item.appointmentCount} visits`,
-                      formatMoneyRange(item.revenueFrom, item.revenueTo),
-                      formatNullableMoney(item.consumableCost),
-                      formatNullableMoneyRange(item.profitFrom, item.profitTo)
-                    ])
-                  : [["No completed services", "-", "-", "-", "-"]]
-              }
-            />
-          </section>
-
-          <section className="dashboard-report-card">
-            <h3>Product sales</h3>
-            <DataTable
-              columns={["Category", "Units", "Revenue", "Profit"]}
-              rows={
-                visibleBusinessAnalytics.productSalesByCategory.length > 0
-                  ? visibleBusinessAnalytics.productSalesByCategory.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
-                  : [["No product sales", "-", "-", "-"]]
-              }
-            />
-          </section>
-
-          <section className="dashboard-report-card">
-            <h3>Brand performance</h3>
-            <DataTable
-              columns={["Brand", "Units", "Revenue", "Profit"]}
-              rows={
-                visibleBusinessAnalytics.productSalesByBrand.length > 0
-                  ? visibleBusinessAnalytics.productSalesByBrand.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
-                  : [["No product sales", "-", "-", "-"]]
-              }
-            />
-          </section>
-        </div>
-      </section>
-
-      <section className="dashboard-secondary-grid">
-        <Panel title="Today's appointments" action="Create appointment">
-          <DataTable
-            columns={["Time", "Client", "Service", "Employee", "Status"]}
-            rows={
-              todayAppointments.length > 0
-                ? todayAppointments.map((item) => [item.time, item.client, item.service, item.master, <StatusBadge status={item.status} />])
-                : [["No appointments today", "-", "-", "-", "-"]]
-            }
-          />
-        </Panel>
-
-        <Panel title="Restock suggestions">
-          <DataTable
-            columns={["Product", "Stock", "Minimum", "Buy"]}
-            rows={
-              visibleBusinessAnalytics.restock.length > 0
-                ? visibleBusinessAnalytics.restock.map((item) => [
-                    item.categoryName ? `${item.productName} · ${item.categoryName}` : item.productName,
-                    formatBusinessStock(item),
-                    `${item.minStockQuantity} packs`,
-                    item.packagesToBuy > 0 ? `${item.packagesToBuy} packs` : "check stock"
-                  ])
-                : [["Stock is healthy", "-", "-", "-"]]
-            }
-          />
-        </Panel>
-
-        <Panel title="Consumable analytics">
-          <DataTable
-            columns={["Product", "Used", "Appointments", "Current stock"]}
-            rows={
-              analytics.products.length > 0
-                ? analytics.products.map((item) => [
-                    item.productCategory ? `${item.productName} · ${item.productCategory}` : item.productName,
-                    `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)}`,
-                    `${item.appointmentCount} appointments`,
-                    formatAnalyticsStock(item)
-                  ])
-                : [["No write-offs yet", "-", "-", "-"]]
-            }
-          />
-        </Panel>
-
-        <Panel title="Recent write-offs">
-          <InfoList
-            items={
-              analytics.recentLogs.length > 0
-                ? analytics.recentLogs.map((log) => [
-                    `${formatShortDate(log.createdAt)} · ${log.productName}`,
-                    `${formatPlainNumber(log.quantity)} ${formatUnit(log.unit)} · ${log.serviceName} · ${log.clientName}`
-                  ])
-                : [["No data", "Complete an appointment with consumables to see write-offs here."]]
-            }
-          />
-        </Panel>
-      </section>
-    </div>
-  );
 }
 
 function EmployeesSection({
@@ -2120,56 +2019,6 @@ function SettingsSection({
   );
 }
 
-function formatAnalyticsTotals(analytics: AdminData["consumableAnalytics"]) {
-  const parts = [];
-
-  if (analytics.totalMl > 0) {
-    parts.push(`${formatPlainNumber(analytics.totalMl)} ml`);
-  }
-
-  if (analytics.totalGram > 0) {
-    parts.push(`${formatPlainNumber(analytics.totalGram)} g`);
-  }
-
-  return parts.length > 0 ? parts.join(" / ") : "0";
-}
-
-function formatAnalyticsStock(item: AdminData["consumableAnalytics"]["products"][number]) {
-  if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null) {
-    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`;
-  }
-
-  return "not tracked";
-}
-
-function formatBusinessStock(item: AdminData["businessAnalytics"]["restock"][number]) {
-  if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null && item.contentUnit !== null) {
-    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.contentUnit)}`;
-  }
-
-  return `${item.stockQuantity} packs`;
-}
-
-function getDateInputValue(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function getRelativeDateInputValue(dayOffset: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + dayOffset);
-  return getDateInputValue(date);
-}
-
-function isSameLocalDate(value: string, reference: Date) {
-  const date = new Date(value);
-
-  return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth() && date.getDate() === reference.getDate();
-}
-
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -2369,22 +2218,31 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [client, setClient] = useState({ firstName: "", lastName: "", phone: "", email: "" });
+  const [client, setClient] = useState<BookingClientForm>({ firstName: "", lastName: "", phone: "", email: "" });
   const [clientComment, setClientComment] = useState("");
+  const [contactErrors, setContactErrors] = useState<BookingContactErrors>({});
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "success">("loading");
   const [error, setError] = useState("");
+  const [confirmation, setConfirmation] = useState<{ id: string; startTime: string } | null>(null);
 
   useEffect(() => {
+    void loadServices();
+  }, []);
+
+  function loadServices() {
+    setStatus("loading");
+    setError("");
+
     fetchServices()
       .then((data) => {
         setServices(data);
         setStatus("idle");
       })
-      .catch(() => {
-        setError("Could not load services. Check that the CRM API is running and refresh the page.");
+      .catch((loadError) => {
+        setError(getBookingErrorMessage(loadError, "Could not load services. Check that the CRM API is running and refresh the page."));
         setStatus("idle");
       });
-  }, []);
+  }
 
   useEffect(() => {
     setSelectedEmployeeId("");
@@ -2402,7 +2260,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
     setIsLoadingEmployees(true);
     fetchEmployees(selectedServiceIds)
       .then(setEmployees)
-      .catch(() => setError("Could not load employees for the selected services. Try again in a moment."))
+      .catch((loadError) => setError(getBookingErrorMessage(loadError, "Could not load employees for the selected services. Try again in a moment.")))
       .finally(() => setIsLoadingEmployees(false));
   }, [selectedServiceIds]);
 
@@ -2427,9 +2285,9 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
           setLoadedSlotsDate(selectedDate);
         }
       })
-      .catch(() => {
+      .catch((loadError) => {
         if (!cancelled) {
-          setError("Could not load available times. Try another date or refresh the page.");
+          setError(getBookingErrorMessage(loadError, "Could not load available times. Try another date or refresh the page."));
           setSlots([]);
           setLoadedSlotsDate("");
         }
@@ -2525,6 +2383,18 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
     { duration: 0, price: 0 }
   );
 
+  function clearContactError(field: BookingContactField) {
+    setContactErrors((current) => {
+      if (!current[field]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
   function toggleService(id: string) {
     setError("");
     setSelectedSlot(null);
@@ -2598,6 +2468,8 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
     setNearestSlots([]);
     setClient({ firstName: "", lastName: "", phone: "", email: "" });
     setClientComment("");
+    setContactErrors({});
+    setConfirmation(null);
     setError("");
     setStatus("idle");
   }
@@ -2621,19 +2493,29 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
       return;
     }
 
+    const nextContactErrors = getBookingContactErrors(client, clientComment);
+
+    if (Object.keys(nextContactErrors).length > 0) {
+      setContactErrors(nextContactErrors);
+      setError(`Please correct the contact details: ${Object.values(nextContactErrors).join(" ")}`);
+      return;
+    }
+
+    setContactErrors({});
     setStatus("saving");
 
     try {
-      await createAppointment({
+      const createdAppointment = await createAppointment({
         employeeId: selectedEmployeeId,
         serviceIds: selectedServiceIds,
         startTime: selectedSlot.startTime,
         client,
         clientComment: clientComment || undefined
       });
+      setConfirmation(createdAppointment);
       setStatus("success");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not create the appointment.");
+      setError(getBookingErrorMessage(saveError, "Could not create the appointment."));
       setStatus("idle");
     }
   }
@@ -2652,8 +2534,12 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
           <p className="eyebrow">SL Color Studio</p>
           <h1>Appointment confirmed</h1>
           <p>
-            {client.firstName}, your visit is reserved for {selectedSlot?.label}, {selectedDate}.
+            {client.firstName}, your visit is reserved for {selectedSlot?.label} on {formatSuggestedDate(selectedDate)}.
           </p>
+          <div className="success-highlight">
+            <span>Booking reference</span>
+            <strong>{confirmation ? `#${confirmation.id}` : "confirmed"}</strong>
+          </div>
           <dl className="confirmation-list">
             <div>
               <dt>Services</dt>
@@ -2676,6 +2562,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
               </dd>
             </div>
           </dl>
+          <div className="success-next-steps">
+            <strong>Next step</strong>
+            <span>Save the date. The salon team will use your phone number to identify this booking if anything changes.</span>
+          </div>
           <div className="success-actions">
             <button className="primary-button" type="button" onClick={resetBooking}>
               Book another appointment
@@ -2744,45 +2634,59 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
               <p>Pick one or more services. The total duration will be calculated automatically.</p>
             </div>
 
-            {status === "loading" ? <p className="empty-state">Loading services...</p> : null}
+            {status === "loading" ? <BookingEmptyState title="Loading services" detail="We are preparing the current service list." /> : null}
 
-            <div className="wizard-service-list">
-              {groupedServices.map((group) => (
-                <section className="wizard-service-category" key={group.id}>
-                  <div className="service-category-heading">
-                    <h3>{group.name}</h3>
-                    {group.description ? <small>{group.description}</small> : null}
-                  </div>
-                  <div className="wizard-card-grid">
-                    {group.services.map((service) => {
-                      const selected = selectedServiceIds.includes(service.id);
-                      const copy = serviceCopy[service.name];
+            {status !== "loading" && services.length === 0 ? (
+              <BookingEmptyState
+                title="No services available online"
+                detail="The salon may be updating the price list. Try refreshing the services or contact the salon directly."
+                action={
+                  <button className="secondary-button compact-button" onClick={() => void loadServices()} type="button">
+                    Refresh services
+                  </button>
+                }
+              />
+            ) : null}
 
-                      return (
-                        <button
-                          className={selected ? "wizard-card service-choice selected" : "wizard-card service-choice"}
-                          key={service.id}
-                          onClick={() => toggleService(service.id)}
-                          type="button"
-                        >
-                          <span className="choice-check" aria-hidden="true">
-                            {selected ? <Check size={16} /> : null}
-                          </span>
-                          <span className="service-text">
-                            <strong>{copy?.name ?? service.name}</strong>
-                            <small>{copy?.description ?? service.description ?? "Individual consultation"}</small>
-                          </span>
-                          <span className="service-choice-meta">
-                            <strong>{formatServicePrice(service)}</strong>
-                            <small>{service.durationMinutes} min</small>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
+            {status !== "loading" && services.length > 0 ? (
+              <div className="wizard-service-list">
+                {groupedServices.map((group) => (
+                  <section className="wizard-service-category" key={group.id}>
+                    <div className="service-category-heading">
+                      <h3>{group.name}</h3>
+                      {group.description ? <small>{group.description}</small> : null}
+                    </div>
+                    <div className="wizard-card-grid">
+                      {group.services.map((service) => {
+                        const selected = selectedServiceIds.includes(service.id);
+                        const copy = serviceCopy[service.name];
+
+                        return (
+                          <button
+                            className={selected ? "wizard-card service-choice selected" : "wizard-card service-choice"}
+                            key={service.id}
+                            onClick={() => toggleService(service.id)}
+                            type="button"
+                          >
+                            <span className="choice-check" aria-hidden="true">
+                              {selected ? <Check size={16} /> : null}
+                            </span>
+                            <span className="service-text">
+                              <strong>{copy?.name ?? service.name}</strong>
+                              <small>{copy?.description ?? service.description ?? "Individual consultation"}</small>
+                            </span>
+                            <span className="service-choice-meta">
+                              <strong>{formatServicePrice(service)}</strong>
+                              <small>{service.durationMinutes} min</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : null}
 
             <footer className="wizard-actions">
               <div className="summary">
@@ -2811,23 +2715,39 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
               <p>Select the specialist who will perform the chosen services.</p>
             </div>
 
-            <div className="employee-choice-grid">
-              {employees.map((employee) => (
-                <button className="wizard-card employee-choice" key={employee.id} onClick={() => chooseEmployee(employee.id)} type="button">
-                  <span className="employee-avatar" aria-hidden="true">
-                    {employee.firstName.slice(0, 1)}
-                    {employee.lastName.slice(0, 1)}
-                  </span>
-                  <span>
-                    <strong>
-                      {employee.firstName} {employee.lastName}
-                    </strong>
-                    <small>{employee.specialization ?? "Beauty specialist"}</small>
-                  </span>
-                  <ArrowRight aria-hidden="true" size={18} />
-                </button>
-              ))}
-            </div>
+            {isLoadingEmployees ? <BookingEmptyState title="Finding specialists" detail="We are matching your selected services with available employees." /> : null}
+
+            {!isLoadingEmployees && employees.length === 0 ? (
+              <BookingEmptyState
+                title="No specialist matches these services"
+                detail="Choose another service combination or contact the salon so we can help you pick the right appointment."
+                action={
+                  <button className="secondary-button compact-button" onClick={() => goToStep("services")} type="button">
+                    Change services
+                  </button>
+                }
+              />
+            ) : null}
+
+            {!isLoadingEmployees && employees.length > 0 ? (
+              <div className="employee-choice-grid">
+                {employees.map((employee) => (
+                  <button className="wizard-card employee-choice" key={employee.id} onClick={() => chooseEmployee(employee.id)} type="button">
+                    <span className="employee-avatar" aria-hidden="true">
+                      {employee.firstName.slice(0, 1)}
+                      {employee.lastName.slice(0, 1)}
+                    </span>
+                    <span>
+                      <strong>
+                        {employee.firstName} {employee.lastName}
+                      </strong>
+                      <small>{employee.specialization ?? "Beauty specialist"}</small>
+                    </span>
+                    <ArrowRight aria-hidden="true" size={18} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <footer className="wizard-actions">
               <button className="secondary-button icon-button" onClick={() => goToStep("services")} type="button">
@@ -2884,7 +2804,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                   Available time
                 </div>
                 <div className="slot-grid roomy">
-                  {isLoadingSlots ? <p className="empty-state">Checking available times...</p> : null}
+                  {isLoadingSlots ? <BookingEmptyState title="Checking available times" detail="One moment, we are looking at the salon calendar." /> : null}
                   {!isLoadingSlots
                     ? slots.map((slot) => (
                         <button
@@ -2901,7 +2821,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                       ))
                     : null}
                   {selectedEmployeeId && !isLoadingSlots && slots.length === 0 ? (
-                    <p className="empty-state">No available times for this date. Try another date or employee.</p>
+                    <BookingEmptyState title="No slots on this date" detail="Try another date or use one of the nearest available options below." />
                   ) : null}
                 </div>
 
@@ -2992,63 +2912,115 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
                 <p>We will use these details to identify your booking.</p>
               </div>
 
-              <form onSubmit={handleSubmit} className="booking-form">
+              <form onSubmit={handleSubmit} className="booking-form" noValidate>
                 <section className="form-section client-grid">
                   <label>
                     <span>First name</span>
                     <input
+                      aria-describedby={contactErrors.firstName ? "booking-first-name-error" : undefined}
+                      aria-invalid={Boolean(contactErrors.firstName)}
                       autoComplete="given-name"
+                      maxLength={100}
                       value={client.firstName}
                       onChange={(event) => {
                         setClient({ ...client, firstName: event.target.value });
+                        clearContactError("firstName");
                         setError("");
                       }}
                       required
                     />
+                    {contactErrors.firstName ? (
+                      <small className="field-error" id="booking-first-name-error">
+                        {contactErrors.firstName}
+                      </small>
+                    ) : null}
                   </label>
                   <label>
                     <span>Last name</span>
                     <input
+                      aria-describedby={contactErrors.lastName ? "booking-last-name-error" : undefined}
+                      aria-invalid={Boolean(contactErrors.lastName)}
                       autoComplete="family-name"
+                      maxLength={100}
                       value={client.lastName}
                       onChange={(event) => {
                         setClient({ ...client, lastName: event.target.value });
+                        clearContactError("lastName");
                         setError("");
                       }}
                       required
                     />
+                    {contactErrors.lastName ? (
+                      <small className="field-error" id="booking-last-name-error">
+                        {contactErrors.lastName}
+                      </small>
+                    ) : null}
                   </label>
                   <label>
                     <span>Phone</span>
                     <input
+                      aria-describedby={contactErrors.phone ? "booking-phone-error" : undefined}
+                      aria-invalid={Boolean(contactErrors.phone)}
                       autoComplete="tel"
                       inputMode="tel"
+                      maxLength={20}
                       minLength={5}
                       value={client.phone}
                       onChange={(event) => {
                         setClient({ ...client, phone: event.target.value });
+                        clearContactError("phone");
                         setError("");
                       }}
                       required
                     />
+                    {contactErrors.phone ? (
+                      <small className="field-error" id="booking-phone-error">
+                        {contactErrors.phone}
+                      </small>
+                    ) : null}
                   </label>
                   <label>
                     <span>Email</span>
                     <input
+                      aria-describedby={contactErrors.email ? "booking-email-error" : undefined}
+                      aria-invalid={Boolean(contactErrors.email)}
                       autoComplete="email"
+                      maxLength={255}
                       type="email"
                       value={client.email}
                       onChange={(event) => {
                         setClient({ ...client, email: event.target.value });
+                        clearContactError("email");
                         setError("");
                       }}
                     />
+                    {contactErrors.email ? (
+                      <small className="field-error" id="booking-email-error">
+                        {contactErrors.email}
+                      </small>
+                    ) : null}
                   </label>
                 </section>
 
                 <label className="full-width">
                   <span>Comment</span>
-                  <textarea value={clientComment} onChange={(event) => setClientComment(event.target.value)} rows={3} />
+                  <textarea
+                    aria-describedby={contactErrors.comment ? "booking-comment-error" : undefined}
+                    aria-invalid={Boolean(contactErrors.comment)}
+                    maxLength={1000}
+                    value={clientComment}
+                    onChange={(event) => {
+                      setClientComment(event.target.value);
+                      clearContactError("comment");
+                      setError("");
+                    }}
+                    rows={3}
+                  />
+                  {contactErrors.comment ? (
+                    <small className="field-error" id="booking-comment-error">
+                      {contactErrors.comment}
+                    </small>
+                  ) : null}
                 </label>
 
                 <section className="selection-panel">

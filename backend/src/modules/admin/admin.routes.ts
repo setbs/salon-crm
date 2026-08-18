@@ -1,5 +1,6 @@
 import { Router, raw } from "express";
 import { getAuthenticatedUser, requireCrmUser } from "../auth/auth.middleware.js";
+import { getBusinessAnalytics, getConsumableAnalytics } from "../analytics/analytics.service.js";
 import {
   createEmployee,
   createEmployeeTimeOff,
@@ -20,11 +21,9 @@ import {
   deleteProductBrand,
   deleteProductCategory,
   getAppointmentConsumablePreview,
-  getBusinessAnalytics,
   getClientProfile,
   getAppointments,
   getClients,
-  getConsumableAnalytics,
   getDashboard,
   getEmployees,
   getPayments,

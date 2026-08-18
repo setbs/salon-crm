@@ -26,7 +26,12 @@ app.use("/api", adminRouter);
 
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   if (error instanceof z.ZodError) {
-    response.status(400).json({ message: "Validation failed.", issues: error.flatten() });
+    const details = formatZodValidationDetails(error);
+    response.status(400).json({
+      message: details.length > 0 ? `Validation failed: ${details.join(" ")}` : "Validation failed.",
+      details,
+      issues: error.flatten()
+    });
     return;
   }
 
@@ -38,3 +43,26 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
   console.error(error);
   response.status(500).json({ message: "Internal server error." });
 });
+
+function formatZodValidationDetails(error: z.ZodError) {
+  return error.issues.map((issue) => {
+    const field = formatValidationPath(issue.path);
+
+    return field ? `${field}: ${issue.message}.` : `${issue.message}.`;
+  });
+}
+
+function formatValidationPath(path: Array<string | number>) {
+  if (path.length === 0) {
+    return "";
+  }
+
+  return path
+    .map((part) =>
+      String(part)
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/[_-]+/g, " ")
+    )
+    .join(" ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}

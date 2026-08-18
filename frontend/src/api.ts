@@ -185,9 +185,82 @@ export type AdminBusinessAnalytics = {
     stockPackageEquivalent: number | null;
     packagesToBuy: number;
   }>;
+  materialUsageByService: Array<{
+    serviceId: string;
+    serviceName: string;
+    appointmentCount: number;
+    usedMl: number;
+    usedGram: number;
+    consumableCost: number | null;
+    revenueFrom: number;
+    revenueTo: number;
+    profitFrom: number | null;
+    profitTo: number | null;
+  }>;
+  procedureProductUsage: Array<{
+    productId: string;
+    productName: string;
+    categoryName: string | null;
+    brandName: string | null;
+    usedQuantity: number;
+    unit: MeasurementUnit;
+    appointmentCount: number;
+    serviceCount: number;
+    consumableCost: number | null;
+    averagePerAppointment: number | null;
+    stockContentAmount: number | null;
+    stockPackageEquivalent: number | null;
+    estimatedProceduresLeft: number | null;
+  }>;
+  dailyTrend: Array<{
+    date: string;
+    revenueFrom: number;
+    revenueTo: number;
+    profitFrom: number | null;
+    profitTo: number | null;
+  }>;
+  comparison: {
+    previousPeriodLabel: string;
+    completedVisits: AnalyticsComparisonMetric;
+    serviceRevenue: AnalyticsComparisonMetric;
+    serviceProfit: AnalyticsNullableComparisonMetric;
+    productRevenue: AnalyticsComparisonMetric;
+    productProfit: AnalyticsNullableComparisonMetric;
+  };
+  attentionItems: Array<{
+    severity: "info" | "warning" | "risk";
+    title: string;
+    detail: string;
+  }>;
+  employeePerformance: Array<{
+    employeeId: string;
+    employeeName: string;
+    completedVisits: number;
+    revenueFrom: number;
+    revenueTo: number;
+    consumableCost: number | null;
+    profitFrom: number | null;
+    profitTo: number | null;
+    averageProfitFrom: number | null;
+    averageProfitTo: number | null;
+    usedMl: number;
+    usedGram: number;
+  }>;
 };
 
 export type AdminBusinessAnalyticsPeriod = "week" | "month" | "custom";
+
+export type AnalyticsComparisonMetric = {
+  current: number;
+  previous: number;
+  changePercent: number;
+};
+
+export type AnalyticsNullableComparisonMetric = {
+  current: number | null;
+  previous: number | null;
+  changePercent: number | null;
+};
 
 export type AdminAppointment = {
   id: string;
@@ -877,10 +950,71 @@ async function request<T>(input: RequestInfo, init: RequestInit = {}, withAuth =
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.message ?? "Request failed.");
+    throw new Error(getApiErrorMessage(data));
   }
 
   return data as T;
+}
+
+function getApiErrorMessage(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return "Request failed.";
+  }
+
+  const body = data as { message?: unknown; details?: unknown; issues?: unknown };
+  const message = typeof body.message === "string" ? body.message : "Request failed.";
+
+  if (!/^validation failed\.?$/i.test(message.trim())) {
+    return message;
+  }
+
+  const details = getApiErrorDetails(body.details);
+
+  if (details.length > 0) {
+    return `Validation failed: ${details.join(" ")}`;
+  }
+
+  const issueDetails = getFlattenedIssueDetails(body.issues);
+
+  if (issueDetails.length > 0) {
+    return `Validation failed: ${issueDetails.join(" ")}`;
+  }
+
+  return message;
+}
+
+function getApiErrorDetails(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function getFlattenedIssueDetails(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const issueBody = value as { formErrors?: unknown; fieldErrors?: unknown };
+  const formErrors = Array.isArray(issueBody.formErrors) ? issueBody.formErrors : [];
+  const fieldErrors =
+    issueBody.fieldErrors && typeof issueBody.fieldErrors === "object" ? Object.entries(issueBody.fieldErrors as Record<string, unknown>) : [];
+
+  return [
+    ...formErrors.filter((item): item is string => typeof item === "string" && item.trim().length > 0),
+    ...fieldErrors.flatMap(([field, errors]) =>
+      Array.isArray(errors)
+        ? errors
+            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item) => `${formatApiFieldName(field)}: ${item}.`)
+        : []
+    )
+  ];
+}
+
+function formatApiFieldName(value: string) {
+  return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function withAuthHeader(init: RequestInit): RequestInit {

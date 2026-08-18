@@ -14,21 +14,25 @@ export function countTodayAppointments(dayStart: Date, dayEnd: Date, employeeId?
 }
 
 export function sumTodayPaidRevenue(dayStart: Date, dayEnd: Date, employeeId?: bigint) {
-  return prisma.payment.aggregate({
-    _sum: { amount: true },
-    where: {
-      paymentStatus: PaymentStatus.PAID,
-      paidAt: {
-        gte: dayStart,
-        lt: dayEnd
-      },
-      ...(employeeId
-        ? {
-            OR: [{ appointment: { employeeId } }, { productSale: { employeeId } }]
-          }
-        : {})
-    }
-  });
+  const employeeFilter = employeeId ? Prisma.sql`AND (appointment.employee_id = ${employeeId} OR sale.employee_id = ${employeeId})` : Prisma.empty;
+
+  return prisma.$queryRaw<Array<{ amount: Prisma.Decimal | null }>>(Prisma.sql`
+    SELECT
+      COALESCE(SUM(
+        CASE
+          WHEN payment.payment_status = ${PaymentStatus.PAID}::"PaymentStatus" THEN payment.amount
+          WHEN payment.payment_status = ${PaymentStatus.REFUNDED}::"PaymentStatus" THEN -payment.amount
+          ELSE 0
+        END
+      ), 0) AS amount
+    FROM payments payment
+    LEFT JOIN appointments appointment ON appointment.id = payment.appointment_id
+    LEFT JOIN product_sales sale ON sale.id = payment.product_sale_id
+    WHERE payment.payment_status IN (${PaymentStatus.PAID}::"PaymentStatus", ${PaymentStatus.REFUNDED}::"PaymentStatus")
+      AND payment.paid_at >= ${dayStart}
+      AND payment.paid_at < ${dayEnd}
+      ${employeeFilter}
+  `);
 }
 
 export function findNextAppointment(now: Date, employeeId?: bigint) {
@@ -90,7 +94,7 @@ export function listClients(search?: string, employeeId?: bigint) {
     },
     include: {
       clientAppointments: { include: { payment: true } },
-      productSales: true
+      productSales: { include: { payment: true } }
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
   });
