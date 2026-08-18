@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, Edit3, EyeOff, FileText, Plus, Trash2, X } from "lucide-react";
+import { Check, Edit3, EyeOff, FileText, Plus, RotateCcw, Trash2, X } from "lucide-react";
 
 export function MetricCard({ label, value, note }: { label: string; value: string; note: string }) {
   return (
@@ -140,6 +140,8 @@ export function InlineActions({ labels, onAction }: { labels: string[]; onAction
         const Icon =
           label === "Details"
             ? FileText
+            : label === "Refund" || label === "refunded"
+              ? RotateCcw
             : label === "Complete" || label === "paid"
               ? Check
               : label === "Delete" || label === "Cancel"
@@ -174,6 +176,8 @@ export function StatusBadge({ status }: { status: string }) {
     out: "out",
     not_tracked: "not tracked",
     payment_updated: "payment",
+    payment_created: "created",
+    payment_refunded: "refund",
     status_updated: "status",
     completion_corrected: "corrected"
   };

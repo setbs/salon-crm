@@ -481,9 +481,22 @@ export type AdminSale = {
   qty: number;
   client: string;
   employee: string | null;
+  paymentId: string | null;
   payment: string;
+  paymentMethod: string;
+  paymentStatus: string;
   total: number;
+  netTotal: number;
   saleDate: string;
+};
+
+export type AdminPaymentAuditLog = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actor: string;
+  createdAt: string;
+  details: Record<string, unknown> | null;
 };
 
 export type AdminPayment = {
@@ -493,7 +506,9 @@ export type AdminPayment = {
   method: string;
   status: string;
   amount: number;
+  netAmount: number;
   paidAt: string | null;
+  auditLogs: AdminPaymentAuditLog[];
 };
 
 export type AdminReview = {
@@ -929,7 +944,7 @@ export async function createAdminSale(payload: SaleInput) {
   return request<ApiResponse<{ id: string }>>("/api/admin/sales", jsonRequest("POST", payload)).then((response) => response.data);
 }
 
-export async function updateAdminPayment(id: string, payload: { status: string; method?: string }) {
+export async function updateAdminPayment(id: string, payload: { status: string; method?: string; reason?: string; returnToStock?: boolean }) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/payments/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
 }
 

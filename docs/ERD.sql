@@ -178,6 +178,24 @@ Table payments {
   created_at timestamp [not null]
 }
 
+Table payment_audit_logs {
+  id bigint [pk, increment]
+
+  payment_id bigint [not null]
+  actor_user_id bigint
+  event_type varchar(80) [not null]
+  summary varchar(500) [not null]
+  details jsonb
+
+  created_at timestamp [not null]
+
+  indexes {
+    (payment_id)
+    (actor_user_id)
+    (created_at)
+  }
+}
+
 Table portfolio_photos {
   id bigint [pk, increment]
 
@@ -367,6 +385,9 @@ Ref: employee_time_off.employee_id > employees.id [delete: cascade]
 
 Ref: payments.appointment_id > appointments.id [delete: cascade]
 Ref: payments.product_sale_id > product_sales.id [delete: cascade]
+
+Ref: payment_audit_logs.payment_id > payments.id [delete: cascade]
+Ref: payment_audit_logs.actor_user_id > users.id [delete: set null]
 
 Ref: portfolio_photos.employee_id > employees.id [delete: cascade]
 Ref: reviews.appointment_id > appointments.id [delete: cascade]

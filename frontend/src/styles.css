@@ -2698,6 +2698,10 @@ textarea {
   background: #98ad89;
 }
 
+.daily-trend-bars .negative {
+  background: #c59b8c;
+}
+
 .daily-trend-column small {
   overflow: hidden;
   color: #75695d;
@@ -2961,6 +2965,7 @@ textarea {
 .status-badge.paid,
 .status-badge.ready,
 .status-badge.ok,
+.status-badge.payment_created,
 .status-badge.payment_updated {
   border-color: #98ad89;
   background: #e3eadb;
@@ -2969,6 +2974,7 @@ textarea {
 
 .status-badge.cancelled,
 .status-badge.refunded,
+.status-badge.payment_refunded,
 .status-badge.no_show,
 .status-badge.blocked,
 .status-badge.low,
@@ -3002,6 +3008,31 @@ textarea {
   border-radius: 5px;
   background: transparent;
   color: #4b4038;
+}
+
+.payment-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-cell small {
+  color: #75695d;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.net-amount {
+  color: #5f554c;
+  font-weight: 900;
+}
+
+.net-amount.positive {
+  color: #4a6940;
+}
+
+.net-amount.negative {
+  color: #8a4937;
 }
 
 .appointment-open-button {
@@ -3162,6 +3193,12 @@ textarea {
 .completion-modal {
   width: min(1080px, calc(100vw - 48px));
   max-height: min(840px, calc(100vh - 48px));
+}
+
+.payment-audit-modal,
+.sale-form-modal,
+.sale-refund-modal {
+  width: min(780px, 100%);
 }
 
 .stock-history-modal {
@@ -3436,7 +3473,18 @@ textarea {
   background: #d8cec1;
 }
 
-.completion-summary-strip div {
+.payment-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d8cec1;
+  border-radius: 6px;
+  background: #d8cec1;
+}
+
+.completion-summary-strip div,
+.payment-summary-strip div {
   display: grid;
   gap: 5px;
   background: rgba(246, 241, 232, 0.5);
@@ -3444,6 +3492,7 @@ textarea {
 }
 
 .completion-summary-strip span,
+.payment-summary-strip span,
 .completion-section-heading span,
 .completion-add-material span {
   color: #75695d;
@@ -3453,8 +3502,11 @@ textarea {
   text-transform: uppercase;
 }
 
-.completion-summary-strip strong {
+.completion-summary-strip strong,
+.payment-summary-strip strong {
   color: #302820;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .modal-state {
@@ -4152,6 +4204,11 @@ textarea {
   line-height: 1.5;
 }
 
+.form-note.neutral-note {
+  color: #75695d;
+  font-weight: 700;
+}
+
 .client-profile {
   display: grid;
   gap: 16px;
@@ -4551,6 +4608,7 @@ textarea {
   .appointment-comment-grid,
   .appointment-finance-metrics,
   .completion-summary-strip,
+  .payment-summary-strip,
   .completion-payment-grid,
   .completion-accounting-layout,
   .completion-add-material,

@@ -249,7 +249,9 @@ export const createSaleSchema = z.object({
 
 export const updatePaymentSchema = z.object({
   status: z.enum(["pending", "paid", "refunded"]),
-  method: z.enum(["cash", "card", "blik", "transfer"]).optional()
+  method: z.enum(["cash", "card", "blik", "transfer"]).optional(),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
+  returnToStock: z.boolean().optional()
 });
 
 export const updateSettingsSchema = z.object({

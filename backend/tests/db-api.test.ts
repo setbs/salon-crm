@@ -232,35 +232,77 @@ describe("DB-backed admin API workflows", { concurrency: false, skip: !testDatab
     assert.equal(response.body.data.comparison.serviceRevenue.current, -420);
     assert.equal(response.body.data.comparison.serviceProfit.current, -500);
     assert.equal(employeePerformance.averageProfitTo, -500);
+
+    const appointmentPaymentAudit = await prisma.$queryRaw<Array<{ eventType: string; details: { statusTo?: string; stockReturned?: boolean } }>>`
+      SELECT event_type AS "eventType", details
+      FROM payment_audit_logs
+      WHERE payment_id = (SELECT id FROM payments WHERE appointment_id = ${BigInt(appointmentId)})
+      ORDER BY created_at DESC
+    `;
+
+    assert.ok(appointmentPaymentAudit.some((log) => log.eventType === "payment_refunded" && log.details.statusTo === "refunded" && log.details.stockReturned === false));
   });
 
-  test("subtracts refunded product sales from business analytics", async () => {
-    const saleDate = new Date(appointmentStartTime);
+  test("refunds product sales through the API, returns stock once, and subtracts them from business analytics", async () => {
+    const stockBeforeSale = await prisma.product.findUnique({ where: { id: productId }, select: { stockContentAmount: true } });
 
-    await prisma.productSale.create({
-      data: {
-        employeeId,
-        totalAmount: 300,
-        saleDate,
-        items: {
-          create: {
-            productId,
-            quantity: 1,
-            unitPrice: 300
-          }
-        },
-        payment: {
-          create: {
-            amount: 300,
-            paymentMethod: "CASH",
-            paymentStatus: "REFUNDED",
-            paidAt: saleDate
-          }
-        }
+    const createSaleResponse = await apiFetch("/admin/sales", {
+      method: "POST",
+      body: {
+        productId: productId.toString(),
+        quantity: 1,
+        employeeId: employeeId.toString(),
+        paymentMethod: "cash"
       }
     });
 
-    const saleDateInput = appointmentStartTime.slice(0, 10);
+    assert.equal(createSaleResponse.status, 201);
+
+    const saleId = BigInt(createSaleResponse.body.data.id);
+    const payment = await prisma.payment.findUnique({ where: { productSaleId: saleId } });
+    const stockAfterSale = await prisma.product.findUnique({ where: { id: productId }, select: { stockContentAmount: true } });
+
+    assert.ok(payment);
+    assert.equal(Number(stockAfterSale?.stockContentAmount), Number(stockBeforeSale?.stockContentAmount) - 60);
+
+    const refundResponse = await apiFetch(`/admin/payments/${payment.id.toString()}`, {
+      method: "PATCH",
+      body: {
+        status: "refunded",
+        method: "cash",
+        reason: "Returned unopened product",
+        returnToStock: true
+      }
+    });
+
+    assert.equal(refundResponse.status, 200);
+
+    const [stockAfterRefund, returnMovement, paymentAudit, salesResponse, paymentsResponse] = await Promise.all([
+      prisma.product.findUnique({ where: { id: productId }, select: { stockContentAmount: true } }),
+      prisma.stockMovement.findFirst({ where: { productId, movementType: "RETURN", reason: { contains: "Returned unopened product" } } }),
+      prisma.$queryRaw<Array<{ eventType: string; details: { reason?: string; stockReturned?: boolean; stockItems?: unknown[] } }>>`
+        SELECT event_type AS "eventType", details
+        FROM payment_audit_logs
+        WHERE payment_id = ${payment.id}
+        ORDER BY created_at DESC
+      `,
+      apiFetch("/admin/sales"),
+      apiFetch("/admin/payments")
+    ]);
+
+    assert.equal(Number(stockAfterRefund?.stockContentAmount), Number(stockBeforeSale?.stockContentAmount));
+    assert.equal(returnMovement?.contentQuantity ? Number(returnMovement.contentQuantity) : null, 60);
+    assert.ok(paymentAudit.some((log) => log.eventType === "payment_refunded" && log.details.reason === "Returned unopened product" && log.details.stockReturned === true));
+
+    const saleRow = salesResponse.body.data.find((sale: { id: string }) => sale.id === saleId.toString());
+    const paymentRow = paymentsResponse.body.data.find((item: { id: string }) => item.id === payment.id.toString());
+
+    assert.equal(saleRow.paymentStatus, "refunded");
+    assert.equal(saleRow.netTotal, -300);
+    assert.equal(paymentRow.netAmount, -300);
+    assert.ok(paymentRow.auditLogs.some((log: { eventType: string }) => log.eventType === "payment_refunded"));
+
+    const saleDateInput = localDateInput(new Date());
     const response = await apiFetch(`/admin/business-analytics?period=custom&from=${saleDateInput}&to=${saleDateInput}`);
 
     assert.equal(response.status, 200);
@@ -276,6 +318,18 @@ describe("DB-backed admin API workflows", { concurrency: false, skip: !testDatab
     assert.equal(brand.profit, -180);
     assert.equal(response.body.data.comparison.productRevenue.current, -300);
     assert.equal(response.body.data.comparison.productProfit.current, -180);
+
+    const duplicateStockReturnResponse = await apiFetch(`/admin/payments/${payment.id.toString()}`, {
+      method: "PATCH",
+      body: {
+        status: "refunded",
+        method: "cash",
+        reason: "Duplicate return",
+        returnToStock: true
+      }
+    });
+
+    assert.equal(duplicateStockReturnResponse.status, 409);
   });
 
   test("keeps service history by rejecting delete for services used in appointments", async () => {
@@ -454,6 +508,14 @@ function nextLocalDateForAppointment() {
   date.setDate(date.getDate() + 14);
   date.setHours(10, 0, 0, 0);
   return date;
+}
+
+function localDateInput(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 async function cleanupRunData() {

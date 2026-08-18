@@ -74,6 +74,20 @@ type AppointmentAuditEntry = {
   actor: string;
   createdAt: string;
 };
+type PaymentAuditEntry = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actor: string;
+  createdAt: string;
+  details: Record<string, unknown> | null;
+};
+type PaymentSnapshot = {
+  amount: Prisma.Decimal | number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  paidAt?: Date | null;
+};
 type AppointmentDisplayExtras = {
   services: AppointmentServiceLine[];
   financials: AppointmentFinancialSummary;
@@ -877,14 +891,19 @@ export async function getProductSales(actor: CrmAuthenticatedUser) {
     qty: sale.items.reduce((sum, item) => sum + item.quantity, 0),
     client: sale.client ? `${sale.client.firstName} ${sale.client.lastName}` : "no client",
     employee: sale.employee ? `${sale.employee.user.firstName} ${sale.employee.user.lastName}` : null,
+    paymentId: sale.payment?.id.toString() ?? null,
     payment: sale.payment?.paymentMethod.toLowerCase() ?? "cash",
+    paymentMethod: sale.payment?.paymentMethod.toLowerCase() ?? "cash",
+    paymentStatus: sale.payment?.paymentStatus.toLowerCase() ?? "pending",
     total: Number(sale.totalAmount),
+    netTotal: getNetPaymentAmount(sale.payment),
     saleDate: sale.saleDate.toISOString()
   }));
 }
 
 export async function getPayments(actor: CrmAuthenticatedUser) {
   const payments = await listPayments(employeeScope(actor));
+  const auditLogsByPayment = await getPaymentAuditLogs(payments.map((payment) => payment.id));
 
   return payments.map((payment) => ({
     id: payment.id.toString(),
@@ -897,7 +916,9 @@ export async function getPayments(actor: CrmAuthenticatedUser) {
     method: payment.paymentMethod.toLowerCase(),
     status: payment.paymentStatus.toLowerCase(),
     amount: Number(payment.amount),
-    paidAt: payment.paidAt?.toISOString() ?? null
+    netAmount: getNetPaymentAmount(payment),
+    paidAt: payment.paidAt?.toISOString() ?? null,
+    auditLogs: auditLogsByPayment.get(payment.id.toString()) ?? []
   }));
 }
 
@@ -992,7 +1013,8 @@ export async function updateAppointment(actor: CrmAuthenticatedUser, id: bigint,
       await upsertAppointmentPayment(transaction, id, {
         amount: input.paymentAmount,
         method: input.paymentMethod,
-        status: input.paymentStatus ?? (shouldCompleteAppointment ? "paid" : undefined)
+        status: input.paymentStatus ?? (shouldCompleteAppointment ? "paid" : undefined),
+        actorUserId: BigInt(actor.id)
       });
     }
 
@@ -1826,13 +1848,27 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
       reason: `Sale #${createdSale.id.toString()}`
     });
 
-    await transaction.payment.create({
+    const payment = await transaction.payment.create({
       data: {
         productSaleId: createdSale.id,
         amount: totalAmount,
         paymentMethod,
         paymentStatus: PaymentStatus.PAID,
         paidAt: new Date()
+      }
+    });
+
+    await recordPaymentAuditLog(transaction, {
+      paymentId: payment.id,
+      actorUserId: BigInt(actor.id),
+      eventType: "payment_created",
+      summary: "Product sale payment was created as paid.",
+      details: {
+        source: "product_sale",
+        productSaleId: createdSale.id.toString(),
+        amountTo: totalAmount,
+        methodTo: paymentMethod.toLowerCase(),
+        statusTo: "paid"
       }
     });
 
@@ -1845,14 +1881,99 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
 export async function updatePayment(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updatePaymentSchema>) {
   await assertPaymentAccess(actor, id);
   const status = toPaymentStatus(input.status);
+  const reason = input.reason?.trim() || null;
 
-  const payment = await prisma.payment.update({
-    where: { id },
-    data: {
-      paymentStatus: status,
-      paymentMethod: input.method ? toPaymentMethod(input.method) : undefined,
-      paidAt: getPaymentEventDate(status)
+  if (input.returnToStock && status !== PaymentStatus.REFUNDED) {
+    throw new HttpError(400, "Stock return is available only for refunds.");
+  }
+
+  const payment = await prisma.$transaction(async (transaction) => {
+    const current = await transaction.payment.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        appointmentId: true,
+        productSaleId: true,
+        amount: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        paidAt: true
+      }
+    });
+
+    if (!current) {
+      throw new HttpError(404, "Payment not found.");
     }
+
+    if (input.returnToStock && !current.productSaleId) {
+      throw new HttpError(400, "Stock return is available only for product sale refunds.");
+    }
+
+    const method = input.method ? toPaymentMethod(input.method) : current.paymentMethod;
+    let stockReturned = false;
+    let stockItems: Array<Record<string, unknown>> = [];
+
+    if (input.returnToStock && current.productSaleId) {
+      const alreadyReturned = await hasPaymentStockReturnAudit(transaction, id);
+
+      if (alreadyReturned) {
+        throw new HttpError(409, "Stock was already returned for this refunded sale.");
+      }
+
+      stockItems = await returnProductSaleStock(transaction, current.productSaleId, reason);
+      stockReturned = stockItems.length > 0;
+    }
+
+    const updatedPayment = await transaction.payment.update({
+      where: { id },
+      data: {
+        paymentStatus: status,
+        paymentMethod: method,
+        paidAt: getPaymentEventDate(status, current.paymentStatus, current.paidAt)
+      }
+    });
+
+    const auditDetails = buildPaymentAuditDetails({
+      source: current.appointmentId ? "appointment" : "product_sale",
+      appointmentId: current.appointmentId,
+      productSaleId: current.productSaleId,
+      current,
+      next: updatedPayment,
+      reason,
+      returnToStock: input.returnToStock === true,
+      stockReturned,
+      stockItems
+    });
+    const changed =
+      current.paymentStatus !== updatedPayment.paymentStatus ||
+      current.paymentMethod !== updatedPayment.paymentMethod ||
+      reason !== null ||
+      input.returnToStock === true;
+
+    if (changed) {
+      const eventType = updatedPayment.paymentStatus === PaymentStatus.REFUNDED ? "payment_refunded" : "payment_updated";
+      const summary = buildPaymentAuditSummary(current, updatedPayment, stockReturned);
+
+      await recordPaymentAuditLog(transaction, {
+        paymentId: updatedPayment.id,
+        actorUserId: BigInt(actor.id),
+        eventType,
+        summary,
+        details: auditDetails
+      });
+
+      if (current.appointmentId) {
+        await recordAppointmentAuditLog(transaction, {
+          appointmentId: current.appointmentId,
+          actorUserId: BigInt(actor.id),
+          eventType,
+          summary,
+          details: auditDetails
+        });
+      }
+    }
+
+    return updatedPayment;
   });
 
   return { id: payment.id.toString() };
@@ -2509,6 +2630,252 @@ async function recordAppointmentAuditLog(
   `;
 }
 
+async function getPaymentAuditLogs(paymentIds: bigint[]) {
+  const logsByPayment = new Map<string, PaymentAuditEntry[]>();
+
+  if (paymentIds.length === 0) {
+    return logsByPayment;
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: bigint;
+      paymentId: bigint;
+      eventType: string;
+      summary: string;
+      details: unknown;
+      actor: string | null;
+      createdAt: Date;
+    }>
+  >`
+    SELECT
+      log.id,
+      log.payment_id AS "paymentId",
+      log.event_type AS "eventType",
+      log.summary,
+      log.details,
+      trim(concat_ws(' ', actor.first_name, actor.last_name)) AS actor,
+      log.created_at AS "createdAt"
+    FROM payment_audit_logs log
+    LEFT JOIN users actor ON actor.id = log.actor_user_id
+    WHERE log.payment_id IN (${Prisma.join(paymentIds)})
+    ORDER BY log.created_at DESC, log.id DESC
+  `;
+
+  for (const row of rows) {
+    const key = row.paymentId.toString();
+    const logs = logsByPayment.get(key) ?? [];
+
+    if (logs.length < 12) {
+      logs.push({
+        id: row.id.toString(),
+        eventType: row.eventType,
+        summary: row.summary,
+        actor: row.actor || "System",
+        createdAt: row.createdAt.toISOString(),
+        details: normalizeAuditDetails(row.details)
+      });
+      logsByPayment.set(key, logs);
+    }
+  }
+
+  return logsByPayment;
+}
+
+async function recordPaymentAuditLog(
+  client: Prisma.TransactionClient,
+  input: {
+    paymentId: bigint;
+    actorUserId: bigint;
+    eventType: string;
+    summary: string;
+    details: Record<string, unknown>;
+  }
+) {
+  await client.$executeRaw`
+    INSERT INTO payment_audit_logs (
+      payment_id,
+      actor_user_id,
+      event_type,
+      summary,
+      details
+    )
+    VALUES (
+      ${input.paymentId},
+      ${input.actorUserId},
+      ${input.eventType},
+      ${input.summary},
+      ${JSON.stringify(input.details)}::jsonb
+    )
+  `;
+}
+
+function buildPaymentAuditDetails(input: {
+  source: "appointment" | "product_sale";
+  appointmentId: bigint | null;
+  productSaleId: bigint | null;
+  current: PaymentSnapshot | null;
+  next: PaymentSnapshot;
+  reason: string | null;
+  returnToStock: boolean;
+  stockReturned: boolean;
+  stockItems: Array<Record<string, unknown>>;
+}) {
+  return {
+    source: input.source,
+    appointmentId: input.appointmentId?.toString() ?? null,
+    productSaleId: input.productSaleId?.toString() ?? null,
+    amountFrom: input.current ? roundMoney(Number(input.current.amount)) : null,
+    amountTo: roundMoney(Number(input.next.amount)),
+    methodFrom: input.current ? toPublicPaymentMethod(input.current.paymentMethod) : null,
+    methodTo: toPublicPaymentMethod(input.next.paymentMethod),
+    statusFrom: input.current ? toPublicPaymentStatus(input.current.paymentStatus) : null,
+    statusTo: toPublicPaymentStatus(input.next.paymentStatus),
+    reason: input.reason,
+    returnToStock: input.returnToStock,
+    stockReturned: input.stockReturned,
+    stockItems: input.stockItems
+  };
+}
+
+function buildPaymentAuditSummary(current: PaymentSnapshot, next: PaymentSnapshot, stockReturned: boolean) {
+  if (next.paymentStatus === PaymentStatus.REFUNDED && stockReturned) {
+    return "Payment was refunded and product stock was returned.";
+  }
+
+  if (next.paymentStatus === PaymentStatus.REFUNDED) {
+    return "Payment was refunded.";
+  }
+
+  if (current.paymentStatus !== next.paymentStatus) {
+    return `Payment status changed from ${toPublicPaymentStatus(current.paymentStatus)} to ${toPublicPaymentStatus(next.paymentStatus)}.`;
+  }
+
+  if (current.paymentMethod !== next.paymentMethod) {
+    return `Payment method changed from ${toPublicPaymentMethod(current.paymentMethod)} to ${toPublicPaymentMethod(next.paymentMethod)}.`;
+  }
+
+  if (roundMoney(Number(current.amount)) !== roundMoney(Number(next.amount))) {
+    return "Payment amount was updated.";
+  }
+
+  return "Payment data was updated.";
+}
+
+function normalizeAuditDetails(details: unknown) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return null;
+  }
+
+  return details as Record<string, unknown>;
+}
+
+async function hasPaymentStockReturnAudit(client: Pick<Prisma.TransactionClient, "$queryRaw">, paymentId: bigint) {
+  const [row] = await client.$queryRaw<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS count
+    FROM payment_audit_logs
+    WHERE payment_id = ${paymentId}
+      AND details->>'stockReturned' = 'true'
+  `;
+
+  return (row?.count ?? 0) > 0;
+}
+
+async function returnProductSaleStock(client: Prisma.TransactionClient, saleId: bigint, reason: string | null) {
+  const rows = await client.$queryRaw<
+    Array<{
+      productId: bigint;
+      productName: string;
+      quantity: number;
+      contentAmount: Prisma.Decimal | null;
+      contentUnit: string | null;
+      stockContentAmount: Prisma.Decimal | null;
+      stockQuantity: number;
+    }>
+  >`
+    SELECT
+      item.product_id AS "productId",
+      product.name AS "productName",
+      item.quantity,
+      product.content_amount AS "contentAmount",
+      lower(product.content_unit::text) AS "contentUnit",
+      product.stock_content_amount AS "stockContentAmount",
+      product.stock_quantity AS "stockQuantity"
+    FROM product_sale_items item
+    JOIN products product ON product.id = item.product_id
+    WHERE item.sale_id = ${saleId}
+    ORDER BY product.name ASC
+  `;
+  const returnedItems: Array<Record<string, unknown>> = [];
+
+  for (const row of rows) {
+    const contentAmount = row.contentAmount === null ? null : toNumber(row.contentAmount);
+    const stockContentAmount = row.stockContentAmount === null ? null : toNumber(row.stockContentAmount);
+    const stockReason = `Refund sale #${saleId.toString()}${reason ? `: ${reason}` : ""}`;
+
+    if (contentAmount !== null && contentAmount > 0 && row.contentUnit) {
+      const currentContentStock = stockContentAmount ?? row.stockQuantity * contentAmount;
+      const contentDelta = roundMoney(row.quantity * contentAmount);
+      const nextContentStock = roundMoney(currentContentStock + contentDelta);
+      const packageDelta = Math.floor(nextContentStock / contentAmount) - Math.floor(currentContentStock / contentAmount);
+
+      await client.$executeRaw`
+        UPDATE products
+        SET
+          stock_content_amount = ${nextContentStock},
+          stock_quantity = floor(${nextContentStock} / ${contentAmount})::int
+        WHERE id = ${row.productId}
+      `;
+
+      await insertStockMovement(client, {
+        productId: row.productId,
+        movementType: StockMovementType.RETURN,
+        quantity: packageDelta,
+        contentQuantity: contentDelta,
+        contentUnit: toConsumableUnit(row.contentUnit === "gram" ? "gram" : "ml"),
+        reason: stockReason
+      });
+
+      returnedItems.push({
+        productId: row.productId.toString(),
+        productName: row.productName,
+        quantity: row.quantity,
+        contentQuantity: contentDelta,
+        contentUnit: row.contentUnit,
+        stockContentBefore: currentContentStock,
+        stockContentAfter: nextContentStock
+      });
+      continue;
+    }
+
+    const nextPackageStock = row.stockQuantity + row.quantity;
+
+    await client.product.update({
+      where: { id: row.productId },
+      data: { stockQuantity: nextPackageStock }
+    });
+
+    await insertStockMovement(client, {
+      productId: row.productId,
+      movementType: StockMovementType.RETURN,
+      quantity: row.quantity,
+      contentQuantity: null,
+      contentUnit: null,
+      reason: stockReason
+    });
+
+    returnedItems.push({
+      productId: row.productId.toString(),
+      productName: row.productName,
+      quantity: row.quantity,
+      stockPackagesBefore: row.stockQuantity,
+      stockPackagesAfter: nextPackageStock
+    });
+  }
+
+  return returnedItems;
+}
+
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -2547,11 +2914,13 @@ async function upsertAppointmentPayment(
     amount?: number;
     method?: "cash" | "card" | "blik" | "transfer";
     status?: "pending" | "paid" | "refunded";
+    actorUserId?: bigint;
   }
 ) {
   const current = await client.payment.findUnique({
     where: { appointmentId },
     select: {
+      id: true,
       amount: true,
       paymentMethod: true,
       paymentStatus: true,
@@ -2563,7 +2932,7 @@ async function upsertAppointmentPayment(
   const status = input.status ? toPaymentStatus(input.status) : current?.paymentStatus ?? PaymentStatus.PAID;
   const paidAt = getPaymentEventDate(status, current?.paymentStatus, current?.paidAt);
 
-  await client.payment.upsert({
+  const payment = await client.payment.upsert({
     where: { appointmentId },
     create: {
       appointmentId,
@@ -2579,6 +2948,36 @@ async function upsertAppointmentPayment(
       paidAt
     }
   });
+
+  if (input.actorUserId) {
+    const changed =
+      !current ||
+      Number(current.amount) !== amount ||
+      current.paymentMethod !== payment.paymentMethod ||
+      current.paymentStatus !== payment.paymentStatus;
+
+    if (changed) {
+      const details = buildPaymentAuditDetails({
+        source: "appointment",
+        appointmentId,
+        productSaleId: null,
+        current,
+        next: payment,
+        reason: null,
+        returnToStock: false,
+        stockReturned: false,
+        stockItems: []
+      });
+
+      await recordPaymentAuditLog(client, {
+        paymentId: payment.id,
+        actorUserId: input.actorUserId,
+        eventType: !current ? "payment_created" : payment.paymentStatus === PaymentStatus.REFUNDED ? "payment_refunded" : "payment_updated",
+        summary: !current ? "Appointment payment was created." : buildPaymentAuditSummary(current, payment, false),
+        details
+      });
+    }
+  }
 }
 
 function getPaymentEventDate(status: PaymentStatus, currentStatus?: PaymentStatus, currentPaidAt?: Date | null) {
@@ -3238,6 +3637,10 @@ function toPaymentMethod(method: string) {
   return PaymentMethod.CASH;
 }
 
+function toPublicPaymentMethod(method: PaymentMethod) {
+  return method.toLowerCase();
+}
+
 function toPaymentStatus(status: string) {
   if (status === "paid") {
     return PaymentStatus.PAID;
@@ -3248,6 +3651,10 @@ function toPaymentStatus(status: string) {
   }
 
   return PaymentStatus.PENDING;
+}
+
+function toPublicPaymentStatus(status: PaymentStatus) {
+  return status.toLowerCase();
 }
 
 function employeeScope(actor: CrmAuthenticatedUser) {

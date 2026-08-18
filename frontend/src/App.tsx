@@ -89,6 +89,14 @@ function canUseProductInProcedure(product: { purpose?: ProductPurpose }) {
   return !product.purpose || product.purpose === "procedure" || product.purpose === "both";
 }
 
+function formatNetMoney(value: number, status?: string) {
+  if (status === "pending") {
+    return "not paid";
+  }
+
+  return adminMoney.format(value);
+}
+
 function formatServicePrice(value: DisplayPrice) {
   if (value.priceFrom !== null && value.priceFrom !== undefined && value.priceTo !== null && value.priceTo !== undefined) {
     return `${plainHryvnia.format(value.priceFrom)} - ${plainHryvnia.format(value.priceTo)} ₴`;
@@ -1936,17 +1944,59 @@ function SalesSection({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const saleProducts = products.filter(canSellProduct);
+  const [isSaleFormOpen, setIsSaleFormOpen] = useState(false);
+  const [refundSale, setRefundSale] = useState<AdminData["sales"][number] | null>(null);
 
   return (
-    <div className="admin-grid">
-      <Panel title="Product sales" action="Create sale">
-        <DataTable
-          columns={["Product", "Quantity", "Client", "Payment", "Amount"]}
-          rows={sales.map((item) => [item.product, item.qty, item.client, item.payment, adminMoney.format(item.total)])}
+    <>
+      <div className="admin-grid">
+        <Panel title="Product sales" action="Create sale" onAction={() => setIsSaleFormOpen(true)} wide>
+          <DataTable
+            columns={["Product", "Quantity", "Client", "Payment", "Net amount", "Actions"]}
+            rows={sales.map((item) => [
+              item.product,
+              item.qty,
+              item.client,
+              <span className="payment-cell">
+                <StatusBadge status={item.paymentStatus} />
+                <small>{item.paymentMethod}</small>
+              </span>,
+              <span className={item.netTotal < 0 ? "net-amount negative" : item.netTotal > 0 ? "net-amount positive" : "net-amount"}>{formatNetMoney(item.netTotal, item.paymentStatus)}</span>,
+              item.paymentId && item.paymentStatus !== "refunded" ? <InlineActions labels={["Refund"]} onAction={() => setRefundSale(item)} /> : "-"
+            ])}
+          />
+        </Panel>
+      </div>
+
+      {isSaleFormOpen ? (
+        <AdminModal className="sale-form-modal" onClose={() => setIsSaleFormOpen(false)} title="Create product sale">
+          <SaleForm
+            clients={clients}
+            employees={employees}
+            onCancel={() => setIsSaleFormOpen(false)}
+            onSubmit={(payload) => runAction(() => createAdminSale(payload)).then(() => setIsSaleFormOpen(false))}
+            products={saleProducts}
+          />
+        </AdminModal>
+      ) : null}
+
+      {refundSale ? (
+        <RefundSaleModal
+          onClose={() => setRefundSale(null)}
+          onSubmit={(payload) =>
+            runAction(() =>
+              updateAdminPayment(refundSale.paymentId ?? "", {
+                status: "refunded",
+                method: refundSale.paymentMethod,
+                reason: payload.reason,
+                returnToStock: payload.returnToStock
+              })
+            ).then(() => setRefundSale(null))
+          }
+          sale={refundSale}
         />
-      </Panel>
-      <SaleForm products={saleProducts} clients={clients} employees={employees} onSubmit={(payload) => runAction(() => createAdminSale(payload))} />
-    </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1957,30 +2007,162 @@ function PaymentsSection({
   payments: AdminData["payments"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [selectedPayment, setSelectedPayment] = useState<AdminData["payments"][number] | null>(null);
+
   return (
-    <div className="admin-grid">
-      <Panel title="Payments" action="Add payment">
-        <DataTable
-          columns={["Source", "Client", "Method", "Status", "Amount", "Actions"]}
-          rows={payments.map((item) => [
-            item.source,
-            item.client,
-            item.method,
-            <StatusBadge status={item.status} />,
-            adminMoney.format(item.amount),
-            <InlineActions labels={["paid", "refunded"]} onAction={(label) => runAction(() => updateAdminPayment(item.id, { status: label }))} />
-          ])}
-        />
-      </Panel>
-      <Panel title="Supported methods">
-        <div className="feature-list">
-          <span>cash</span>
-          <span>card</span>
-          <span>blik</span>
-          <span>transfer</span>
+    <>
+      <div className="admin-grid">
+        <Panel title="Payments" action="Add payment">
+          <DataTable
+            columns={["Source", "Client", "Method", "Status", "Net amount", "Actions"]}
+            rows={payments.map((item) => {
+              const actionLabels = [
+                "Details",
+                ...(item.status === "paid" ? [] : ["paid"]),
+                ...(item.status !== "refunded" && item.source !== "Products" ? ["refunded"] : [])
+              ];
+
+              return [
+                item.source,
+                item.client,
+                item.method,
+                <StatusBadge status={item.status} />,
+                <span className={item.netAmount < 0 ? "net-amount negative" : item.netAmount > 0 ? "net-amount positive" : "net-amount"}>{formatNetMoney(item.netAmount, item.status)}</span>,
+                <InlineActions
+                  labels={actionLabels}
+                  onAction={(label) => {
+                    if (label === "Details") {
+                      setSelectedPayment(item);
+                      return;
+                    }
+
+                    void runAction(() => updateAdminPayment(item.id, { status: label, method: item.method }));
+                  }}
+                />
+              ];
+            })}
+          />
+        </Panel>
+        <Panel title="Supported methods">
+          <div className="feature-list">
+            <span>cash</span>
+            <span>card</span>
+            <span>blik</span>
+            <span>transfer</span>
+          </div>
+        </Panel>
+      </div>
+
+      {selectedPayment ? <PaymentAuditModal onClose={() => setSelectedPayment(null)} payment={selectedPayment} /> : null}
+    </>
+  );
+}
+
+function RefundSaleModal({
+  onClose,
+  onSubmit,
+  sale
+}: {
+  onClose: () => void;
+  onSubmit: (payload: { reason: string; returnToStock: boolean }) => Promise<void>;
+  sale: AdminData["sales"][number];
+}) {
+  const [reason, setReason] = useState("");
+  const [returnToStock, setReturnToStock] = useState(true);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onSubmit({ reason, returnToStock });
+  }
+
+  return (
+    <AdminModal className="sale-refund-modal" onClose={onClose} title="Refund product sale">
+      <div className="payment-summary-strip">
+        <div>
+          <span>Sale</span>
+          <strong>{sale.product}</strong>
         </div>
-      </Panel>
-    </div>
+        <div>
+          <span>Client</span>
+          <strong>{sale.client}</strong>
+        </div>
+        <div>
+          <span>Amount</span>
+          <strong>{adminMoney.format(sale.total)}</strong>
+        </div>
+      </div>
+      <form className="admin-form" onSubmit={submit}>
+        <label className="checkbox-line">
+          <input checked={returnToStock} onChange={(event) => setReturnToStock(event.target.checked)} type="checkbox" />
+          <span>Return sold products to stock</span>
+        </label>
+        <label>
+          <span>Refund reason</span>
+          <textarea maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Optional, but useful for audit" rows={4} value={reason} />
+        </label>
+        <p className="form-note neutral-note">{returnToStock ? "Stock will be increased once. Repeating the same stock return will be blocked." : "Only money will be refunded. Product stock will stay unchanged."}</p>
+        <div className="modal-actions">
+          <button className="secondary-button compact-button" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="primary-button admin-submit" type="submit">
+            Refund sale
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+}
+
+function PaymentAuditModal({ onClose, payment }: { onClose: () => void; payment: AdminData["payments"][number] }) {
+  return (
+    <AdminModal className="payment-audit-modal" onClose={onClose} title="Payment details">
+      <div className="payment-summary-strip">
+        <div>
+          <span>Source</span>
+          <strong>{payment.source}</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong>
+            <StatusBadge status={payment.status} />
+          </strong>
+        </div>
+        <div>
+          <span>Net amount</span>
+          <strong className={payment.netAmount < 0 ? "net-amount negative" : payment.netAmount > 0 ? "net-amount positive" : "net-amount"}>{formatNetMoney(payment.netAmount, payment.status)}</strong>
+        </div>
+      </div>
+      <InfoList
+        items={[
+          ["Client", payment.client],
+          ["Method", payment.method],
+          ["Original amount", adminMoney.format(payment.amount)],
+          ["Paid/refunded at", payment.paidAt ? formatStockMovementDateTime(payment.paidAt) : "-"]
+        ]}
+      />
+      <section className="appointment-audit-card">
+        <h3>Audit trail</h3>
+        <div className="appointment-audit-list">
+          {payment.auditLogs.length > 0 ? (
+            payment.auditLogs.map((log) => (
+              <article key={log.id}>
+                <div>
+                  <strong>{log.summary}</strong>
+                  <span>
+                    {formatStockMovementDateTime(log.createdAt)} · {log.actor}
+                    {typeof log.details?.reason === "string" && log.details.reason ? ` · ${log.details.reason}` : ""}
+                  </span>
+                </div>
+                <StatusBadge status={log.eventType} />
+              </article>
+            ))
+          ) : (
+            <div className="modal-state">No audit events yet.</div>
+          )}
+        </div>
+      </section>
+    </AdminModal>
   );
 }
 
@@ -2051,11 +2233,13 @@ function SaleForm({
   products,
   clients,
   employees,
+  onCancel,
   onSubmit
 }: {
   products: AdminData["products"];
   clients: AdminData["clients"];
   employees: AdminData["employees"];
+  onCancel?: () => void;
   onSubmit: (payload: SaleInput) => Promise<void>;
 }) {
   const [form, setForm] = useState({ productId: products[0]?.id ?? "", quantity: "1", clientId: "", employeeId: "", paymentMethod: "cash" });
@@ -2081,9 +2265,8 @@ function SaleForm({
     });
   }
 
-  return (
-    <Panel title="New sale">
-      <form className="admin-form" onSubmit={submit}>
+  const formContent = (
+    <form className="admin-form" onSubmit={submit}>
         <label>
           <span>Product</span>
           <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
@@ -2130,12 +2313,20 @@ function SaleForm({
             <option value="transfer">transfer</option>
           </select>
         </label>
+      <div className="form-actions">
+        {onCancel ? (
+          <button className="secondary-button compact-button" onClick={onCancel} type="button">
+            Cancel
+          </button>
+        ) : null}
         <button className="primary-button admin-submit" disabled={!form.productId} type="submit">
           Create sale
         </button>
-      </form>
-    </Panel>
+      </div>
+    </form>
   );
+
+  return onCancel ? formContent : <Panel title="New sale">{formContent}</Panel>;
 }
 
 function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"]; onSubmit: (payload: SettingsInput) => Promise<void> }) {

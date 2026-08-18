@@ -62,7 +62,7 @@ export function DashboardSection({
     .filter((appointment) => isSameLocalDate(appointment.date, new Date()))
     .sort((first, second) => new Date(first.date).getTime() - new Date(second.date).getTime());
   const reportTabs: Array<{ id: typeof activeReport; label: string }> = [
-    { id: "service", label: "Service profit" },
+    { id: "service", label: "Net service profit" },
     { id: "materials", label: "Materials" },
     { id: "forecast", label: "Forecast" },
     { id: "products", label: "Products" },
@@ -74,7 +74,7 @@ export function DashboardSection({
     <div className="dashboard-page">
       <section className="dashboard-metrics" aria-label="Dashboard overview">
         <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
-        <MetricCard label="Daily revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid services + products" />
+        <MetricCard label="Daily net revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid/refunded services + products" />
         <MetricCard
           label="Next appointment"
           value={dashboard.nextAppointment?.time ?? "-"}
@@ -88,7 +88,7 @@ export function DashboardSection({
       <section className="admin-panel dashboard-analytics-panel">
         <div className="dashboard-panel-heading">
           <div className="dashboard-panel-title">
-            <span>Financial report</span>
+            <span>Net financial report</span>
             <h2>Business analytics</h2>
           </div>
           <div className="dashboard-heading-actions">
@@ -148,7 +148,7 @@ export function DashboardSection({
             <strong>{completedVisits}</strong>
           </article>
           <article>
-            <span>Service revenue</span>
+            <span>Net service revenue</span>
             <strong>{formatMoneyRange(serviceRevenueFrom, serviceRevenueTo)}</strong>
           </article>
           <article>
@@ -156,7 +156,7 @@ export function DashboardSection({
             <strong>{formatNullableMoneyRange(serviceProfitFrom, serviceProfitTo)}</strong>
           </article>
           <article>
-            <span>Product revenue</span>
+            <span>Net product revenue</span>
             <strong>{adminMoney.format(productRevenue)}</strong>
           </article>
           <article>
@@ -164,7 +164,7 @@ export function DashboardSection({
             <strong>{formatNullableMoney(materialCost)}</strong>
           </article>
           <article>
-            <span>Retail product profit</span>
+            <span>Net retail product profit</span>
             <strong>{formatNullableMoney(productProfit)}</strong>
           </article>
           <article>
@@ -175,15 +175,15 @@ export function DashboardSection({
 
         <div className="analytics-comparison-grid">
           <ComparisonCard label="Visits" metric={visibleBusinessAnalytics.comparison.completedVisits} />
-          <ComparisonCard label="Service revenue" metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
-          <ComparisonCard label="Service profit" metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
-          <ComparisonCard label="Product profit" metric={visibleBusinessAnalytics.comparison.productProfit} money />
+          <ComparisonCard label="Net service revenue" metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
+          <ComparisonCard label="Net service profit" metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
+          <ComparisonCard label="Net product profit" metric={visibleBusinessAnalytics.comparison.productProfit} money />
         </div>
 
         <div className="analytics-visual-grid">
           <section className="analytics-chart-card wide">
             <div className="chart-heading">
-              <h3>Revenue / profit by day</h3>
+              <h3>Net revenue / profit by day</h3>
               <span>{visibleBusinessAnalytics.periodLabel}</span>
             </div>
             <DailyTrendChart items={visibleBusinessAnalytics.dailyTrend} />
@@ -325,8 +325,8 @@ function exportAnalyticsCsv(analytics: AdminData["businessAnalytics"]) {
     ["SL Color Studio - Business analytics"],
     ["Period", analytics.periodLabel],
     [],
-    ["Service profit"],
-    ["Service", "Completed visits", "Revenue from", "Revenue to", "Consumables cost", "Profit from", "Profit to"],
+    ["Net service profit"],
+    ["Service", "Completed visits", "Net revenue from", "Net revenue to", "Consumables cost", "Net profit from", "Net profit to"],
     ...analytics.services.map((item) => [
       item.serviceName,
       item.appointmentCount,
@@ -338,7 +338,7 @@ function exportAnalyticsCsv(analytics: AdminData["businessAnalytics"]) {
     ]),
     [],
     ["Material pressure by service"],
-    ["Service", "Completed visits", "Used ml", "Used gram", "Consumables cost", "Profit from", "Profit to"],
+    ["Service", "Completed visits", "Used ml", "Used gram", "Consumables cost", "Net profit from", "Net profit to"],
     ...analytics.materialUsageByService.map((item) => [
       item.serviceName,
       item.appointmentCount,
@@ -365,15 +365,15 @@ function exportAnalyticsCsv(analytics: AdminData["businessAnalytics"]) {
     ]),
     [],
     ["Product sales by category"],
-    ["Category", "Units", "Revenue", "Profit"],
+    ["Category", "Units", "Net revenue", "Net profit"],
     ...analytics.productSalesByCategory.map((item) => [item.name, item.quantity, item.revenue, item.profit]),
     [],
     ["Product sales by brand"],
-    ["Brand", "Units", "Revenue", "Profit"],
+    ["Brand", "Units", "Net revenue", "Net profit"],
     ...analytics.productSalesByBrand.map((item) => [item.name, item.quantity, item.revenue, item.profit]),
     [],
     ["Employee performance"],
-    ["Employee", "Completed visits", "Revenue from", "Revenue to", "Consumables cost", "Profit from", "Profit to", "Used ml", "Used gram"],
+    ["Employee", "Completed visits", "Net revenue from", "Net revenue to", "Consumables cost", "Net profit from", "Net profit to", "Used ml", "Used gram"],
     ...analytics.employeePerformance.map((item) => [
       item.employeeName,
       item.completedVisits,
@@ -412,11 +412,11 @@ function exportAppointmentsCsv(appointments: AdminData["appointments"]) {
       "Payment status",
       "Payment method",
       "Amount",
-      "Revenue from",
-      "Revenue to",
+      "Net revenue from",
+      "Net revenue to",
       "Consumables cost",
-      "Profit from",
-      "Profit to",
+      "Net profit from",
+      "Net profit to",
       "Client comment",
       "Internal comment"
     ],
@@ -578,9 +578,9 @@ function ComparisonCard({
 }
 
 function DailyTrendChart({ items }: { items: AdminData["businessAnalytics"]["dailyTrend"] }) {
-  const visibleItems = items.filter((item) => item.revenueTo > 0 || item.profitTo !== null);
+  const visibleItems = items.filter((item) => item.revenueTo !== 0 || item.profitTo !== null);
   const chartItems = visibleItems.length > 0 ? visibleItems : items.slice(-7);
-  const maxValue = Math.max(1, ...chartItems.map((item) => Math.max(item.revenueTo, item.profitTo ?? 0)));
+  const maxValue = Math.max(1, ...chartItems.map((item) => Math.max(Math.abs(item.revenueTo), Math.abs(item.profitTo ?? 0))));
 
   if (chartItems.length === 0) {
     return <div className="modal-state">No daily data for this period.</div>;
@@ -591,19 +591,23 @@ function DailyTrendChart({ items }: { items: AdminData["businessAnalytics"]["dai
       {chartItems.map((item) => (
         <div className="daily-trend-column" key={item.date}>
           <div className="daily-trend-bars">
-            <span className="revenue" style={{ height: `${Math.max(4, (item.revenueTo / maxValue) * 100)}%` }} title={`Revenue ${formatHryvnia(item.revenueTo)}`} />
             <span
-              className="profit"
-              style={{ height: `${Math.max(4, (((item.profitTo ?? 0) > 0 ? item.profitTo ?? 0 : 0) / maxValue) * 100)}%` }}
-              title={`Profit ${item.profitTo === null ? "not tracked" : formatHryvnia(item.profitTo)}`}
+              className={item.revenueTo < 0 ? "revenue negative" : "revenue"}
+              style={{ height: `${Math.max(4, (Math.abs(item.revenueTo) / maxValue) * 100)}%` }}
+              title={`Net revenue ${formatHryvnia(item.revenueTo)}`}
+            />
+            <span
+              className={(item.profitTo ?? 0) < 0 ? "profit negative" : "profit"}
+              style={{ height: `${Math.max(4, (Math.abs(item.profitTo ?? 0) / maxValue) * 100)}%` }}
+              title={`Net profit ${item.profitTo === null ? "not tracked" : formatHryvnia(item.profitTo)}`}
             />
           </div>
           <small>{formatChartDate(item.date)}</small>
         </div>
       ))}
       <div className="chart-legend">
-        <span className="revenue">Revenue</span>
-        <span className="profit">Profit</span>
+        <span className="revenue">Net revenue</span>
+        <span className="profit">Net profit</span>
       </div>
     </div>
   );
@@ -652,7 +656,7 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
       <>
         <h3>Material pressure by service</h3>
         <DataTable
-          columns={["Service", "Visits", "Used", "Consumables", "Profit after materials"]}
+          columns={["Service", "Visits", "Used", "Consumables", "Net profit after materials"]}
           rows={
             analytics.materialUsageByService.length > 0
               ? analytics.materialUsageByService.map((item) => [
@@ -696,7 +700,7 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
       <>
         <h3>Product sales</h3>
         <DataTable
-          columns={["Category", "Units", "Revenue", "Profit"]}
+          columns={["Category", "Units", "Net revenue", "Net profit"]}
           rows={
             analytics.productSalesByCategory.length > 0
               ? analytics.productSalesByCategory.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
@@ -712,7 +716,7 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
       <>
         <h3>Brand performance</h3>
         <DataTable
-          columns={["Brand", "Units", "Revenue", "Profit"]}
+          columns={["Brand", "Units", "Net revenue", "Net profit"]}
           rows={
             analytics.productSalesByBrand.length > 0
               ? analytics.productSalesByBrand.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
@@ -728,7 +732,7 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
       <>
         <h3>Employee performance</h3>
         <DataTable
-          columns={["Employee", "Visits", "Revenue", "Consumables", "Avg profit", "Materials"]}
+          columns={["Employee", "Visits", "Net revenue", "Consumables", "Avg net profit", "Materials"]}
           rows={
             analytics.employeePerformance.length > 0
               ? analytics.employeePerformance.map((item) => [
@@ -748,9 +752,9 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
 
   return (
     <>
-      <h3>Service profit</h3>
+      <h3>Net service profit</h3>
       <DataTable
-        columns={["Service", "Visits", "Revenue", "Consumables", "Profit"]}
+        columns={["Service", "Visits", "Net revenue", "Consumables", "Net profit"]}
         rows={
           analytics.services.length > 0
             ? analytics.services.map((item) => [
