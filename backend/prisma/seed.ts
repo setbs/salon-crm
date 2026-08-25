@@ -134,7 +134,7 @@ async function main() {
     update: {
       firstName: "Main",
       lastName: "Admin",
-      phone: "+380500000000",
+      phone: "+38050 23 03 408",
       passwordHash: adminPasswordHash,
       role: UserRole.ADMIN
     },
@@ -148,63 +148,9 @@ async function main() {
     }
   });
 
-  const annaUser = await prisma.user.upsert({
-    where: { email: "anna@soulbeauty.local" },
-    update: {
-      passwordHash: employeePasswordHash,
-      role: UserRole.EMPLOYEE
-    },
-    create: {
-      firstName: "Anna",
-      lastName: "Kowalska",
-      phone: "+48111000111",
-      email: "anna@soulbeauty.local",
-      passwordHash: employeePasswordHash,
-      role: UserRole.EMPLOYEE
-    }
-  });
 
-  const mayaUser = await prisma.user.upsert({
-    where: { email: "maya@soulbeauty.local" },
-    update: {
-      passwordHash: employeePasswordHash,
-      role: UserRole.EMPLOYEE
-    },
-    create: {
-      firstName: "Maya",
-      lastName: "Nowak",
-      phone: "+48111000222",
-      email: "maya@soulbeauty.local",
-      passwordHash: employeePasswordHash,
-      role: UserRole.EMPLOYEE
-    }
-  });
 
-  const anna = await prisma.employee.upsert({
-    where: { userId: annaUser.id },
-    update: {
-      specialization: "hair stylist and colorist",
-      description: "Haircuts, styling, and color transformations."
-    },
-    create: {
-      userId: annaUser.id,
-      specialization: "hair stylist and colorist",
-      description: "Haircuts, styling, and color transformations."
-    }
-  });
 
-  const maya = await prisma.employee.upsert({
-    where: { userId: mayaUser.id },
-    update: {
-      specialization: "manicure specialist",
-      description: "Manicure, gel polish, and nail care."
-    },
-    create: {
-      userId: mayaUser.id,
-      specialization: "manicure specialist",
-      description: "Manicure, gel polish, and nail care."
-    }
-  });
 
   for (const service of [haircut, coloring, scalpPeeling, reconstruction]) {
     await prisma.employeeService.upsert({

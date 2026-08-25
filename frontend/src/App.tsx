@@ -6,14 +6,18 @@ import {
   Check,
   Clock,
   CreditCard,
+  ExternalLink,
   LayoutDashboard,
   LogOut,
+  Instagram,
   Mail,
+  Menu,
   MapPin,
   Package,
   Phone,
   Search,
   Scissors,
+  Send,
   Settings,
   ShoppingCart,
   Store,
@@ -31,6 +35,17 @@ import { DashboardSection } from "./features/dashboard/DashboardSection";
 import { ProductsSection } from "./features/products/ProductsSection";
 import { ServicesSection } from "./features/services/ServicesSection";
 import { StoreOrdersSection } from "./features/store-orders/StoreOrdersSection";
+import {
+  CrmLanguageContext,
+  crmLabel,
+  readStoredCrmLanguage,
+  storeCrmLanguage,
+  useCrmT,
+  type CrmLanguage,
+  type CrmTextKey
+} from "./crm-i18n";
+import logoFull from "./images/logos/logo-full.png";
+import logoMain from "./images/logos/logo-main.png";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "./utils/format";
 import {
   createAdminEmployee,
@@ -102,17 +117,17 @@ function formatNetMoney(value: number, status?: string) {
   return adminMoney.format(value);
 }
 
-function formatServicePrice(value: DisplayPrice) {
+function formatServicePrice(value: DisplayPrice, language: PublicLanguage = "en") {
   if (value.priceFrom !== null && value.priceFrom !== undefined && value.priceTo !== null && value.priceTo !== undefined) {
     return `${plainHryvnia.format(value.priceFrom)} - ${plainHryvnia.format(value.priceTo)} ₴`;
   }
 
   if (value.priceFrom !== null && value.priceFrom !== undefined) {
-    return `from ${formatHryvnia(value.priceFrom)}`;
+    return `${language === "uk" ? "від" : "from"} ${formatHryvnia(value.priceFrom)}`;
   }
 
   if (value.priceTo !== null && value.priceTo !== undefined) {
-    return `up to ${formatHryvnia(value.priceTo)}`;
+    return `${language === "uk" ? "до" : "up to"} ${formatHryvnia(value.priceTo)}`;
   }
 
   return formatHryvnia(value.price);
@@ -191,38 +206,39 @@ function BookingEmptyState({ action, detail, title }: { action?: ReactNode; deta
   );
 }
 
-function getBookingContactErrors(client: BookingClientForm, comment: string): BookingContactErrors {
+function getBookingContactErrors(client: BookingClientForm, comment: string, language: PublicLanguage = "en"): BookingContactErrors {
   const errors: BookingContactErrors = {};
   const firstName = client.firstName.trim();
   const lastName = client.lastName.trim();
   const phone = client.phone.trim();
   const email = client.email.trim();
   const digitCount = phone.replace(/\D/g, "").length;
+  const isUk = language === "uk";
 
   if (!firstName) {
-    errors.firstName = "First name is required.";
+    errors.firstName = isUk ? "Імʼя обовʼязкове." : "First name is required.";
   } else if (firstName.length > 100) {
-    errors.firstName = "First name must be 100 characters or fewer.";
+    errors.firstName = isUk ? "Імʼя має містити не більше 100 символів." : "First name must be 100 characters or fewer.";
   }
 
   if (!lastName) {
-    errors.lastName = "Last name is required.";
+    errors.lastName = isUk ? "Прізвище обовʼязкове." : "Last name is required.";
   } else if (lastName.length > 100) {
-    errors.lastName = "Last name must be 100 characters or fewer.";
+    errors.lastName = isUk ? "Прізвище має містити не більше 100 символів." : "Last name must be 100 characters or fewer.";
   }
 
   if (!phone) {
-    errors.phone = "Phone number is required.";
+    errors.phone = isUk ? "Номер телефону обовʼязковий." : "Phone number is required.";
   } else if (phone.length < 5 || phone.length > 20 || digitCount < 5 || !/^[+\d\s()-]+$/.test(phone)) {
-    errors.phone = "Phone must contain 5-20 digits or phone symbols.";
+    errors.phone = isUk ? "Телефон має містити 5-20 цифр або телефонних символів." : "Phone must contain 5-20 digits or phone symbols.";
   }
 
   if (email && (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email))) {
-    errors.email = "Email must include a valid domain, for example name@example.com.";
+    errors.email = isUk ? "Email має містити коректний домен, наприклад name@example.com." : "Email must include a valid domain, for example name@example.com.";
   }
 
   if (comment.trim().length > 1000) {
-    errors.comment = "Comment must be 1000 characters or fewer.";
+    errors.comment = isUk ? "Коментар має містити не більше 1000 символів." : "Comment must be 1000 characters or fewer.";
   }
 
   return errors;
@@ -311,6 +327,7 @@ function formatSuggestedDate(value: string) {
 
 type AppMode = "home" | "admin" | "booking" | "shop";
 type SalonMode = "home" | "booking" | "shop";
+type PublicLanguage = "en" | "uk";
 type AdminSection =
   | "dashboard"
   | "calendar"
@@ -325,19 +342,19 @@ type AdminSection =
   | "reviews"
   | "settings";
 
-const adminNav: Array<{ id: AdminSection; label: string; icon: typeof LayoutDashboard }> = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "calendar", label: "Calendar", icon: CalendarDays },
-  { id: "clients", label: "Clients", icon: UsersRound },
-  { id: "services", label: "Services", icon: Scissors },
-  { id: "employees", label: "Employees", icon: UserRound },
-  { id: "portfolio", label: "Portfolio", icon: Camera },
-  { id: "products", label: "Products", icon: Package },
-  { id: "sales", label: "Sales", icon: ShoppingCart },
-  { id: "store-orders", label: "Store orders", icon: Store },
-  { id: "payments", label: "Payments", icon: CreditCard },
-  { id: "reviews", label: "Reviews", icon: Star },
-  { id: "settings", label: "Settings", icon: Settings }
+const adminNav: Array<{ id: AdminSection; labelKey: CrmTextKey; icon: typeof LayoutDashboard }> = [
+  { id: "dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  { id: "calendar", labelKey: "calendar", icon: CalendarDays },
+  { id: "clients", labelKey: "clients", icon: UsersRound },
+  { id: "services", labelKey: "services", icon: Scissors },
+  { id: "employees", labelKey: "employees", icon: UserRound },
+  { id: "portfolio", labelKey: "portfolio", icon: Camera },
+  { id: "products", labelKey: "products", icon: Package },
+  { id: "sales", labelKey: "sales", icon: ShoppingCart },
+  { id: "store-orders", labelKey: "storeOrders", icon: Store },
+  { id: "payments", labelKey: "payments", icon: CreditCard },
+  { id: "reviews", labelKey: "reviews", icon: Star },
+  { id: "settings", labelKey: "settings", icon: Settings }
 ];
 
 const employeeSections: AdminSection[] = ["dashboard", "calendar", "clients", "employees", "portfolio", "payments", "reviews"];
@@ -351,6 +368,307 @@ const weekDays = [
   { value: 6, short: "Sat", label: "Saturday" }
 ];
 
+const publicText = {
+  en: {
+    about: "About",
+    portfolio: "Portfolio",
+    priceList: "Price list",
+    cosmetics: "Cosmetics",
+    contact: "Contact",
+    bookAppointment: "Book appointment",
+    professionalCosmetics: "Professional cosmetics",
+    viewPriceList: "View price list",
+    heroTitle: "Beauty salon for hair, color and nail care",
+    heroText: "A calm salon experience with attentive consultations, precise work and clear online booking.",
+    nextVisit: "Next visit",
+    visitHighlights: "Consultation, service, care plan",
+    clearTiming: "Clear timing",
+    onlineBooking: "Online booking",
+    bookWithoutCalls: "Book without calls",
+    bookWithoutCallsText: "Choose a service, specialist and time in a few steps.",
+    priceBeforeVisit: "Price before visit",
+    priceBeforeVisitText: "Categories are grouped in a clean price list.",
+    careAfterSalon: "Care after salon",
+    careAfterSalonText: "Professional cosmetics are kept in a separate catalog.",
+    aboutSalon: "About salon",
+    aboutTitle: "Focused care, clean aesthetics and a clear client path",
+    aboutText: "SL Color Studio combines color work, hair care and nail services with a CRM workflow that keeps booking, schedules and client details organized.",
+    aboutCopy: "The salon page stays simple for clients: learn the atmosphere, see selected work, check contacts, and open the price list when they are ready to choose a service.",
+    structuredPriceList: "Structured price list",
+    crmReadyWorkflow: "CRM-ready workflow",
+    aboutQuote: "A visit should feel easy before the client even sits in the chair.",
+    salonRhythm: "Salon rhythm",
+    atmosphereTitle: "Soft visuals, precise work and a calmer flow",
+    atmosphereText: "The public page keeps the client focused: atmosphere first, then examples of work, then prices and contact. Behind it, CRM keeps the operational part tidy.",
+    startBooking: "Start booking",
+    selectedWork: "Selected work",
+    portfolioText: "Visual proof matters in beauty services. The gallery is managed from the CRM portfolio section.",
+    services: "Services",
+    visitTitle: "Visit SL Color Studio",
+    visitText: "Book online or contact the salon directly.",
+    phone: "Phone",
+    address: "Address",
+    workingHours: "Working hours",
+    switchToUk: "Українська версія",
+    switchToEn: "English version",
+    languageHint: "Language",
+    salon: "Salon",
+    catalog: "Catalog",
+    shopHeroEyebrow: "Professional home care",
+    shopHeroTitle: "Professional cosmetics",
+    shopHeroText: "Products selected for salon clients: shampoos, conditioners and care formulas grouped by category.",
+    viewCatalog: "View catalog",
+    askSpecialist: "Ask specialist",
+    productCatalog: "Product catalog",
+    homeCare: "HOME CARE",
+    products: "products",
+    loadingCosmetics: "Loading cosmetics...",
+    productsError: "Could not load products. Showing demo catalog.",
+    professionalCare: "Professional care",
+    items: "items",
+    salonCare: "Professional salon care",
+    requestRecommendation: "Request recommendation",
+    shopContactTitle: "Choose care with a specialist",
+    shopContactText: "The catalog is managed from CRM inventory. Ask the salon team which product fits your hair and color history.",
+    pickUpInSalon: "Pick up in salon",
+    website: "Website",
+    appointmentConfirmed: "Appointment confirmed",
+    bookingReference: "Booking reference",
+    employee: "Employee",
+    selectedEmployee: "Selected employee",
+    dateAndTime: "Date and time",
+    total: "Total",
+    nextStep: "Next step",
+    successNote: "Save the date. The salon team will use your phone number to identify this booking if anything changes.",
+    bookAnother: "Book another appointment",
+    backToWebsite: "Back to website",
+    bookYourAppointment: "Book your appointment",
+    bookingIntro: "Choose a service, specialist, time, and leave your contact details.",
+    step1: "Step 1",
+    step2: "Step 2",
+    step3: "Step 3",
+    finalStep: "Final step",
+    selectServices: "Select services",
+    selectServicesText: "Pick one or more services. The total duration will be calculated automatically.",
+    loadingServices: "Loading services",
+    loadingServicesText: "We are preparing the current service list.",
+    noServices: "No services available online",
+    noServicesText: "The salon may be updating the price list. Try refreshing the services or contact the salon directly.",
+    refreshServices: "Refresh services",
+    individualConsultation: "Individual consultation",
+    selected: "selected",
+    noServicesSelected: "No services selected",
+    chooseServices: "Choose services",
+    minTotal: "min total",
+    startWithServices: "Start with the service list",
+    loading: "Loading...",
+    continue: "Continue",
+    chooseEmployee: "Choose an employee",
+    chooseEmployeeText: "Select the specialist who will perform the chosen services.",
+    findingSpecialists: "Finding specialists",
+    findingSpecialistsText: "We are matching your selected services with available employees.",
+    noSpecialist: "No specialist matches these services",
+    noSpecialistText: "Choose another service combination or contact the salon so we can help you pick the right appointment.",
+    changeServices: "Change services",
+    beautySpecialist: "Beauty specialist",
+    back: "Back",
+    chooseDateTime: "Choose date and time",
+    chooseVisitTime: "Choose when you want to visit the salon.",
+    selectedForVisit: "is selected for this visit.",
+    visitSummary: "Visit summary",
+    employeeNotSelected: "Employee not selected",
+    date: "Date",
+    availableTime: "Available time",
+    checkingTimes: "Checking available times",
+    checkingTimesText: "One moment, we are looking at the salon calendar.",
+    noSlots: "No slots on this date",
+    noSlotsText: "Try another date or use one of the nearest available options below.",
+    nearestDays: "Nearest days",
+    nearestTerms: "Nearest terms",
+    lookingDays: "Looking for available days...",
+    lookingTerms: "Looking for the nearest available terms...",
+    noDaysFound: "No available days found in the next 30 days.",
+    noTermsFound: "No available terms found in the next 30 days.",
+    from: "from",
+    timeSingular: "time",
+    timePlural: "times",
+    contactDetails: "Your contact details",
+    contactDetailsText: "We will use these details to identify your booking.",
+    firstName: "First name",
+    lastName: "Last name",
+    email: "Email",
+    comment: "Comment",
+    appointment: "Appointment",
+    booking: "Booking...",
+    confirmAppointment: "Confirm appointment",
+    chooseServiceError: "Choose at least one service.",
+    loadingEmployeesError: "Loading employees for the selected services.",
+    noEmployeesError: "No employees are available for the selected services.",
+    chooseEmployeeError: "Choose an employee.",
+    chooseTimeError: "Choose an available time.",
+    correctContactDetails: "Please correct the contact details:",
+    loadServicesError: "Could not load services. Check that the CRM API is running and refresh the page.",
+    loadEmployeesError: "Could not load employees for the selected services. Try again in a moment.",
+    loadTimesError: "Could not load available times. Try another date or refresh the page.",
+    createAppointmentError: "Could not create the appointment.",
+    otherServices: "Other services",
+    appointmentReserved: "your visit is reserved for",
+    onDate: "on",
+    confirmed: "confirmed"
+  },
+  uk: {
+    about: "Про салон",
+    portfolio: "Портфоліо",
+    priceList: "Прайс лист",
+    cosmetics: "Косметика",
+    contact: "Контакти",
+    bookAppointment: "Записатися",
+    professionalCosmetics: "Професійна косметика",
+    viewPriceList: "Переглянути прайс",
+    heroTitle: "Салон краси для волосся, кольору та професійного догляду",
+    heroText: "Професійне фарбування, стрижки та догляд за волоссям з уважною консультацією, точним підбором рішень і комфортною атмосферою.",
+    nextVisit: "Наступний візит",
+    visitHighlights: "Консультація, процедура, план догляду",
+    clearTiming: "Чіткий час",
+    onlineBooking: "Iндивідуальний підхід",
+    bookWithoutCalls: "Запис без дзвінків",
+    bookWithoutCallsText: "Оберіть послугу, спеціаліста та час у кілька кроків.",
+    priceBeforeVisit: "Ціна до візиту",
+    priceBeforeVisitText: "Категорії зібрані у чистий та зрозумілий прайс лист.",
+    careAfterSalon: "Догляд після салону",
+    careAfterSalonText: "Професійна косметика винесена в окремий каталог.",
+    aboutSalon: "Про салон",
+    aboutTitle: "Твій простір краси, турботи та впевненості",
+    aboutText: "SL Color Studio — це місце, де ми підкреслюємо твою індивідуальність і створюємо образ, у якому ти почуватимешся собою.",
+    aboutCopy: "Для нас важливий не лише результат, а й сам процес. Спокійна атмосфера, професійний підхід, якісні матеріали та чесні рекомендації — без нав'язування зайвих процедур.",
+    structuredPriceList: "Якісні матеріали",
+    crmReadyWorkflow: "Комфортна атмосфера",
+    aboutQuote: "Ми хочемо, щоб після кожного візиту ти виходила не просто з новою зачіскою, а з відчуттям, що сьогодні зробила щось приємне для себе",
+    salonRhythm: "Ритм салону",
+    atmosphereTitle: "Твій стиль. Наша увага до деталей.",
+    atmosphereText: "SL Color Studio — це простір, де професійність поєднується з естетикою та комфортом. Ми уважно слухаємо твої побажання, допомагаємо знайти найкраще рішення та створюємо результат, який гармонійно доповнює саме тебе.",
+    startBooking: "Записатись",
+    selectedWork: "Роботи, якими ми пишаємося",
+    portfolioText: "Кожна робота — це поєднання техніки, стилю та уваги до деталей.",
+    services: "Послуги",
+    visitTitle: "Завітайте до SL Color Studio",
+    visitText: "Запишіться онлайн або звʼяжіться із салоном напряму.",
+    phone: "Телефон",
+    address: "Адреса",
+    workingHours: "Години роботи",
+    switchToUk: "Українська версія",
+    switchToEn: "English version",
+    languageHint: "Мова",
+    salon: "Салон",
+    catalog: "Каталог",
+    shopHeroEyebrow: "Професійний домашній догляд",
+    shopHeroTitle: "Професійна косметика",
+    shopHeroText: "Продукти, підібрані для клієнтів салону: шампуні, кондиціонери та формули догляду, згруповані за категоріями.",
+    viewCatalog: "Переглянути каталог",
+    askSpecialist: "Запитати спеціаліста",
+    productCatalog: "Каталог товарів",
+    homeCare: "ДОМАШНІЙ ДОГЛЯД",
+    products: "товарів",
+    loadingCosmetics: "Завантажуємо косметику...",
+    productsError: "Не вдалося завантажити товари. Показуємо демо-каталог.",
+    professionalCare: "Професійний догляд",
+    items: "позицій",
+    salonCare: "Професійний салонний догляд",
+    requestRecommendation: "Попросити рекомендацію",
+    shopContactTitle: "Оберіть догляд зі спеціалістом",
+    shopContactText: "Каталог керується зі складу CRM. Запитайте команду салону, який продукт підійде вашому волоссю та історії фарбування.",
+    pickUpInSalon: "Самовивіз із салону",
+    website: "Сайт",
+    appointmentConfirmed: "Запис підтверджено",
+    bookingReference: "Номер запису",
+    employee: "Спеціаліст",
+    selectedEmployee: "Обраний спеціаліст",
+    dateAndTime: "Дата і час",
+    total: "Разом",
+    nextStep: "Наступний крок",
+    successNote: "Збережіть дату. Команда салону використає ваш номер телефону, щоб знайти запис, якщо щось зміниться.",
+    bookAnother: "Записатися ще раз",
+    backToWebsite: "Повернутися на сайт",
+    bookYourAppointment: "Записатися на візит",
+    bookingIntro: "Оберіть послугу, спеціаліста, час і залиште контактні дані.",
+    step1: "Крок 1",
+    step2: "Крок 2",
+    step3: "Крок 3",
+    finalStep: "Фінальний крок",
+    selectServices: "Оберіть послуги",
+    selectServicesText: "Оберіть одну або кілька послуг. Загальна тривалість порахується автоматично.",
+    loadingServices: "Завантажуємо послуги",
+    loadingServicesText: "Готуємо актуальний список послуг.",
+    noServices: "Немає послуг для онлайн-запису",
+    noServicesText: "Салон може оновлювати прайс. Спробуйте оновити список або звʼяжіться із салоном напряму.",
+    refreshServices: "Оновити послуги",
+    individualConsultation: "Індивідуальна консультація",
+    selected: "обрано",
+    noServicesSelected: "Послуги не обрані",
+    chooseServices: "Оберіть послуги",
+    minTotal: "хв загалом",
+    startWithServices: "Почніть зі списку послуг",
+    loading: "Завантаження...",
+    continue: "Далі",
+    chooseEmployee: "Оберіть спеціаліста",
+    chooseEmployeeText: "Оберіть спеціаліста, який виконає вибрані послуги.",
+    findingSpecialists: "Шукаємо спеціалістів",
+    findingSpecialistsText: "Підбираємо працівників під вибрані послуги.",
+    noSpecialist: "Немає спеціаліста для цих послуг",
+    noSpecialistText: "Оберіть іншу комбінацію послуг або звʼяжіться із салоном, щоб ми допомогли підібрати запис.",
+    changeServices: "Змінити послуги",
+    beautySpecialist: "Beauty-спеціаліст",
+    back: "Назад",
+    chooseDateTime: "Оберіть дату і час",
+    chooseVisitTime: "Оберіть, коли хочете завітати до салону.",
+    selectedForVisit: "обраний для цього візиту.",
+    visitSummary: "Підсумок візиту",
+    employeeNotSelected: "Спеціаліст не обраний",
+    date: "Дата",
+    availableTime: "Доступний час",
+    checkingTimes: "Перевіряємо доступний час",
+    checkingTimesText: "Зачекайте, переглядаємо календар салону.",
+    noSlots: "На цю дату немає вільного часу",
+    noSlotsText: "Спробуйте іншу дату або скористайтеся найближчими доступними варіантами нижче.",
+    nearestDays: "Найближчі дні",
+    nearestTerms: "Найближчі терміни",
+    lookingDays: "Шукаємо доступні дні...",
+    lookingTerms: "Шукаємо найближчі доступні терміни...",
+    noDaysFound: "У наступні 30 днів доступних днів не знайдено.",
+    noTermsFound: "У наступні 30 днів доступних термінів не знайдено.",
+    from: "від",
+    timeSingular: "термін",
+    timePlural: "термінів",
+    contactDetails: "Ваші контактні дані",
+    contactDetailsText: "Ми використаємо ці дані, щоб ідентифікувати ваш запис.",
+    firstName: "Імʼя",
+    lastName: "Прізвище",
+    email: "Email",
+    comment: "Коментар",
+    appointment: "Запис",
+    booking: "Записуємо...",
+    confirmAppointment: "Підтвердити запис",
+    chooseServiceError: "Оберіть хоча б одну послугу.",
+    loadingEmployeesError: "Завантажуємо спеціалістів для вибраних послуг.",
+    noEmployeesError: "Для вибраних послуг немає доступних спеціалістів.",
+    chooseEmployeeError: "Оберіть спеціаліста.",
+    chooseTimeError: "Оберіть доступний час.",
+    correctContactDetails: "Будь ласка, виправте контактні дані:",
+    loadServicesError: "Не вдалося завантажити послуги. Перевірте, чи CRM API запущений, і оновіть сторінку.",
+    loadEmployeesError: "Не вдалося завантажити спеціалістів для вибраних послуг. Спробуйте ще раз за мить.",
+    loadTimesError: "Не вдалося завантажити доступний час. Спробуйте іншу дату або оновіть сторінку.",
+    createAppointmentError: "Не вдалося створити запис.",
+    otherServices: "Інші послуги",
+    appointmentReserved: "ваш візит зарезервовано на",
+    onDate: "на",
+    confirmed: "підтверджено"
+  }
+} satisfies Record<PublicLanguage, Record<string, string>>;
+
+function publicLabel(language: PublicLanguage, key: keyof typeof publicText.en) {
+  return publicText[language][key];
+}
+
 function getVisibleAdminNav(user: AuthUser) {
   if (user.role === "ADMIN") {
     return adminNav;
@@ -361,15 +679,21 @@ function getVisibleAdminNav(user: AuthUser) {
 
 export function SalonApp() {
   const [mode, setMode] = useState<SalonMode>("home");
+  const [language, setLanguage] = useState<PublicLanguage>("uk");
+  const toggleLanguage = () => setLanguage((current) => (current === "en" ? "uk" : "en"));
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   return (
     <>
       {mode === "home" ? (
-        <HomeView onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
+        <HomeView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
       ) : mode === "shop" ? (
-        <ShopView onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
+        <ShopView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
       ) : (
-        <BookingView onOpenHome={() => setMode("home")} />
+        <BookingView language={language} onOpenHome={() => setMode("home")} />
       )}
     </>
   );
@@ -378,6 +702,12 @@ export function SalonApp() {
 export function CrmApp() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(() => Boolean(getStoredAuthToken()));
+  const [crmLanguage, setCrmLanguage] = useState<CrmLanguage>(() => readStoredCrmLanguage());
+
+  useEffect(() => {
+    document.documentElement.lang = crmLanguage;
+    storeCrmLanguage(crmLanguage);
+  }, [crmLanguage]);
 
   useEffect(() => {
     if (!getStoredAuthToken()) {
@@ -400,10 +730,11 @@ export function CrmApp() {
   }
 
   return authUser ? (
-    <AdminPanel onLogout={logout} user={authUser} />
+    <AdminPanel language={crmLanguage} onLanguageChange={setCrmLanguage} onLogout={logout} user={authUser} />
   ) : (
     <LoginView
       isCheckingAuth={isCheckingAuth}
+      language={crmLanguage}
       onSuccess={(user) => {
         setAuthUser(user);
       }}
@@ -413,8 +744,19 @@ export function CrmApp() {
 
 export function App() {
   const [mode, setMode] = useState<AppMode>("home");
+  const [language, setLanguage] = useState<PublicLanguage>("uk");
+  const [crmLanguage, setCrmLanguage] = useState<CrmLanguage>(() => readStoredCrmLanguage());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(() => Boolean(getStoredAuthToken()));
+  const toggleLanguage = () => setLanguage((current) => (current === "en" ? "uk" : "en"));
+
+  useEffect(() => {
+    document.documentElement.lang = mode === "admin" ? crmLanguage : language;
+  }, [crmLanguage, language, mode]);
+
+  useEffect(() => {
+    storeCrmLanguage(crmLanguage);
+  }, [crmLanguage]);
 
   useEffect(() => {
     if (!getStoredAuthToken()) {
@@ -439,15 +781,16 @@ export function App() {
   return (
     <>
       {mode === "home" ? (
-        <HomeView onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
+        <HomeView language={language} onToggleLanguage={toggleLanguage} onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
       ) : mode === "shop" ? (
-        <ShopView onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
+        <ShopView language={language} onToggleLanguage={toggleLanguage} onOpenAdmin={() => setMode("admin")} onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
       ) : mode === "admin" ? (
         authUser ? (
-          <AdminPanel onLogout={logout} onOpenBooking={() => setMode("booking")} user={authUser} />
+          <AdminPanel language={crmLanguage} onLanguageChange={setCrmLanguage} onLogout={logout} onOpenBooking={() => setMode("booking")} user={authUser} />
         ) : (
           <LoginView
             isCheckingAuth={isCheckingAuth}
+            language={crmLanguage}
             onOpenBooking={() => setMode("booking")}
             onSuccess={(user) => {
               setAuthUser(user);
@@ -456,7 +799,7 @@ export function App() {
           />
         )
       ) : (
-        <BookingView onOpenAdmin={() => setMode("admin")} onOpenHome={() => setMode("home")} />
+        <BookingView language={language} onOpenAdmin={() => setMode("admin")} onOpenHome={() => setMode("home")} />
       )}
     </>
   );
@@ -469,6 +812,22 @@ const homeImages = {
   care: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=900&q=82",
   products: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&w=1800&q=82"
 };
+
+const salonPhoneDisplay = "+38 (050) 23 03 408";
+const salonPhoneHref = "tel:+380502303408";
+const salonEmail = "sl.color.studio@example.com";
+const salonAddressUk = "вулиця Стуса, 2, Броди, Львівська область, Україна, 80601";
+const salonAddressEn = "Stusa St. 2, Brody, Lviv Oblast, Ukraine, 80601";
+const salonHours = "09:00 - 18:00";
+const salonInstagramHref = "https://www.instagram.com/sl.color.studio_brody/";
+const salonTelegramHref = "https://t.me/svitlanakoloryst";
+const salonMapHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(salonAddressUk)}`;
+
+const salonSocialLinks = [
+  { href: salonInstagramHref, label: "Instagram", icon: <Instagram size={15} /> },
+  { href: salonTelegramHref, label: "Telegram", icon: <Send size={15} /> },
+  { href: salonPhoneHref, label: "Phone", icon: <Phone size={15} /> }
+];
 
 const homePortfolioFallback = [
   { title: "Soft blonde color", image: homeImages.color },
@@ -577,16 +936,23 @@ const shopProductFallback: PublicProduct[] = [
 ];
 
 function HomeView({
+  language = "en",
   onOpenAdmin,
   onOpenBooking,
-  onOpenShop
+  onOpenShop,
+  onToggleLanguage
 }: {
+  language?: PublicLanguage;
   onOpenAdmin?: () => void;
   onOpenBooking: () => void;
   onOpenShop: () => void;
+  onToggleLanguage?: () => void;
 }) {
+  const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const [services, setServices] = useState<Service[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioPhoto[]>([]);
+  const [portfolioPage, setPortfolioPage] = useState(0);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchServices()
@@ -614,7 +980,7 @@ function HomeView({
         name: service.name,
         description: service.description,
         durationLabel: `${service.durationMinutes} min`,
-        priceLabel: formatServicePrice(service)
+        priceLabel: formatServicePrice(service, language)
       };
 
       if (existing) {
@@ -629,34 +995,65 @@ function HomeView({
     }
 
     return [...groups.values()];
-  }, [services]);
+  }, [language, services]);
   const visiblePortfolio =
     portfolio.length > 0
       ? portfolio.map((item) => ({ title: item.title, image: item.imageUrl, caption: item.employee }))
       : homePortfolioFallback.map((item) => ({ ...item, caption: item.title }));
+  const portfolioPageSize = 3;
+  const portfolioPageCount = Math.max(1, Math.ceil(visiblePortfolio.length / portfolioPageSize));
+  const safePortfolioPage = Math.min(portfolioPage, portfolioPageCount - 1);
+  const pagedPortfolio = visiblePortfolio.slice(safePortfolioPage * portfolioPageSize, safePortfolioPage * portfolioPageSize + portfolioPageSize);
+
+  useEffect(() => {
+    setPortfolioPage(0);
+  }, [portfolio.length]);
 
   return (
     <main className="home-shell">
       <header className="home-nav">
-        <button className="home-brand-button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} type="button">
-          <span className="home-mark">SL</span>
-          <span className="cl-logo-part">Color Studio</span>
+        <button
+          aria-expanded={isMenuOpen}
+          aria-label={language === "uk" ? "Відкрити меню" : "Open menu"}
+          className="home-menu-button"
+          onClick={() => setIsMenuOpen((value) => !value)}
+          type="button"
+        >
+          {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <nav aria-label="Public navigation">
-          <a href="#about">About</a>
-          <a href="#portfolio">Portfolio</a>
-          <a className="nav-feature-link" href="#price-list">Price list</a>
-          <button className="nav-feature-link" onClick={onOpenShop} type="button">Cosmetics</button>
-          <a href="#contact">Contact</a>
+        <button className="home-brand-button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} type="button">
+          <img className="home-nav-logo" src={logoFull} alt="SL Color Studio" />
+        </button>
+        <nav className={isMenuOpen ? "is-open" : ""} aria-label="Public navigation">
+          <a href="#about" onClick={() => setIsMenuOpen(false)}>{t("about")}</a>
+          <a href="#portfolio" onClick={() => setIsMenuOpen(false)}>{t("portfolio")}</a>
+          <a className="nav-feature-link" href="#price-list" onClick={() => setIsMenuOpen(false)}>{t("priceList")}</a>
+          <button className="nav-feature-link" onClick={() => { setIsMenuOpen(false); onOpenShop(); }} type="button">{t("cosmetics")}</button>
+          <a href="#salon-footer" onClick={() => setIsMenuOpen(false)}>{t("contact")}</a>
+          <button className="mobile-nav-action" onClick={() => { setIsMenuOpen(false); onOpenBooking(); }} type="button">{t("bookAppointment")}</button>
         </nav>
         <div className="home-nav-actions">
+          <div className="home-social-links" aria-label={language === "uk" ? "Соціальні мережі" : "Social links"}>
+            {salonSocialLinks.map((link) => (
+              <a
+                aria-label={link.label}
+                className="home-social-link"
+                href={link.href}
+                key={link.label}
+                rel={link.href.startsWith("http") ? "noreferrer" : undefined}
+                target={link.href.startsWith("http") ? "_blank" : undefined}
+              >
+                {link.icon}
+              </a>
+            ))}
+          </div>
           {onOpenAdmin ? (
             <button className="secondary-button" onClick={onOpenAdmin} type="button">
               CRM
             </button>
           ) : null}
           <button className="primary-button" onClick={onOpenBooking} type="button">
-            Book appointment
+            {t("bookAppointment")}
           </button>
         </div>
       </header>
@@ -666,70 +1063,64 @@ function HomeView({
         <div className="home-hero-overlay" />
         <div className="home-hero-content">
           <p className="eyebrow">SL Color Studio</p>
-          <h1>Beauty salon for hair, color and nail care</h1>
-          <p>A calm salon experience with attentive consultations, precise work and clear online booking.</p>
+          <h1>{t("heroTitle")}</h1>
+          <p>{t("heroText")}</p>
           <div className="home-hero-actions">
             <button className="primary-button" onClick={onOpenBooking} type="button">
-              Book appointment
+              {t("bookAppointment")}
             </button>
             <button className="secondary-button" onClick={onOpenShop} type="button">
-              Professional cosmetics
+              {t("professionalCosmetics")}
             </button>
-            <a href="#price-list">View price list</a>
+            <a href="#price-list">{t("viewPriceList")}</a>
           </div>
         </div>
-        <aside className="home-hero-card" aria-label="Salon visit highlights">
-          <span>Next visit</span>
-          <strong>Consultation, service, care plan</strong>
+        {/* <aside className="home-hero-card" aria-label="Salon visit highlights">
+          <span>{t("nextVisit")}</span>
+          <strong>{t("visitHighlights")}</strong>
           <div>
-            <small>Clear timing</small>
-            <small>Online booking</small>
-            <small>Professional cosmetics</small>
+            <small>{t("clearTiming")}</small>
+            <small>{t("onlineBooking")}</small>
+            <small>{t("professionalCosmetics")}</small>
           </div>
-        </aside>
+        </aside> */}
       </section>
 
       <section className="home-experience-strip" aria-label="Salon experience">
         <article>
           <CalendarDays aria-hidden="true" size={20} />
-          <span>Book without calls</span>
-          <p>Choose a service, specialist and time in a few steps.</p>
+          <span>{t("bookWithoutCalls")}</span>
+          <p>{t("bookWithoutCallsText")}</p>
         </article>
         <article>
           <Scissors aria-hidden="true" size={20} />
-          <span>Price before visit</span>
-          <p>Categories are grouped in a clean price list.</p>
+          <span>{t("priceBeforeVisit")}</span>
+          <p>{t("priceBeforeVisitText")}</p>
         </article>
         <article>
           <Package aria-hidden="true" size={20} />
-          <span>Care after salon</span>
-          <p>Professional cosmetics are kept in a separate catalog.</p>
+          <span>{t("careAfterSalon")}</span>
+          <p>{t("careAfterSalonText")}</p>
         </article>
       </section>
 
       <section className="home-section home-about" id="about">
         <div className="home-section-heading">
-          <p className="eyebrow">About salon</p>
-          <h2>Focused care, clean aesthetics and a clear client path</h2>
-          <p>
-            SL Color Studio combines color work, hair care and nail services with a CRM workflow that keeps booking,
-            schedules and client details organized.
-          </p>
+          <p className="eyebrow">{t("aboutSalon")}</p>
+          <h2>{t("aboutTitle")}</h2>
+          <p>{t("aboutText")}</p>
         </div>
         <div className="home-about-layout">
           <img alt="Hair care consultation at a beauty salon" src={homeImages.care} />
           <div className="home-about-copy">
-            <p>
-              The salon page stays simple for clients: learn the atmosphere, see selected work, check contacts, and open
-              the price list when they are ready to choose a service.
-            </p>
+            <p>{t("aboutCopy")}</p>
             <div className="home-about-facts">
-              <span>Online booking</span>
-              <span>Structured price list</span>
-              <span>CRM-ready workflow</span>
+              <span>{t("onlineBooking")}</span>
+              <span>{t("structuredPriceList")}</span>
+              <span>{t("crmReadyWorkflow")}</span>
             </div>
             <blockquote className="home-about-quote">
-              A visit should feel easy before the client even sits in the chair.
+              {t("aboutQuote")}
             </blockquote>
           </div>
         </div>
@@ -737,14 +1128,11 @@ function HomeView({
 
       <section className="home-atmosphere">
         <div className="home-atmosphere-copy">
-          <p className="eyebrow">Salon rhythm</p>
-          <h2>Soft visuals, precise work and a calmer flow</h2>
-          <p>
-            The public page keeps the client focused: atmosphere first, then examples of work, then prices and contact.
-            Behind it, CRM keeps the operational part tidy.
-          </p>
+          <p className="eyebrow">{t("salonRhythm")}</p>
+          <h2>{t("atmosphereTitle")}</h2>
+          <p>{t("atmosphereText")}</p>
           <button className="secondary-button" onClick={onOpenBooking} type="button">
-            Start booking
+            {t("startBooking")}
           </button>
         </div>
         <div className="home-atmosphere-collage" aria-hidden="true">
@@ -756,27 +1144,58 @@ function HomeView({
 
       <section className="home-section" id="portfolio">
         <div className="home-section-heading">
-          <p className="eyebrow">Portfolio</p>
-          <h2>Selected work</h2>
-          <p>Visual proof matters in beauty services. The gallery is managed from the CRM portfolio section.</p>
+          <p className="eyebrow">{t("portfolio")}</p>
+          <h2>{t("selectedWork")}</h2>
+          <p>{t("portfolioText")}</p>
         </div>
         <div className="home-portfolio-grid">
-          {visiblePortfolio.map((item) => (
+          {pagedPortfolio.map((item) => (
             <figure key={item.title}>
               <img alt={item.title} src={item.image} onError={(event) => { event.currentTarget.src = homeImages.care; }} />
               <figcaption>{item.title}{item.caption && item.caption !== item.title ? ` · ${item.caption}` : ""}</figcaption>
             </figure>
           ))}
         </div>
+        {portfolioPageCount > 1 ? (
+          <div className="home-portfolio-pagination" aria-label={language === "uk" ? "Пагінація портфоліо" : "Portfolio pagination"}>
+            <button
+              aria-label={language === "uk" ? "Попередні роботи" : "Previous portfolio items"}
+              disabled={safePortfolioPage === 0}
+              onClick={() => setPortfolioPage((page) => Math.max(0, page - 1))}
+              type="button"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              {Array.from({ length: portfolioPageCount }, (_, index) => (
+                <button
+                  aria-label={`${language === "uk" ? "Сторінка" : "Page"} ${index + 1}`}
+                  className={index === safePortfolioPage ? "active" : ""}
+                  key={index}
+                  onClick={() => setPortfolioPage(index)}
+                  type="button"
+                />
+              ))}
+            </div>
+            <button
+              aria-label={language === "uk" ? "Наступні роботи" : "Next portfolio items"}
+              disabled={safePortfolioPage >= portfolioPageCount - 1}
+              onClick={() => setPortfolioPage((page) => Math.min(portfolioPageCount - 1, page + 1))}
+              type="button"
+            >
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <section className="home-price-section" id="price-list">
         <div className="home-price-watermark" aria-hidden="true">
-          Price list
+          {t("priceList")}
         </div>
         <header className="home-price-heading">
-          <p className="eyebrow">Services</p>
-          <h2>PRICE LIST</h2>
+          <p className="eyebrow">{t("services")}</p>
+          <h2>{t("priceList").toUpperCase()}</h2>
         </header>
 
         <div className="home-price-list">
@@ -807,49 +1226,13 @@ function HomeView({
         </div>
 
         <div className="home-price-signature">
-          <div className="sl-logo compact" aria-hidden="true">
-            <span>S</span>
-            <span>L</span>
-          </div>
-          <span id="color-studio">Color Studio</span>
+          <img className="home-price-logo signature-logo" src={logoMain} alt="SL Color Studio" />
         </div>
         <button className="primary-button home-centered-action" onClick={onOpenBooking} type="button">
-          Book appointment
+          {t("bookAppointment")}
         </button>
       </section>
-
-      <section className="home-section home-contact" id="contact">
-        <div className="home-section-heading">
-          <p className="eyebrow">Contact</p>
-          <h2>Visit SL Color Studio</h2>
-          <p>Book online or contact the salon directly.</p>
-        </div>
-        <div className="home-contact-grid">
-          <div>
-            <Phone aria-hidden="true" size={20} />
-            <strong>+38 (050) 23 03 408</strong>
-            <span>Phone</span>
-          </div>
-          <div>
-            <MapPin aria-hidden="true" size={20} />
-            <strong>Brody, Stusa St. 2</strong>
-            <span>Address</span>
-          </div>
-          <div>
-            <Mail aria-hidden="true" size={20} />
-            <strong>sl.color.studio@example.com</strong>
-            <span>Email</span>
-          </div>
-          <div>
-            <Clock aria-hidden="true" size={20} />
-            <strong>09:00 - 18:00</strong>
-            <span>Working hours</span>
-          </div>
-        </div>
-        <button className="primary-button home-centered-action" onClick={onOpenBooking} type="button">
-          Book appointment
-        </button>
-      </section>
+      <SalonFooter language={language} onOpenBooking={onOpenBooking} onOpenShop={onOpenShop} onToggleLanguage={onToggleLanguage} />
     </main>
   );
 }
@@ -861,6 +1244,117 @@ type ShopProductCategory = {
   imageUrl: string | null;
   products: PublicProduct[];
 };
+
+function SalonFooter({
+  language,
+  onOpenBooking,
+  onOpenShop,
+  onToggleLanguage
+}: {
+  language: PublicLanguage;
+  onOpenBooking: () => void;
+  onOpenShop: () => void;
+  onToggleLanguage?: () => void;
+}) {
+  const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
+  const salonAddress = language === "uk" ? salonAddressUk : salonAddressEn;
+  const gallery = [
+    { src: homeImages.color, alt: language === "uk" ? "Робота з кольором у SL Color Studio" : "Color work at SL Color Studio" },
+    { src: homeImages.care, alt: language === "uk" ? "Консультація з догляду у салоні" : "Salon care consultation" },
+    { src: homeImages.manicure, alt: language === "uk" ? "Догляд за нігтями у салоні" : "Nail care at the salon" },
+    { src: homeImages.products, alt: language === "uk" ? "Професійна косметика салону" : "Professional salon cosmetics" }
+  ];
+
+  return (
+    <footer className="salon-footer" id="salon-footer">
+      <div className="salon-footer-hero">
+        <a className="salon-footer-map" href={salonMapHref} rel="noreferrer" target="_blank" aria-label={language === "uk" ? "Відкрити адресу салону на мапі" : "Open salon address on map"}>
+          <span className="salon-footer-map-cta">
+            {language === "uk" ? "Відкрити на мапі" : "Open on map"} <ExternalLink size={13} />
+          </span>
+          <span className="salon-map-line salon-map-line-one" />
+          <span className="salon-map-line salon-map-line-two" />
+          <span className="salon-map-line salon-map-line-three" />
+          <span className="salon-map-marker">
+            <MapPin size={28} />
+          </span>
+        </a>
+
+        <div className="salon-footer-contact">
+          <div className="salon-footer-block-title"><span>{t("address")}</span></div>
+          <p className="salon-footer-contact-line">
+            <MapPin size={18} />
+            <span><strong>SL Color Studio:</strong> {salonAddress}</span>
+          </p>
+          <div className="salon-footer-block-title"><span>{t("contact")}</span></div>
+          <a className="salon-footer-contact-line" href={salonPhoneHref}>
+            <Phone size={18} />
+            <span>{salonPhoneDisplay}</span>
+          </a>
+          <a className="salon-footer-contact-line" href={`mailto:${salonEmail}`}>
+            <Mail size={18} />
+            <span>{salonEmail}</span>
+          </a>
+          <p className="salon-footer-contact-line">
+            <Clock size={18} />
+            <span>{salonHours}</span>
+          </p>
+          <a className="salon-footer-contact-line" href={salonInstagramHref} rel="noreferrer" target="_blank">
+            <Instagram size={18} />
+            <span>Instagram SL Color Studio</span>
+          </a>
+          <a className="salon-footer-contact-line" href={salonTelegramHref} rel="noreferrer" target="_blank">
+            <Send size={18} />
+            <span>@svitlanakoloryst</span>
+          </a>
+        </div>
+
+        <div className="salon-footer-gallery">
+          <div className="salon-footer-block-title"><span>{t("portfolio")}</span></div>
+          <div className="salon-footer-gallery-grid">
+            {gallery.map((image) => (
+              <img alt={image.alt} key={image.src} loading="lazy" src={image.src} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="salon-footer-links">
+        <div>
+          <h2>{language === "uk" ? "Навігація" : "Navigation"}</h2>
+          <a href="#about">{t("about")}</a>
+          <a href="#portfolio">{t("portfolio")}</a>
+          <a href="#price-list">{t("priceList")}</a>
+          <a href="#salon-footer">{t("contact")}</a>
+        </div>
+        <div>
+          <h2>{language === "uk" ? "Дії" : "Actions"}</h2>
+          <button onClick={onOpenBooking} type="button">{t("bookAppointment")}</button>
+          <button onClick={onOpenShop} type="button">{t("professionalCosmetics")}</button>
+          {onToggleLanguage ? (
+            <button onClick={onToggleLanguage} type="button">
+              {language === "en" ? t("switchToUk") : t("switchToEn")}
+            </button>
+          ) : null}
+        </div>
+        <div>
+          <h2>{language === "uk" ? "Інформація" : "Information"}</h2>
+          <a href={salonPhoneHref}>{language === "uk" ? "Консультація перед записом" : "Consultation before booking"}</a>
+          <a href={salonMapHref} rel="noreferrer" target="_blank">{language === "uk" ? "Як нас знайти" : "How to find us"}</a>
+          <a href={salonInstagramHref} rel="noreferrer" target="_blank">Instagram</a>
+        </div>
+      </div>
+
+      <div className="salon-footer-brand">
+        <button className="salon-footer-logo" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} type="button">
+          <img src={logoFull} alt="SL Color Studio" />
+        </button>
+        <p>{language === "uk" ? "Салонний догляд, точний колір і зручний онлайн-запис." : "Salon care, precise color and convenient online booking."}</p>
+        <small>© {new Date().getFullYear()} SL Color Studio. {language === "uk" ? "Усі права захищено." : "All rights reserved."}</small>
+      </div>
+    </footer>
+  );
+}
 
 function groupShopProducts(products: PublicProduct[]) {
   const groups = new Map<string, ShopProductCategory>();
@@ -895,17 +1389,23 @@ function formatProductVolume(product: PublicProduct) {
 }
 
 function ShopView({
+  language = "en",
   onOpenAdmin,
   onOpenBooking,
-  onOpenHome
+  onOpenHome,
+  onToggleLanguage
 }: {
+  language?: PublicLanguage;
   onOpenAdmin?: () => void;
   onOpenBooking: () => void;
   onOpenHome: () => void;
+  onToggleLanguage?: () => void;
 }) {
+  const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchProducts()
@@ -927,23 +1427,46 @@ function ShopView({
   return (
     <main className="shop-shell">
       <header className="home-nav shop-nav">
-        <button className="home-brand-button" onClick={onOpenHome} type="button">
-          <span className="home-mark">SL</span>
-          <span className="cl-logo-part">Color Studio</span>
+        <button
+          aria-expanded={isMenuOpen}
+          aria-label={language === "uk" ? "Відкрити меню" : "Open menu"}
+          className="home-menu-button"
+          onClick={() => setIsMenuOpen((value) => !value)}
+          type="button"
+        >
+          {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <nav aria-label="Shop navigation">
-          <button onClick={onOpenHome} type="button">Salon</button>
-          <a href="#shop-catalog">Catalog</a>
-          <a href="#shop-contact">Contact</a>
+        <button className="home-brand-button" onClick={onOpenHome} type="button">
+          <img className="home-nav-logo" src={logoFull} alt="SL Color Studio" />
+        </button>
+        <nav className={isMenuOpen ? "is-open" : ""} aria-label="Shop navigation">
+          <button onClick={() => { setIsMenuOpen(false); onOpenHome(); }} type="button">{t("salon")}</button>
+          <a href="#shop-catalog" onClick={() => setIsMenuOpen(false)}>{t("catalog")}</a>
+          <a href="#shop-contact" onClick={() => setIsMenuOpen(false)}>{t("contact")}</a>
+          <button className="mobile-nav-action" onClick={() => { setIsMenuOpen(false); onOpenBooking(); }} type="button">{t("bookAppointment")}</button>
         </nav>
         <div className="home-nav-actions">
+          <div className="home-social-links" aria-label={language === "uk" ? "Соціальні мережі" : "Social links"}>
+            {salonSocialLinks.map((link) => (
+              <a
+                aria-label={link.label}
+                className="home-social-link"
+                href={link.href}
+                key={link.label}
+                rel={link.href.startsWith("http") ? "noreferrer" : undefined}
+                target={link.href.startsWith("http") ? "_blank" : undefined}
+              >
+                {link.icon}
+              </a>
+            ))}
+          </div>
           {onOpenAdmin ? (
             <button className="secondary-button" onClick={onOpenAdmin} type="button">
               CRM
             </button>
           ) : null}
           <button className="primary-button" onClick={onOpenBooking} type="button">
-            Book appointment
+            {t("bookAppointment")}
           </button>
         </div>
       </header>
@@ -952,13 +1475,13 @@ function ShopView({
         <img alt="Professional hair care cosmetics bottles" src={homeImages.products} />
         <div className="shop-hero-overlay" />
         <div className="shop-hero-content">
-          <p className="eyebrow">Professional home care</p>
-          <h1>Professional cosmetics</h1>
-          <p>Products selected for salon clients: shampoos, conditioners and care formulas grouped by category.</p>
+          <p className="eyebrow">{t("shopHeroEyebrow")}</p>
+          <h1>{t("shopHeroTitle")}</h1>
+          <p>{t("shopHeroText")}</p>
           <div className="home-hero-actions">
-            <a href="#shop-catalog">View catalog</a>
+            <a href="#shop-catalog">{t("viewCatalog")}</a>
             <button className="primary-button" onClick={onOpenBooking} type="button">
-              Ask specialist
+              {t("askSpecialist")}
             </button>
           </div>
         </div>
@@ -966,23 +1489,23 @@ function ShopView({
 
       <section className="shop-catalog" id="shop-catalog">
         <div className="shop-watermark" aria-hidden="true">
-          Professional cosmetics
+          {t("professionalCosmetics")}
         </div>
         <header className="home-price-heading shop-heading">
-          <p className="eyebrow">Product catalog</p>
-          <h2>HOME CARE</h2>
-          <span>{visibleProducts.length} products</span>
+          <p className="eyebrow">{t("productCatalog")}</p>
+          <h2>{t("homeCare")}</h2>
+          <span>{visibleProducts.length} {t("products")}</span>
         </header>
 
-        {status === "loading" ? <div className="empty-state">Loading cosmetics...</div> : null}
-        {status === "error" ? <div className="admin-alert">Could not load products. Showing demo catalog.</div> : null}
+        {status === "loading" ? <div className="empty-state">{t("loadingCosmetics")}</div> : null}
+        {status === "error" ? <div className="admin-alert">{t("productsError")}</div> : null}
 
         <div className="shop-category-list">
           {categories.map((category) => (
             <article className="shop-category-card" key={category.id}>
               <div className="shop-category-media">
                 <img alt="" src={category.imageUrl ?? homeImages.products} />
-                <span>Professional care</span>
+                <span>{t("professionalCare")}</span>
               </div>
               <div className="shop-category-body">
                 <div className="shop-category-heading">
@@ -990,7 +1513,7 @@ function ShopView({
                     <h3>{category.name}</h3>
                     {category.description ? <p>{category.description}</p> : null}
                   </div>
-                  <span>{category.products.length} items</span>
+                  <span>{category.products.length} {t("items")}</span>
                 </div>
 
                 <div className="shop-product-list">
@@ -1011,7 +1534,7 @@ function ShopView({
                       </div>
                       <div className="shop-product-copy">
                         <strong>{product.name}</strong>
-                        <small>{product.description || product.brand || "Professional salon care"}</small>
+                        <small>{product.description || product.brand || t("salonCare")}</small>
                       </div>
                       <div className="shop-product-meta">
                         <span>{product.brand || "SL Color Studio"}</span>
@@ -1023,7 +1546,7 @@ function ShopView({
                 </div>
 
                 <button className="shop-category-action" onClick={onOpenBooking} type="button">
-                  Request recommendation <ArrowRight aria-hidden="true" size={16} />
+                  {t("requestRecommendation")} <ArrowRight aria-hidden="true" size={16} />
                 </button>
               </div>
             </article>
@@ -1033,46 +1556,51 @@ function ShopView({
 
       <section className="home-section home-contact" id="shop-contact">
         <div className="home-section-heading">
-          <p className="eyebrow">Contact</p>
-          <h2>Choose care with a specialist</h2>
-          <p>The catalog is managed from CRM inventory. Ask the salon team which product fits your hair and color history.</p>
+          <p className="eyebrow">{t("contact")}</p>
+          <h2>{t("shopContactTitle")}</h2>
+          <p>{t("shopContactText")}</p>
         </div>
         <div className="home-contact-grid">
           <div>
             <Phone aria-hidden="true" size={20} />
             <strong>+38 (050) 23 03 408</strong>
-            <span>Phone</span>
+            <span>{t("phone")}</span>
           </div>
           <div>
             <MapPin aria-hidden="true" size={20} />
-            <strong>Brody, Stusa St. 2</strong>
-            <span>Pick up in salon</span>
+            <strong>{language === "uk" ? "Броди, вул. Стуса, 2" : "Brody, Stusa St. 2"}</strong>
+            <span>{t("pickUpInSalon")}</span>
           </div>
         </div>
       </section>
-      {selectedProduct ? <ProductDetailDialog onClose={() => setSelectedProduct(null)} onRequest={onOpenBooking} product={selectedProduct} /> : null}
+      <SalonFooter language={language} onOpenBooking={onOpenBooking} onOpenShop={() => window.scrollTo({ top: 0, behavior: "smooth" })} onToggleLanguage={onToggleLanguage} />
+      {selectedProduct ? <ProductDetailDialog language={language} onClose={() => setSelectedProduct(null)} onRequest={onOpenBooking} product={selectedProduct} /> : null}
     </main>
   );
 }
 
 function ProductDetailDialog({
+  language = "en",
   onClose,
   onRequest,
   product
 }: {
+  language?: PublicLanguage;
   onClose: () => void;
   onRequest: () => void;
   product: PublicProduct;
 }) {
+  const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
+
   return (
     <div className="admin-modal-backdrop" role="presentation">
       <section aria-modal="true" className="admin-modal product-detail-modal" role="dialog">
         <div className="panel-header">
           <div>
-            <p className="admin-kicker">{product.brand || "Professional cosmetics"}</p>
+            <p className="admin-kicker">{product.brand || t("professionalCosmetics")}</p>
             <h2>{product.name}</h2>
           </div>
-          <button aria-label="Close product details" className="icon-only-button" onClick={onClose} title="Close" type="button">
+          <button aria-label={language === "uk" ? "Закрити деталі товару" : "Close product details"} className="icon-only-button" onClick={onClose} title={language === "uk" ? "Закрити" : "Close"} type="button">
             <X aria-hidden="true" size={16} />
           </button>
         </div>
@@ -1081,21 +1609,21 @@ function ProductDetailDialog({
             {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <span>{product.brand?.slice(0, 2) || "SL"}</span>}
           </div>
           <div className="product-detail-copy">
-            <p>{product.description || "Professional salon care selected for home routine support."}</p>
+            <p>{product.description || (language === "uk" ? "Професійний салонний догляд, підібраний для домашньої рутини." : "Professional salon care selected for home routine support.")}</p>
             <div className="product-detail-meta">
               <span>{product.category?.name ?? "Home care"}</span>
               <span>{formatProductVolume(product)}</span>
               <strong>{formatHryvnia(product.price)}</strong>
             </div>
-            {product.quote ? <blockquote>{product.quote}</blockquote> : <blockquote>Professional care should feel precise, calm and easy to keep at home.</blockquote>}
+            {product.quote ? <blockquote>{product.quote}</blockquote> : <blockquote>{language === "uk" ? "Професійний догляд має бути точним, спокійним і легким для дому." : "Professional care should feel precise, calm and easy to keep at home."}</blockquote>}
           </div>
         </div>
         <div className="modal-actions">
           <button className="secondary-button compact-button" onClick={onClose} type="button">
-            Close
+            {language === "uk" ? "Закрити" : "Close"}
           </button>
           <button className="primary-button compact-button" onClick={onRequest} type="button">
-            Ask specialist
+            {t("askSpecialist")}
           </button>
         </div>
       </section>
@@ -1105,13 +1633,16 @@ function ProductDetailDialog({
 
 function LoginView({
   isCheckingAuth,
+  language = "uk",
   onOpenBooking,
   onSuccess
 }: {
   isCheckingAuth: boolean;
+  language?: CrmLanguage;
   onOpenBooking?: () => void;
   onSuccess: (user: AuthUser) => void;
 }) {
+  const t = (key: CrmTextKey) => crmLabel(language, key);
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1125,7 +1656,7 @@ function LoginView({
       const result = await loginCrm(form);
       onSuccess(result.user);
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Could not sign in.");
+      setError(loginError instanceof Error ? loginError.message : t("couldNotSignIn"));
     } finally {
       setIsSubmitting(false);
     }
@@ -1139,16 +1670,16 @@ function LoginView({
           <span>L</span>
         </div>
         <p className="eyebrow">SL Color Studio</p>
-        <h1>CRM Sign In</h1>
-        {isCheckingAuth ? <div className="admin-panel">Checking session...</div> : null}
+        <h1>{t("crmSignIn")}</h1>
+        {isCheckingAuth ? <div className="admin-panel">{t("checkingSession")}</div> : null}
         {error ? <div className="admin-alert">{error}</div> : null}
         <form className="admin-form" onSubmit={submit}>
           <label>
-            <span>Email</span>
+            <span>{t("email")}</span>
             <input autoComplete="email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
           </label>
           <label>
-            <span>Password</span>
+            <span>{t("password")}</span>
             <input
               autoComplete="current-password"
               type="password"
@@ -1158,12 +1689,12 @@ function LoginView({
             />
           </label>
           <button className="primary-button admin-submit" disabled={isSubmitting || isCheckingAuth} type="submit">
-            {isSubmitting ? "Signing in..." : "Sign In"}
+            {isSubmitting ? t("signingIn") : t("signIn")}
           </button>
         </form>
         {onOpenBooking ? (
           <button className="booking-link light" onClick={onOpenBooking} type="button">
-            Go to online booking
+            {t("goToOnlineBooking")}
           </button>
         ) : null}
       </section>
@@ -1171,13 +1702,27 @@ function LoginView({
   );
 }
 
-function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; onOpenBooking?: () => void; user: AuthUser }) {
+function AdminPanel({
+  language,
+  onLanguageChange,
+  onLogout,
+  onOpenBooking,
+  user
+}: {
+  language: CrmLanguage;
+  onLanguageChange: (language: CrmLanguage) => void;
+  onLogout: () => void;
+  onOpenBooking?: () => void;
+  user: AuthUser;
+}) {
+  const t = (key: CrmTextKey) => crmLabel(language, key);
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [adminData, setAdminData] = useState<AdminData | null>(null);
   const [isLoadingAdmin, setIsLoadingAdmin] = useState(true);
   const [adminError, setAdminError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const visibleNav = getVisibleAdminNav(user);
+  const activeNavItem = visibleNav.find((item) => item.id === activeSection) ?? visibleNav[0];
 
   async function loadAdminData() {
     setIsLoadingAdmin(true);
@@ -1186,7 +1731,7 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
       setAdminData(data);
       setAdminError("");
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unknown admin API error");
+      setAdminError(error instanceof Error ? error.message : t("unknownAdminApiError"));
     } finally {
       setIsLoadingAdmin(false);
     }
@@ -1209,24 +1754,25 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
     try {
       await action();
       await loadAdminData();
-      setActionMessage("Changes saved.");
+      setActionMessage(t("changesSaved"));
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Could not complete the action.");
+      setAdminError(error instanceof Error ? error.message : t("couldNotCompleteActionShort"));
     }
   }
 
   return (
-    <main className="admin-shell">
+    <CrmLanguageContext.Provider value={language}>
+      <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand">
           <div className="admin-logo">SL</div>
           <div>
             <strong>Color Studio</strong>
-            <span>{user.role === "ADMIN" ? "Main Admin" : "CRM Employee"}</span>
+            <span>{user.role === "ADMIN" ? t("mainAdmin") : t("crmEmployee")}</span>
           </div>
         </div>
 
-        <nav className="admin-nav" aria-label="Admin navigation">
+        <nav className="admin-nav" aria-label={t("adminNavigation")}>
           {visibleNav.map((item) => {
             const Icon = item.icon;
             return (
@@ -1237,7 +1783,7 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
                 type="button"
               >
                 <Icon aria-hidden="true" size={18} />
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </button>
             );
           })}
@@ -1245,46 +1791,51 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
 
         {onOpenBooking ? (
           <button className="booking-link" onClick={onOpenBooking} type="button">
-            Open online booking
+            {t("openOnlineBooking")}
           </button>
         ) : null}
         <button className="booking-link" onClick={onLogout} type="button">
           <LogOut aria-hidden="true" size={16} />
-          Sign out
+          {t("signOut")}
         </button>
       </aside>
 
       <section className="admin-workspace">
         <header className="admin-topbar">
           <div>
-            <p className="admin-kicker">Admin MVP</p>
-            <h1>{visibleNav.find((item) => item.id === activeSection)?.label}</h1>
+            <p className="admin-kicker">{t("adminMvp")}</p>
+            <h1>{activeNavItem ? t(activeNavItem.labelKey) : t("dashboard")}</h1>
             <span className="admin-userline">{user.name}</span>
           </div>
           <div className="admin-search">
             <Search aria-hidden="true" size={17} />
-            <input placeholder="Search CRM" />
+            <input placeholder={t("searchCrm")} />
           </div>
         </header>
 
-        {adminError ? <div className="admin-alert">Could not complete the action: {adminError}</div> : null}
+        {adminError ? <div className="admin-alert">{t("couldNotCompleteAction")} {adminError}</div> : null}
         {actionMessage ? <div className="admin-success">{actionMessage}</div> : null}
         {isLoadingAdmin || !adminData ? (
-          <div className="admin-panel">Loading CRM data...</div>
+          <div className="admin-panel">{t("loadingCrmData")}</div>
         ) : (
-          <AdminContent section={activeSection} data={adminData} runAction={runAdminAction} user={user} />
+          <AdminContent language={language} onLanguageChange={onLanguageChange} section={activeSection} data={adminData} runAction={runAdminAction} user={user} />
         )}
       </section>
     </main>
+    </CrmLanguageContext.Provider>
   );
 }
 
 function AdminContent({
+  language,
+  onLanguageChange,
   section,
   data,
   runAction,
   user
 }: {
+  language: CrmLanguage;
+  onLanguageChange: (language: CrmLanguage) => void;
   section: AdminSection;
   data: AdminData;
   runAction: (action: () => Promise<unknown>) => Promise<void>;
@@ -1379,7 +1930,7 @@ function AdminContent({
     return <ReviewsSection reviews={data.reviews} />;
   }
 
-  return <SettingsSection settings={data.settings} runAction={runAction} />;
+  return <SettingsSection language={language} onLanguageChange={onLanguageChange} settings={data.settings} runAction={runAction} />;
 }
 
 function EmployeesSection({
@@ -1395,6 +1946,7 @@ function EmployeesSection({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
   services: AdminData["services"];
 }) {
+  const t = useCrmT();
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
   const [schedulingEmployeeId, setSchedulingEmployeeId] = useState<string | null>(null);
@@ -1403,34 +1955,34 @@ function EmployeesSection({
 
   return (
     <div className="admin-grid">
-      <Panel action={canManage ? "Add employee" : undefined} onAction={() => setIsCreatingEmployee(true)} title="Employees" wide>
+      <Panel action={canManage ? t("addEmployee") : undefined} onAction={() => setIsCreatingEmployee(true)} title={t("employees")} wide>
         <DataTable
-          columns={["Employee", "Contact", "Description", "Specialization", "Services", "Working hours", "Time off", "Status", "Actions"]}
+          columns={[t("employee"), t("contact"), t("description"), t("specialization"), t("services"), t("workingHours"), t("timeOff"), t("status"), t("actions")]}
           rows={
             employees.length > 0
               ? employees.map((item) => [
                   item.name,
                   <>
-                    {item.email ?? "no email"}
+                    {item.email ?? t("noEmail")}
                     <br />
                     {item.phone}
                   </>,
                   item.description || "-",
                   item.specialization || "-",
-                  item.services.length > 0 ? item.services.map((service) => service.name).join(", ") : "not assigned",
+                  item.services.length > 0 ? item.services.map((service) => service.name).join(", ") : t("notAssigned"),
                   item.hours,
                   item.timeOff,
-                  item.active ? "active" : "disabled",
+                  item.active ? t("active") : t("disabled"),
                   canManage || item.id === currentEmployeeId ? (
                     <InlineActions
-                      labels={[...(canManage ? [item.active ? "Disable" : "Enable", "Edit"] : []), "Schedule"]}
+                      labels={[...(canManage ? [item.active ? t("disable") : t("enable"), t("edit")] : []), t("schedule")]}
                       onAction={(label) => {
-                        if (label === "Edit") {
+                        if (label === t("edit")) {
                           setEditingEmployeeId(item.id);
                           return;
                         }
 
-                        if (label === "Schedule") {
+                        if (label === t("schedule")) {
                           setSchedulingEmployeeId(item.id);
                           return;
                         }
@@ -1442,12 +1994,12 @@ function EmployeesSection({
                     "-"
                   )
                 ])
-              : [["No employees yet", "-", "-", "-", "-", "-", "-", "-", "-"]]
+              : [[t("noEmployeesYet"), "-", "-", "-", "-", "-", "-", "-", "-"]]
           }
         />
       </Panel>
       {isCreatingEmployee ? (
-        <AdminModal title="New employee" onClose={() => setIsCreatingEmployee(false)}>
+        <AdminModal title={t("newEmployee")} onClose={() => setIsCreatingEmployee(false)}>
           <EmployeeForm
             onCancel={() => setIsCreatingEmployee(false)}
             onSubmit={(payload) =>
@@ -1461,7 +2013,7 @@ function EmployeesSection({
         </AdminModal>
       ) : null}
       {editingEmployee ? (
-        <AdminModal title={`Edit employee: ${editingEmployee.name}`} onClose={() => setEditingEmployeeId(null)}>
+        <AdminModal title={`${t("editEmployee")}: ${editingEmployee.name}`} onClose={() => setEditingEmployeeId(null)}>
           <EmployeeForm
             employee={editingEmployee}
             key={editingEmployee.id}
@@ -1477,7 +2029,7 @@ function EmployeesSection({
         </AdminModal>
       ) : null}
       {schedulingEmployee ? (
-        <AdminModal title={`Schedule: ${schedulingEmployee.name}`} onClose={() => setSchedulingEmployeeId(null)}>
+        <AdminModal title={`${t("employeeSchedule")}: ${schedulingEmployee.name}`} onClose={() => setSchedulingEmployeeId(null)}>
           <EmployeeScheduleForm
             employee={schedulingEmployee}
             onCancel={() => setSchedulingEmployeeId(null)}
@@ -1533,6 +2085,7 @@ function EmployeeForm({
   onSubmit: (payload: EmployeeInput) => Promise<void>;
   services: AdminData["services"];
 }) {
+  const t = useCrmT();
   const serviceGroups = buildAppointmentServiceGroups(services);
   const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
   const [form, setForm] = useState({
@@ -1576,51 +2129,51 @@ function EmployeeForm({
     <form className="admin-form" onSubmit={submit}>
       <div className="form-section">
         <label>
-          <span>First name</span>
+          <span>{t("firstName")}</span>
           <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
         </label>
         <label>
-          <span>Last name</span>
+          <span>{t("lastName")}</span>
           <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
         </label>
       </div>
       <div className="form-section">
         <label>
-          <span>Phone</span>
+          <span>{t("phone")}</span>
           <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
         </label>
         <label>
-          <span>Email</span>
+          <span>{t("email")}</span>
           <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
         </label>
       </div>
       <div className="form-section">
         <label>
-          <span>Password</span>
+          <span>{t("password")}</span>
           <input
             minLength={8}
             onChange={(event) => setForm({ ...form, password: event.target.value })}
-            placeholder={isEditing ? "Leave empty to keep current password" : ""}
+            placeholder={isEditing ? t("leavePasswordEmpty") : ""}
             required={!isEditing}
             type="password"
             value={form.password}
           />
         </label>
         <label>
-          <span>Specialization</span>
+          <span>{t("specialization")}</span>
           <input value={form.specialization} onChange={(event) => setForm({ ...form, specialization: event.target.value })} />
         </label>
       </div>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <label className="checkbox-line">
         <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-        <span>Employee is active</span>
+        <span>{t("employeeIsActive")}</span>
       </label>
       <div className="appointment-service-picker">
-        <span>Assigned services</span>
+        <span>{t("assignedServices")}</span>
         <div className="service-groups compact">
           {serviceGroups.length > 0 ? (
             serviceGroups.map((group) => {
@@ -1634,7 +2187,7 @@ function EmployeeForm({
                       <ArrowRight aria-hidden="true" size={16} />
                     </span>
                     <strong>{group.name}</strong>
-                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} selected` : `${group.services.length} services`}</span>
+                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} ${t("selected")}` : `${group.services.length} ${t("services")}`}</span>
                   </button>
                   {isOpen ? (
                     <div className="appointment-service-list">
@@ -1655,16 +2208,16 @@ function EmployeeForm({
               );
             })
           ) : (
-            <div className="empty-state">No services available.</div>
+            <div className="empty-state">{t("noServicesAvailable")}</div>
           )}
         </div>
       </div>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" type="submit">
-          {isEditing ? "Save employee" : "Create employee"}
+          {isEditing ? t("saveEmployee") : t("createEmployee")}
         </button>
       </div>
     </form>
@@ -2349,33 +2902,52 @@ function PaymentAuditModal({ onClose, payment }: { onClose: () => void; payment:
 }
 
 function ReviewsSection({ reviews }: { reviews: AdminData["reviews"] }) {
+  const t = useCrmT();
+
   return (
     <div className="admin-grid">
-      <Panel title="Reviews">
-        <DataTable columns={["Client", "Rating", "Comment"]} rows={reviews.map((item) => [item.client, `${item.rating}/5`, item.text])} />
+      <Panel title={t("reviews")}>
+        <DataTable columns={[t("client"), t("rating"), t("comment")]} rows={reviews.map((item) => [item.client, `${item.rating}/5`, item.text])} />
       </Panel>
     </div>
   );
 }
 
 function SettingsSection({
+  language,
+  onLanguageChange,
   settings,
   runAction
 }: {
+  language: CrmLanguage;
+  onLanguageChange: (language: CrmLanguage) => void;
   settings: AdminData["settings"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = (key: CrmTextKey) => crmLabel(language, key);
+
   return (
     <div className="admin-grid">
-      <SettingsForm settings={settings} onSubmit={(payload) => runAction(() => updateAdminSettings(payload))} />
-      <Panel title="Current data">
+      <Panel title={t("interfaceLanguage")}>
+        <label className="admin-language-picker">
+          <span>{t("language")}</span>
+          <select value={language} onChange={(event) => onLanguageChange(event.target.value as CrmLanguage)}>
+            <option value="uk">{t("ukrainian")}</option>
+            <option value="en">{t("english")}</option>
+          </select>
+        </label>
+        <p className="admin-help-text">{t("languageHelp")}</p>
+        <p className="admin-help-text">{t("ukrainianDefaultNote")}</p>
+      </Panel>
+      <SettingsForm language={language} settings={settings} onSubmit={(payload) => runAction(() => updateAdminSettings(payload))} />
+      <Panel title={t("currentData")}>
         <InfoList
           items={[
-            ["Name", settings.salonName],
-            ["Phone", settings.phone],
-            ["Email", settings.email],
-            ["Address", settings.address],
-            ["Hours", settings.hours]
+            [t("name"), settings.salonName],
+            [t("phone"), settings.phone],
+            [t("email"), settings.email],
+            [t("address"), settings.address],
+            [t("hours"), settings.hours]
           ]}
         />
       </Panel>
@@ -2511,7 +3083,16 @@ function SaleForm({
   return onCancel ? formContent : <Panel title="New sale">{formContent}</Panel>;
 }
 
-function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"]; onSubmit: (payload: SettingsInput) => Promise<void> }) {
+function SettingsForm({
+  language,
+  settings,
+  onSubmit
+}: {
+  language: CrmLanguage;
+  settings: AdminData["settings"];
+  onSubmit: (payload: SettingsInput) => Promise<void>;
+}) {
+  const t = (key: CrmTextKey) => crmLabel(language, key);
   const [openingTime = "09:00", closingTime = "18:00"] = settings.hours.split("-");
   const [form, setForm] = useState({
     salonName: settings.salonName,
@@ -2529,38 +3110,38 @@ function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"];
   }
 
   return (
-    <Panel title="Salon settings">
+    <Panel title={t("salonSettings")}>
       <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Salon name</span>
+          <span>{t("salonName")}</span>
           <input value={form.salonName} onChange={(event) => setForm({ ...form, salonName: event.target.value })} required />
         </label>
         <label>
-          <span>Phone</span>
+          <span>{t("phone")}</span>
           <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         </label>
         <label>
-          <span>Email</span>
+          <span>{t("email")}</span>
           <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
         </label>
         <label>
-          <span>Address</span>
+          <span>{t("address")}</span>
           <input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
         </label>
         <label>
-          <span>Logo</span>
+          <span>{t("logo")}</span>
           <input value={form.logoUrl} onChange={(event) => setForm({ ...form, logoUrl: event.target.value })} />
         </label>
         <label>
-          <span>Opening</span>
+          <span>{t("opening")}</span>
           <input value={form.openingTime} onChange={(event) => setForm({ ...form, openingTime: event.target.value })} />
         </label>
         <label>
-          <span>Closing</span>
+          <span>{t("closing")}</span>
           <input value={form.closingTime} onChange={(event) => setForm({ ...form, closingTime: event.target.value })} />
         </label>
         <button className="primary-button admin-submit" type="submit">
-          Save settings
+          {t("saveSettings")}
         </button>
       </form>
     </Panel>
@@ -2569,14 +3150,15 @@ function SettingsForm({ settings, onSubmit }: { settings: AdminData["settings"];
 
 type BookingStep = "services" | "employee" | "datetime" | "contact";
 
-const bookingSteps: Array<{ id: BookingStep; label: string }> = [
-  { id: "services", label: "Services" },
-  { id: "employee", label: "Employee" },
-  { id: "datetime", label: "Date & time" },
-  { id: "contact", label: "Contact" }
+const bookingSteps: Array<{ id: BookingStep; key: keyof typeof publicText.en }> = [
+  { id: "services", key: "services" },
+  { id: "employee", key: "employee" },
+  { id: "datetime", key: "dateAndTime" },
+  { id: "contact", key: "contact" }
 ];
 
-function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; onOpenHome: () => void }) {
+function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: PublicLanguage; onOpenAdmin?: () => void; onOpenHome: () => void }) {
+  const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -2612,7 +3194,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
         setStatus("idle");
       })
       .catch((loadError) => {
-        setError(getBookingErrorMessage(loadError, "Could not load services. Check that the CRM API is running and refresh the page."));
+        setError(getBookingErrorMessage(loadError, t("loadServicesError")));
         setStatus("idle");
       });
   }
@@ -2633,7 +3215,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
     setIsLoadingEmployees(true);
     fetchEmployees(selectedServiceIds)
       .then(setEmployees)
-      .catch((loadError) => setError(getBookingErrorMessage(loadError, "Could not load employees for the selected services. Try again in a moment.")))
+      .catch((loadError) => setError(getBookingErrorMessage(loadError, t("loadEmployeesError"))))
       .finally(() => setIsLoadingEmployees(false));
   }, [selectedServiceIds]);
 
@@ -2660,7 +3242,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
       })
       .catch((loadError) => {
         if (!cancelled) {
-          setError(getBookingErrorMessage(loadError, "Could not load available times. Try another date or refresh the page."));
+          setError(getBookingErrorMessage(loadError, t("loadTimesError")));
           setSlots([]);
           setLoadedSlotsDate("");
         }
@@ -2726,7 +3308,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
     for (const service of services) {
       const groupId = service.category?.id ?? "uncategorized";
-      const groupName = service.category?.name ?? "Other services";
+      const groupName = service.category?.name ?? t("otherServices");
       const groupDescription = service.category?.description ?? null;
       const existing = groups.get(groupId);
 
@@ -2738,7 +3320,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
     }
 
     return [...groups.values()];
-  }, [services]);
+  }, [language, services]);
 
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId);
   const serviceStepDone = selectedServiceIds.length > 0;
@@ -2783,17 +3365,17 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
   function continueFromServices() {
     if (selectedServiceIds.length === 0) {
-      setError("Choose at least one service.");
+      setError(t("chooseServiceError"));
       return;
     }
 
     if (isLoadingEmployees) {
-      setError("Loading employees for the selected services.");
+      setError(t("loadingEmployeesError"));
       return;
     }
 
     if (employees.length === 0) {
-      setError("No employees are available for the selected services.");
+      setError(t("noEmployeesError"));
       return;
     }
 
@@ -2815,13 +3397,13 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
   function continueFromDateTime() {
     if (!selectedEmployeeId) {
-      setError("Choose an employee.");
+      setError(t("chooseEmployeeError"));
       setActiveStep("employee");
       return;
     }
 
     if (!selectedSlot) {
-      setError("Choose an available time.");
+      setError(t("chooseTimeError"));
       return;
     }
 
@@ -2852,25 +3434,25 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
     setError("");
 
     if (selectedServiceIds.length === 0) {
-      setError("Choose at least one service.");
+      setError(t("chooseServiceError"));
       return;
     }
 
     if (!selectedEmployeeId) {
-      setError("Choose an employee.");
+      setError(t("chooseEmployeeError"));
       return;
     }
 
     if (!selectedSlot) {
-      setError("Choose an available time.");
+      setError(t("chooseTimeError"));
       return;
     }
 
-    const nextContactErrors = getBookingContactErrors(client, clientComment);
+    const nextContactErrors = getBookingContactErrors(client, clientComment, language);
 
     if (Object.keys(nextContactErrors).length > 0) {
       setContactErrors(nextContactErrors);
-      setError(`Please correct the contact details: ${Object.values(nextContactErrors).join(" ")}`);
+      setError(`${t("correctContactDetails")} ${Object.values(nextContactErrors).join(" ")}`);
       return;
     }
 
@@ -2888,7 +3470,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
       setConfirmation(createdAppointment);
       setStatus("success");
     } catch (saveError) {
-      setError(getBookingErrorMessage(saveError, "Could not create the appointment."));
+      setError(getBookingErrorMessage(saveError, t("createAppointmentError")));
       setStatus("idle");
     }
   }
@@ -2905,46 +3487,46 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
             <Check aria-hidden="true" size={30} />
           </div>
           <p className="eyebrow">SL Color Studio</p>
-          <h1>Appointment confirmed</h1>
+          <h1>{t("appointmentConfirmed")}</h1>
           <p>
-            {client.firstName}, your visit is reserved for {selectedSlot?.label} on {formatSuggestedDate(selectedDate)}.
+            {client.firstName}, {t("appointmentReserved")} {selectedSlot?.label} {t("onDate")} {formatSuggestedDate(selectedDate)}.
           </p>
           <div className="success-highlight">
-            <span>Booking reference</span>
-            <strong>{confirmation ? `#${confirmation.id}` : "confirmed"}</strong>
+            <span>{t("bookingReference")}</span>
+            <strong>{confirmation ? `#${confirmation.id}` : t("confirmed")}</strong>
           </div>
           <dl className="confirmation-list">
             <div>
-              <dt>Services</dt>
+              <dt>{t("services")}</dt>
               <dd>{selectedServices.map((service) => service.name).join(", ")}</dd>
             </div>
             <div>
-              <dt>Employee</dt>
-              <dd>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Selected employee"}</dd>
+              <dt>{t("employee")}</dt>
+              <dd>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("selectedEmployee")}</dd>
             </div>
             <div>
-              <dt>Date and time</dt>
+              <dt>{t("dateAndTime")}</dt>
               <dd>
                 {selectedDate}, {selectedSlot?.label}
               </dd>
             </div>
             <div>
-              <dt>Total</dt>
+              <dt>{t("total")}</dt>
               <dd>
                 {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
               </dd>
             </div>
           </dl>
           <div className="success-next-steps">
-            <strong>Next step</strong>
-            <span>Save the date. The salon team will use your phone number to identify this booking if anything changes.</span>
+            <strong>{t("nextStep")}</strong>
+            <span>{t("successNote")}</span>
           </div>
           <div className="success-actions">
             <button className="primary-button" type="button" onClick={resetBooking}>
-              Book another appointment
+              {t("bookAnother")}
             </button>
             <button className="secondary-button" type="button" onClick={onOpenHome}>
-              Back to website
+              {t("backToWebsite")}
             </button>
           </div>
         </section>
@@ -2957,7 +3539,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
       <div className="booking-switches">
         <button className="mode-switch" onClick={onOpenHome} type="button">
           <ArrowLeft aria-hidden="true" size={15} />
-          Website
+          {t("website")}
         </button>
         {onOpenAdmin ? (
           <button className="mode-switch" onClick={onOpenAdmin} type="button">
@@ -2974,8 +3556,8 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
             </div>
             <div>
               <p className="eyebrow">SL Color Studio</p>
-              <h1>Book your appointment</h1>
-              <p>Choose a service, specialist, time, and leave your contact details.</p>
+              <h1>{t("bookYourAppointment")}</h1>
+              <p>{t("bookingIntro")}</p>
             </div>
           </div>
 
@@ -2993,7 +3575,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
           <nav className="wizard-steps" aria-label="Booking progress">
             {bookingSteps.map((step, index) => (
               <span className={index < activeStepIndex ? "done" : index === activeStepIndex ? "active" : ""} key={step.id}>
-                {step.label}
+                {t(step.key)}
               </span>
             ))}
           </nav>
@@ -3004,20 +3586,20 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
         {activeStep === "services" ? (
           <section className="wizard-panel">
             <div className="wizard-panel-heading">
-              <p className="eyebrow">Step 1</p>
-              <h2>Select services</h2>
-              <p>Pick one or more services. The total duration will be calculated automatically.</p>
+              <p className="eyebrow">{t("step1")}</p>
+              <h2>{t("selectServices")}</h2>
+              <p>{t("selectServicesText")}</p>
             </div>
 
-            {status === "loading" ? <BookingEmptyState title="Loading services" detail="We are preparing the current service list." /> : null}
+            {status === "loading" ? <BookingEmptyState title={t("loadingServices")} detail={t("loadingServicesText")} /> : null}
 
             {status !== "loading" && services.length === 0 ? (
               <BookingEmptyState
-                title="No services available online"
-                detail="The salon may be updating the price list. Try refreshing the services or contact the salon directly."
+                title={t("noServices")}
+                detail={t("noServicesText")}
                 action={
                   <button className="secondary-button compact-button" onClick={() => void loadServices()} type="button">
-                    Refresh services
+                    {t("refreshServices")}
                   </button>
                 }
               />
@@ -3048,10 +3630,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                             </span>
                             <span className="service-text">
                               <strong>{copy?.name ?? service.name}</strong>
-                              <small>{copy?.description ?? service.description ?? "Individual consultation"}</small>
+                              <small>{copy?.description ?? service.description ?? t("individualConsultation")}</small>
                             </span>
                             <span className="service-choice-meta">
-                              <strong>{formatServicePrice(service)}</strong>
+                              <strong>{formatServicePrice(service, language)}</strong>
                               <small>{service.durationMinutes} min</small>
                             </span>
                           </button>
@@ -3065,9 +3647,9 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
             <footer className="wizard-actions">
               <div className="summary">
-                <span>{selectedServices.length > 0 ? `${selectedServices.length} selected` : "No services selected"}</span>
-                <strong>{selectedServices.length > 0 ? formatSelectedServicesPrice(selectedServices, total.price) : "Choose services"}</strong>
-                <small>{total.duration > 0 ? `${total.duration} min total` : "Start with the service list"}</small>
+                <span>{selectedServices.length > 0 ? `${selectedServices.length} ${t("selected")}` : t("noServicesSelected")}</span>
+                <strong>{selectedServices.length > 0 ? formatSelectedServicesPrice(selectedServices, total.price) : t("chooseServices")}</strong>
+                <small>{total.duration > 0 ? `${total.duration} ${t("minTotal")}` : t("startWithServices")}</small>
               </div>
               <button
                 className="primary-button icon-button"
@@ -3075,7 +3657,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                 onClick={continueFromServices}
                 type="button"
               >
-                <span>{isLoadingEmployees ? "Loading..." : "Continue"}</span>
+                <span>{isLoadingEmployees ? t("loading") : t("continue")}</span>
                 <ArrowRight aria-hidden="true" size={18} />
               </button>
             </footer>
@@ -3085,20 +3667,20 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
         {activeStep === "employee" ? (
           <section className="wizard-panel compact-panel">
             <div className="wizard-panel-heading">
-              <p className="eyebrow">Step 2</p>
-              <h2>Choose an employee</h2>
-              <p>Select the specialist who will perform the chosen services.</p>
+              <p className="eyebrow">{t("step2")}</p>
+              <h2>{t("chooseEmployee")}</h2>
+              <p>{t("chooseEmployeeText")}</p>
             </div>
 
-            {isLoadingEmployees ? <BookingEmptyState title="Finding specialists" detail="We are matching your selected services with available employees." /> : null}
+            {isLoadingEmployees ? <BookingEmptyState title={t("findingSpecialists")} detail={t("findingSpecialistsText")} /> : null}
 
             {!isLoadingEmployees && employees.length === 0 ? (
               <BookingEmptyState
-                title="No specialist matches these services"
-                detail="Choose another service combination or contact the salon so we can help you pick the right appointment."
+                title={t("noSpecialist")}
+                detail={t("noSpecialistText")}
                 action={
                   <button className="secondary-button compact-button" onClick={() => goToStep("services")} type="button">
-                    Change services
+                    {t("changeServices")}
                   </button>
                 }
               />
@@ -3116,7 +3698,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                       <strong>
                         {employee.firstName} {employee.lastName}
                       </strong>
-                      <small>{employee.specialization ?? "Beauty specialist"}</small>
+                      <small>{employee.specialization ?? t("beautySpecialist")}</small>
                     </span>
                     <ArrowRight aria-hidden="true" size={18} />
                   </button>
@@ -3127,7 +3709,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
             <footer className="wizard-actions">
               <button className="secondary-button icon-button" onClick={() => goToStep("services")} type="button">
                 <ArrowLeft aria-hidden="true" size={18} />
-                <span>Back</span>
+                <span>{t("back")}</span>
               </button>
             </footer>
           </section>
@@ -3136,30 +3718,30 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
         {activeStep === "datetime" ? (
           <section className="wizard-panel compact-panel">
             <div className="wizard-panel-heading">
-              <p className="eyebrow">Step 3</p>
-              <h2>Choose date and time</h2>
+              <p className="eyebrow">{t("step3")}</p>
+              <h2>{t("chooseDateTime")}</h2>
               <p>
                 {selectedEmployee
-                  ? `${selectedEmployee.firstName} ${selectedEmployee.lastName} is selected for this visit.`
-                  : "Choose when you want to visit the salon."}
+                  ? `${selectedEmployee.firstName} ${selectedEmployee.lastName} ${t("selectedForVisit")}`
+                  : t("chooseVisitTime")}
               </p>
             </div>
 
             <div className="appointment-layout">
               <aside className="appointment-summary">
-                <span>Visit summary</span>
+                <span>{t("visitSummary")}</span>
                 <strong>{selectedServices.map((service) => service.name).join(", ")}</strong>
                 <small>
                   {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
                 </small>
-                <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Employee not selected"}</small>
+                <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("employeeNotSelected")}</small>
               </aside>
 
               <div className="datetime-panel">
                 <label>
                   <span className="field-label">
                     <CalendarDays aria-hidden="true" size={16} />
-                    Date
+                    {t("date")}
                   </span>
                   <input
                     type="date"
@@ -3176,10 +3758,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
                 <div className="field-label">
                   <Clock aria-hidden="true" size={16} />
-                  Available time
+                  {t("availableTime")}
                 </div>
                 <div className="slot-grid roomy">
-                  {isLoadingSlots ? <BookingEmptyState title="Checking available times" detail="One moment, we are looking at the salon calendar." /> : null}
+                  {isLoadingSlots ? <BookingEmptyState title={t("checkingTimes")} detail={t("checkingTimesText")} /> : null}
                   {!isLoadingSlots
                     ? slots.map((slot) => (
                         <button
@@ -3196,7 +3778,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                       ))
                     : null}
                   {selectedEmployeeId && !isLoadingSlots && slots.length === 0 ? (
-                    <BookingEmptyState title="No slots on this date" detail="Try another date or use one of the nearest available options below." />
+                    <BookingEmptyState title={t("noSlots")} detail={t("noSlotsText")} />
                   ) : null}
                 </div>
 
@@ -3205,10 +3787,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                     <div className="nearest-slots">
                       <div className="field-label">
                         <CalendarDays aria-hidden="true" size={16} />
-                        Nearest days
+                        {t("nearestDays")}
                       </div>
                       <div className="nearest-day-list">
-                        {isLoadingNearestSlots ? <p className="empty-state">Looking for available days...</p> : null}
+                        {isLoadingNearestSlots ? <p className="empty-state">{t("lookingDays")}</p> : null}
                         {!isLoadingNearestSlots && nearestDays.length > 0
                           ? nearestDays.map((suggestion) => (
                               <button
@@ -3223,22 +3805,22 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                               >
                                 <strong>{formatSuggestedDate(suggestion.date)}</strong>
                                 <span>
-                                  {formatSlotCount(suggestion.slotCount)} · from {suggestion.firstSlot.label}
+                                  {language === "uk" ? `${suggestion.slotCount} ${suggestion.slotCount === 1 ? t("timeSingular") : t("timePlural")}` : formatSlotCount(suggestion.slotCount)} · {t("from")} {suggestion.firstSlot.label}
                                 </span>
                               </button>
                             ))
                           : null}
-                        {!isLoadingNearestSlots && nearestDays.length === 0 ? <p className="empty-state">No available days found in the next 30 days.</p> : null}
+                        {!isLoadingNearestSlots && nearestDays.length === 0 ? <p className="empty-state">{t("noDaysFound")}</p> : null}
                       </div>
                     </div>
 
                     <div className="nearest-slots">
                       <div className="field-label">
                         <CalendarDays aria-hidden="true" size={16} />
-                        Nearest terms
+                        {t("nearestTerms")}
                       </div>
                       <div className="nearest-slot-list">
-                        {isLoadingNearestSlots ? <p className="empty-state">Looking for the nearest available terms...</p> : null}
+                        {isLoadingNearestSlots ? <p className="empty-state">{t("lookingTerms")}</p> : null}
                         {!isLoadingNearestSlots && nearestSlots.length > 0
                           ? nearestSlots.map((suggestion) => (
                               <button
@@ -3256,7 +3838,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                               </button>
                             ))
                           : null}
-                        {!isLoadingNearestSlots && nearestSlots.length === 0 ? <p className="empty-state">No available terms found in the next 30 days.</p> : null}
+                        {!isLoadingNearestSlots && nearestSlots.length === 0 ? <p className="empty-state">{t("noTermsFound")}</p> : null}
                       </div>
                     </div>
                   </div>
@@ -3268,10 +3850,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
             <footer className="wizard-actions">
               <button className="secondary-button icon-button" onClick={() => goToStep(employees.length > 1 ? "employee" : "services")} type="button">
                 <ArrowLeft aria-hidden="true" size={18} />
-                <span>Back</span>
+                <span>{t("back")}</span>
               </button>
               <button className="primary-button icon-button" disabled={!selectedSlot} onClick={continueFromDateTime} type="button">
-                <span>Continue</span>
+                <span>{t("continue")}</span>
                 <ArrowRight aria-hidden="true" size={18} />
               </button>
             </footer>
@@ -3282,15 +3864,15 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
           <section className="wizard-panel contact-step">
             <div className="contact-card">
               <div className="wizard-panel-heading">
-                <p className="eyebrow">Final step</p>
-                <h2>Your contact details</h2>
-                <p>We will use these details to identify your booking.</p>
+                <p className="eyebrow">{t("finalStep")}</p>
+                <h2>{t("contactDetails")}</h2>
+                <p>{t("contactDetailsText")}</p>
               </div>
 
               <form onSubmit={handleSubmit} className="booking-form" noValidate>
                 <section className="form-section client-grid">
                   <label>
-                    <span>First name</span>
+                    <span>{t("firstName")}</span>
                     <input
                       aria-describedby={contactErrors.firstName ? "booking-first-name-error" : undefined}
                       aria-invalid={Boolean(contactErrors.firstName)}
@@ -3311,7 +3893,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                     ) : null}
                   </label>
                   <label>
-                    <span>Last name</span>
+                    <span>{t("lastName")}</span>
                     <input
                       aria-describedby={contactErrors.lastName ? "booking-last-name-error" : undefined}
                       aria-invalid={Boolean(contactErrors.lastName)}
@@ -3332,7 +3914,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                     ) : null}
                   </label>
                   <label>
-                    <span>Phone</span>
+                    <span>{t("phone")}</span>
                     <input
                       aria-describedby={contactErrors.phone ? "booking-phone-error" : undefined}
                       aria-invalid={Boolean(contactErrors.phone)}
@@ -3355,7 +3937,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                     ) : null}
                   </label>
                   <label>
-                    <span>Email</span>
+                    <span>{t("email")}</span>
                     <input
                       aria-describedby={contactErrors.email ? "booking-email-error" : undefined}
                       aria-invalid={Boolean(contactErrors.email)}
@@ -3378,7 +3960,7 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                 </section>
 
                 <label className="full-width">
-                  <span>Comment</span>
+                  <span>{t("comment")}</span>
                   <textarea
                     aria-describedby={contactErrors.comment ? "booking-comment-error" : undefined}
                     aria-invalid={Boolean(contactErrors.comment)}
@@ -3400,13 +3982,13 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
 
                 <section className="selection-panel">
                   <div>
-                    <span>Appointment</span>
+                    <span>{t("appointment")}</span>
                     <strong>
                       {selectedDate}, {selectedSlot?.label}
                     </strong>
                   </div>
                   <div>
-                    <span>Total</span>
+                    <span>{t("total")}</span>
                     <strong>
                       {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
                     </strong>
@@ -3416,10 +3998,10 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; on
                 <footer className="wizard-actions">
                   <button className="secondary-button icon-button" onClick={() => goToStep("datetime")} type="button">
                     <ArrowLeft aria-hidden="true" size={18} />
-                    <span>Back</span>
+                    <span>{t("back")}</span>
                   </button>
                   <button className="primary-button icon-button" type="submit" disabled={!canSubmit}>
-                    <span>{status === "saving" ? "Booking..." : "Confirm appointment"}</span>
+                    <span>{status === "saving" ? t("booking") : t("confirmAppointment")}</span>
                     <Check aria-hidden="true" size={18} />
                   </button>
                 </footer>

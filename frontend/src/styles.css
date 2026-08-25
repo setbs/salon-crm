@@ -96,6 +96,16 @@ p {
   padding: 0;
 }
 
+.home-menu-button {
+  display: none;
+}
+
+.home-nav-logo {
+  display: block;
+  width: clamp(86px, 8vw, 126px);
+  height: auto;
+}
+
 .home-mark {
   display: grid;
   place-items: center;
@@ -139,8 +149,35 @@ p {
   padding: 8px 12px;
 }
 
+.home-nav .mobile-nav-action {
+  display: none;
+}
+
 .home-nav-actions {
   gap: 10px;
+}
+
+.home-social-links {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.home-social-link {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: #8fa28d;
+  color: #fffaf2;
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.home-social-link:hover {
+  background: #453327;
+  transform: translateY(-1px);
 }
 
 .home-nav .primary-button,
@@ -562,6 +599,25 @@ p {
   justify-self: center;
 }
 
+.home-language-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+  color: #75695d;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.home-language-footer .compact-button {
+  min-height: 38px;
+  padding-inline: 18px;
+}
+
 .home-masters {
   border-top: 1px solid #c8beb0;
   border-bottom: 1px solid #c8beb0;
@@ -618,6 +674,49 @@ p {
   color: #fff8ee;
   font-weight: 900;
   padding: 10px 12px;
+}
+
+.home-portfolio-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.home-portfolio-pagination > button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(69, 51, 39, 0.34);
+  border-radius: 999px;
+  background: rgba(247, 241, 232, 0.62);
+  color: #453327;
+}
+
+.home-portfolio-pagination > button:disabled {
+  cursor: default;
+  opacity: 0.34;
+}
+
+.home-portfolio-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-portfolio-pagination > div button {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(69, 51, 39, 0.24);
+  padding: 0;
+}
+
+.home-portfolio-pagination > div button.active {
+  background: #453327;
 }
 
 .home-why {
@@ -817,9 +916,237 @@ p {
   text-transform: uppercase;
 }
 
+.home-price-logo {
+  display: block;
+  width: 104px;
+  height: auto;
+}
+
+.home-price-logo.signature-logo {
+  width: 132px;
+}
+
 .home-price-signature .sl-logo {
   font-size: 4rem;
   line-height: 0.8;
+}
+
+.salon-footer {
+  display: grid;
+  gap: 32px;
+  background: #222823;
+  color: #e9e1d7;
+  padding: 44px min(6vw, 72px) 26px;
+}
+
+.salon-footer-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 310px) minmax(240px, 1fr) minmax(220px, 0.75fr);
+  gap: clamp(24px, 4vw, 52px);
+  align-items: start;
+}
+
+.salon-footer-map {
+  position: relative;
+  display: block;
+  min-height: 196px;
+  overflow: hidden;
+  border: 1px solid rgba(233, 225, 215, 0.2);
+  background:
+    linear-gradient(90deg, transparent 48%, rgba(255, 255, 255, 0.08) 48% 52%, transparent 52%),
+    linear-gradient(0deg, transparent 48%, rgba(255, 255, 255, 0.08) 48% 52%, transparent 52%),
+    #d9d5cc;
+}
+
+.salon-footer-map::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(132deg, transparent 0 44%, rgba(83, 103, 86, 0.5) 44% 48%, transparent 48%),
+    radial-gradient(circle at 72% 30%, rgba(83, 103, 86, 0.2), transparent 18%),
+    radial-gradient(circle at 24% 78%, rgba(127, 64, 83, 0.18), transparent 16%);
+}
+
+.salon-footer-map-cta {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fffaf2;
+  color: #536756;
+  font-size: 0.76rem;
+  font-weight: 900;
+  padding: 10px 12px;
+}
+
+.salon-map-marker {
+  position: absolute;
+  left: 45%;
+  top: 46%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #8fa28d;
+  color: #fffaf2;
+  transform: translate(-50%, -50%);
+}
+
+.salon-map-line {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  background: rgba(69, 51, 39, 0.24);
+}
+
+.salon-map-line-one {
+  left: 18%;
+  top: 64%;
+  width: 76%;
+  height: 16px;
+  transform: rotate(-15deg);
+}
+
+.salon-map-line-two {
+  left: 48%;
+  top: 8%;
+  width: 14px;
+  height: 84%;
+  transform: rotate(18deg);
+}
+
+.salon-map-line-three {
+  left: 0;
+  top: 32%;
+  width: 100%;
+  height: 10px;
+  transform: rotate(6deg);
+}
+
+.salon-footer-contact,
+.salon-footer-gallery,
+.salon-footer-links > div {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.salon-footer-block-title span,
+.salon-footer-links h2 {
+  color: #fffaf2;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.salon-footer-block-title::after,
+.salon-footer-links h2::after {
+  content: "";
+  display: block;
+  width: 42px;
+  height: 1px;
+  margin-top: 12px;
+  background: #8fa28d;
+}
+
+.salon-footer-contact-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  color: rgba(233, 225, 215, 0.82);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+.salon-footer-contact-line svg {
+  flex: 0 0 auto;
+  color: #8fa28d;
+  margin-top: 2px;
+}
+
+.salon-footer-contact-line:hover,
+.salon-footer-links a:hover,
+.salon-footer-links button:hover {
+  color: #fffaf2;
+}
+
+.salon-footer-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.salon-footer-gallery-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 0.78;
+  object-fit: cover;
+}
+
+.salon-footer-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(28px, 6vw, 84px);
+  border-top: 1px solid rgba(233, 225, 215, 0.16);
+  padding-top: 30px;
+}
+
+.salon-footer-links h2 {
+  margin: 0 0 12px;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.salon-footer-links a,
+.salon-footer-links button {
+  width: max-content;
+  border: 0;
+  background: transparent;
+  color: rgba(233, 225, 215, 0.78);
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+  text-decoration: none;
+}
+
+.salon-footer-brand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border-top: 1px solid rgba(233, 225, 215, 0.16);
+  padding-top: 18px;
+}
+
+.salon-footer-logo {
+  width: 96px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.salon-footer-logo img {
+  width: 100%;
+  height: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
+}
+
+.salon-footer-brand p,
+.salon-footer-brand small {
+  color: rgba(233, 225, 215, 0.72);
+}
+
+.salon-footer-brand small {
+  justify-self: end;
 }
 
 .shop-shell {
@@ -1613,9 +1940,6 @@ p {
 
 .sl-logo.compact {
   font-size: 4.7rem;
-}
-#color-studio {
-  margin-top: 1.2em;
 }
 .studio-name {
   color: #38271f;
@@ -4161,6 +4485,26 @@ textarea {
   height: 16px;
 }
 
+.admin-language-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-language-picker span {
+  color: #75695d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-help-text {
+  color: #75695d;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+
 .component-picker {
   display: grid;
   gap: 10px;
@@ -4588,6 +4932,10 @@ textarea {
     flex-wrap: wrap;
   }
 
+  .home-social-links {
+    order: 2;
+  }
+
   .home-hero {
     min-height: 640px;
   }
@@ -4804,22 +5152,80 @@ textarea {
     padding: 14px;
   }
 
+  .home-shell,
+  .shop-shell {
+    position: relative;
+  }
+
   .home-nav {
-    padding: 12px 16px;
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    right: 14px;
+    z-index: 45;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    gap: 8px;
+    min-height: 72px;
+    border: 1px solid rgba(69, 51, 39, 0.18);
+    border-radius: 0;
+    background: rgba(231, 225, 214, 0.96);
+    box-shadow: 0 18px 38px rgba(48, 40, 32, 0.14);
+    padding: 10px 12px;
+    backdrop-filter: blur(14px);
+  }
+
+  .home-menu-button {
+    display: grid;
+    grid-column: 1;
+    grid-row: 1;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    align-self: center;
+    border: 0;
+    background: transparent;
+    color: #302820;
+  }
+
+  .home-brand-button {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
   }
 
   .home-nav nav {
     display: none;
   }
 
-  .home-nav-actions {
-    align-items: stretch;
-    flex-direction: column;
+  .home-nav nav.is-open {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    border-top: 1px solid rgba(69, 51, 39, 0.16);
+    padding: 18px 0 10px;
   }
 
-  .home-nav .primary-button,
-  .home-nav .secondary-button {
-    width: 100%;
+  .home-nav nav.is-open a,
+  .home-nav nav.is-open button {
+    width: max-content;
+  }
+
+  .home-nav nav.is-open .mobile-nav-action {
+    display: inline-flex;
+    border: 1px solid rgba(69, 51, 39, 0.28);
+    background: #37291f;
+    color: #fffaf2;
+    padding: 10px 16px;
+  }
+
+  .home-nav-actions {
+    display: none;
+  }
+
+  .home-nav-logo {
+    width: 104px;
   }
 
   .home-hero {
@@ -5011,13 +5417,63 @@ textarea {
     font-size: 3.4rem;
   }
 
+  .home-price-logo {
+    width: 58px;
+  }
+
+  .salon-footer {
+    gap: 26px;
+    padding: 42px 18px 28px;
+    text-align: center;
+  }
+
+  .salon-footer-brand {
+    grid-template-columns: 1fr;
+    order: -2;
+    justify-items: center;
+  }
+
+  .salon-footer-logo {
+    width: 118px;
+  }
+
+  .salon-footer-brand small {
+    justify-self: center;
+  }
+
   .home-booking-strip,
   .home-service-grid,
   .home-master-grid,
   .home-portfolio-grid,
   .home-why,
-  .home-contact-grid {
+  .home-contact-grid,
+  .salon-footer-hero,
+  .salon-footer-links {
     grid-template-columns: 1fr;
+  }
+
+  .salon-footer {
+    padding-inline: 26px;
+  }
+
+  .salon-footer-gallery,
+  .salon-footer-links {
+    display: none;
+  }
+
+  .salon-footer-map {
+    display: block;
+    min-height: 190px;
+    width: 100%;
+  }
+
+  .salon-footer-contact {
+    justify-items: center;
+  }
+
+  .salon-footer-contact-line {
+    justify-content: center;
+    text-align: center;
   }
 
   .home-booking-strip {

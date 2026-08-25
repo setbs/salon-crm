@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Check, Edit3, EyeOff, FileText, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { useCrmT } from "../crm-i18n";
 
 export function MetricCard({ label, value, note }: { label: string; value: string; note: string }) {
   return (
@@ -102,18 +103,20 @@ export function PaginationControls({
   onPageChange: (page: number) => void;
   pageCount: number;
 }) {
+  const t = useCrmT();
+
   return (
     <div className="pagination-controls">
       <span>{label}</span>
       <div>
         <button className="secondary-button compact-button" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)} type="button">
-          Previous
+          {t("previous")}
         </button>
         <strong>
           {currentPage} / {pageCount}
         </strong>
         <button className="secondary-button compact-button" disabled={currentPage >= pageCount} onClick={() => onPageChange(currentPage + 1)} type="button">
-          Next
+          {t("next")}
         </button>
       </div>
     </div>
@@ -161,30 +164,31 @@ export function InlineActions({ labels, onAction }: { labels: string[]; onAction
 }
 
 export function StatusBadge({ status }: { status: string }) {
+  const t = useCrmT();
   const statusLabels: Record<string, string> = {
-    scheduled: "scheduled",
-    completed: "completed",
-    cancelled: "cancelled",
-    no_show: "no-show",
-    pending: "pending",
-    active: "active",
-    disabled: "disabled",
-    paid: "paid",
-    refunded: "refunded",
-    ready: "ready",
-    blocked: "blocked",
-    ok: "ok",
-    low: "low",
-    out: "out",
-    confirmed: "confirmed",
-    processing: "processing",
-    shipped: "shipped",
-    not_tracked: "not tracked",
-    payment_updated: "payment",
-    payment_created: "created",
-    payment_refunded: "refund",
-    status_updated: "status",
-    completion_corrected: "corrected"
+    scheduled: t("scheduled"),
+    completed: t("completed"),
+    cancelled: t("cancelled"),
+    no_show: t("noShowShort"),
+    pending: t("pending"),
+    active: t("active"),
+    disabled: t("disabled"),
+    paid: t("paid"),
+    refunded: t("refunded"),
+    ready: t("ready"),
+    blocked: t("blocked"),
+    ok: t("ok"),
+    low: t("low"),
+    out: t("out"),
+    confirmed: t("confirmed"),
+    processing: t("processing"),
+    shipped: t("shipped"),
+    not_tracked: t("notTracked"),
+    payment_updated: t("paymentUpdated"),
+    payment_created: t("paymentCreated"),
+    payment_refunded: t("paymentRefundedShort"),
+    status_updated: t("statusUpdated"),
+    completion_corrected: t("completionCorrected")
   };
 
   return <span className={`status-badge ${status}`}>{statusLabels[status] ?? status}</span>;

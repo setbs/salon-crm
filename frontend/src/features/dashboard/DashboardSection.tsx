@@ -1,8 +1,206 @@
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DataTable, InfoList, MetricCard, Panel, StatusBadge } from "../../components/admin-ui";
+import { useCrmLanguage, type CrmLanguage } from "../../crm-i18n";
 import { fetchAdminBusinessAnalytics, type AdminBusinessAnalyticsPeriod, type AdminData } from "../../api";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "../../utils/format";
+
+const dashboardCopy = {
+  en: {
+    requestFailed: "Request failed.",
+    netServiceProfit: "Net service profit",
+    materials: "Materials",
+    forecast: "Forecast",
+    products: "Products",
+    brands: "Brands",
+    employees: "Employees",
+    dashboardOverview: "Dashboard overview",
+    appointmentsToday: "Appointments today",
+    recordsFromPostgres: "records from PostgreSQL",
+    dailyNetRevenue: "Daily net revenue",
+    paidRefundedNote: "paid/refunded services + products",
+    nextAppointment: "Next appointment",
+    noUpcomingAppointments: "no upcoming appointments",
+    lowStock: "Low stock",
+    productsNeedRestocking: "products need restocking",
+    consumablesUsed: "Consumables used",
+    writeOffs: "write-offs",
+    lowConsumables: "Low consumables",
+    packageAlerts: "package-content stock alerts",
+    netFinancialReport: "Net financial report",
+    businessAnalytics: "Business analytics",
+    loading: "Loading...",
+    analyticsCsv: "Analytics CSV",
+    appointmentsCsv: "Appointments CSV",
+    inventoryCsv: "Inventory CSV",
+    week: "Week",
+    month: "Month",
+    custom: "Custom",
+    from: "From",
+    to: "To",
+    apply: "Apply",
+    completedVisits: "Completed visits",
+    netServiceRevenue: "Net service revenue",
+    netProductRevenue: "Net product revenue",
+    consumableCost: "Consumable cost",
+    netRetailProductProfit: "Net retail product profit",
+    criticalForecast: "Critical forecast",
+    visits: "Visits",
+    netProductProfit: "Net product profit",
+    revenueProfitByDay: "Net revenue / profit by day",
+    topConsumables: "Top consumables",
+    byMaterialCost: "by material cost",
+    noConsumablesYet: "No consumables yet",
+    notTracked: "not tracked",
+    lowStockForecast: "Low-stock forecast",
+    visitsLeft: "visits left",
+    noForecastData: "No forecast data",
+    attentionNeeded: "Attention needed",
+    signals: "signals",
+    noSignals: "No urgent business signals for this period.",
+    businessReportType: "Business report type",
+    todaysAppointments: "Today's appointments",
+    createAppointment: "Create appointment",
+    time: "Time",
+    client: "Client",
+    service: "Service",
+    employee: "Employee",
+    status: "Status",
+    noAppointmentsToday: "No appointments today",
+    restockSuggestions: "Restock suggestions",
+    product: "Product",
+    stock: "Stock",
+    minimum: "Minimum",
+    buy: "Buy",
+    packs: "packs",
+    checkStock: "check stock",
+    stockHealthy: "Stock is healthy",
+    consumableAnalytics: "Consumable analytics",
+    used: "Used",
+    appointments: "Appointments",
+    currentStock: "Current stock",
+    appointmentCount: "appointments",
+    noWriteOffsYet: "No write-offs yet",
+    recentWriteOffs: "Recent write-offs",
+    noData: "No data",
+    completeAppointmentHint: "Complete an appointment with consumables to see write-offs here.",
+    materialPressureByService: "Material pressure by service",
+    procedureProductForecast: "Procedure product forecast",
+    productSales: "Product sales",
+    brandPerformance: "Brand performance",
+    employeePerformance: "Employee performance",
+    category: "Category",
+    units: "Units",
+    averageVisit: "Average / visit",
+    stockForecast: "Stock forecast",
+    cost: "Cost",
+    noMaterialWriteOffs: "No material write-offs",
+    noProcedureUsage: "No procedure product usage",
+    noProductSales: "No product sales",
+    noEmployeePerformance: "No employee performance yet",
+    noCompletedServices: "No completed services",
+    avgNetProfit: "Avg net profit",
+    stockNotTracked: "stock not tracked"
+  },
+  uk: {
+    requestFailed: "Запит не виконано.",
+    netServiceProfit: "Чистий прибуток з послуг",
+    materials: "Матеріали",
+    forecast: "Прогноз",
+    products: "Товари",
+    brands: "Бренди",
+    employees: "Працівники",
+    dashboardOverview: "Огляд панелі",
+    appointmentsToday: "Записи сьогодні",
+    recordsFromPostgres: "дані з PostgreSQL",
+    dailyNetRevenue: "Чиста виручка за день",
+    paidRefundedNote: "оплачені/повернуті послуги + товари",
+    nextAppointment: "Наступний запис",
+    noUpcomingAppointments: "майбутніх записів немає",
+    lowStock: "Низький склад",
+    productsNeedRestocking: "товари потребують поповнення",
+    consumablesUsed: "Використано матеріалів",
+    writeOffs: "списань",
+    lowConsumables: "Мало витратних матеріалів",
+    packageAlerts: "попередження по обʼєму упаковок",
+    netFinancialReport: "Чистий фінансовий звіт",
+    businessAnalytics: "Бізнес-аналітика",
+    loading: "Завантаження...",
+    analyticsCsv: "CSV аналітики",
+    appointmentsCsv: "CSV записів",
+    inventoryCsv: "CSV складу",
+    week: "Тиждень",
+    month: "Місяць",
+    custom: "Свій період",
+    from: "Від",
+    to: "До",
+    apply: "Застосувати",
+    completedVisits: "Завершені візити",
+    netServiceRevenue: "Чиста виручка з послуг",
+    netProductRevenue: "Чиста виручка з товарів",
+    consumableCost: "Вартість матеріалів",
+    netRetailProductProfit: "Чистий прибуток з товарів",
+    criticalForecast: "Критичний прогноз",
+    visits: "Візити",
+    netProductProfit: "Чистий прибуток з товарів",
+    revenueProfitByDay: "Чиста виручка / прибуток по днях",
+    topConsumables: "Топ витратних матеріалів",
+    byMaterialCost: "за вартістю матеріалів",
+    noConsumablesYet: "Витратних матеріалів ще немає",
+    notTracked: "не відстежується",
+    lowStockForecast: "Прогноз низького складу",
+    visitsLeft: "візитів залишилось",
+    noForecastData: "Немає даних для прогнозу",
+    attentionNeeded: "Потребує уваги",
+    signals: "сигналів",
+    noSignals: "За цей період немає термінових бізнес-сигналів.",
+    businessReportType: "Тип бізнес-звіту",
+    todaysAppointments: "Записи на сьогодні",
+    createAppointment: "Створити запис",
+    time: "Час",
+    client: "Клієнт",
+    service: "Послуга",
+    employee: "Працівник",
+    status: "Статус",
+    noAppointmentsToday: "На сьогодні записів немає",
+    restockSuggestions: "Рекомендації поповнення",
+    product: "Товар",
+    stock: "Склад",
+    minimum: "Мінімум",
+    buy: "Купити",
+    packs: "уп.",
+    checkStock: "перевірити склад",
+    stockHealthy: "Склад у нормі",
+    consumableAnalytics: "Аналітика расходників",
+    used: "Використано",
+    appointments: "Записи",
+    currentStock: "Поточний склад",
+    appointmentCount: "записів",
+    noWriteOffsYet: "Списань ще немає",
+    recentWriteOffs: "Останні списання",
+    noData: "Немає даних",
+    completeAppointmentHint: "Завершіть запис із расходниками, щоб побачити списання тут.",
+    materialPressureByService: "Навантаження матеріалів по послугах",
+    procedureProductForecast: "Прогноз товарів для процедур",
+    productSales: "Продажі товарів",
+    brandPerformance: "Ефективність брендів",
+    employeePerformance: "Ефективність працівників",
+    category: "Категорія",
+    units: "Одиниці",
+    averageVisit: "Середнє / візит",
+    stockForecast: "Прогноз складу",
+    cost: "Вартість",
+    noMaterialWriteOffs: "Списань матеріалів немає",
+    noProcedureUsage: "Використання товарів у процедурах ще немає",
+    noProductSales: "Продажів товарів немає",
+    noEmployeePerformance: "Даних по працівниках ще немає",
+    noCompletedServices: "Завершених послуг немає",
+    avgNetProfit: "Сер. чистий прибуток",
+    stockNotTracked: "склад не відстежується"
+  }
+} satisfies Record<CrmLanguage, Record<string, string>>;
+
+type DashboardCopy = (typeof dashboardCopy)[CrmLanguage];
 
 export function DashboardSection({
   dashboard,
@@ -17,6 +215,8 @@ export function DashboardSection({
   appointments: AdminData["appointments"];
   products: AdminData["products"];
 }) {
+  const language = useCrmLanguage();
+  const copy = dashboardCopy[language];
   const [selectedBusinessPeriod, setSelectedBusinessPeriod] = useState<AdminBusinessAnalyticsPeriod>("month");
   const [customBusinessFrom, setCustomBusinessFrom] = useState(() => getRelativeDateInputValue(-30));
   const [customBusinessTo, setCustomBusinessTo] = useState(() => getDateInputValue(new Date()));
@@ -38,7 +238,7 @@ export function DashboardSection({
       const nextAnalytics = await fetchAdminBusinessAnalytics({ period, from, to });
       setVisibleBusinessAnalytics(nextAnalytics);
     } catch (error) {
-      setBusinessAnalyticsError(error instanceof Error ? error.message : "Request failed.");
+      setBusinessAnalyticsError(error instanceof Error ? error.message : copy.requestFailed);
     } finally {
       setIsBusinessAnalyticsLoading(false);
     }
@@ -62,79 +262,79 @@ export function DashboardSection({
     .filter((appointment) => isSameLocalDate(appointment.date, new Date()))
     .sort((first, second) => new Date(first.date).getTime() - new Date(second.date).getTime());
   const reportTabs: Array<{ id: typeof activeReport; label: string }> = [
-    { id: "service", label: "Net service profit" },
-    { id: "materials", label: "Materials" },
-    { id: "forecast", label: "Forecast" },
-    { id: "products", label: "Products" },
-    { id: "brands", label: "Brands" },
-    { id: "employees", label: "Employees" }
+    { id: "service", label: copy.netServiceProfit },
+    { id: "materials", label: copy.materials },
+    { id: "forecast", label: copy.forecast },
+    { id: "products", label: copy.products },
+    { id: "brands", label: copy.brands },
+    { id: "employees", label: copy.employees }
   ];
 
   return (
     <div className="dashboard-page">
-      <section className="dashboard-metrics" aria-label="Dashboard overview">
-        <MetricCard label="Appointments today" value={String(dashboard.todayAppointments)} note="records from PostgreSQL" />
-        <MetricCard label="Daily net revenue" value={adminMoney.format(dashboard.dailyRevenue)} note="paid/refunded services + products" />
+      <section className="dashboard-metrics" aria-label={copy.dashboardOverview}>
+        <MetricCard label={copy.appointmentsToday} value={String(dashboard.todayAppointments)} note={copy.recordsFromPostgres} />
+        <MetricCard label={copy.dailyNetRevenue} value={adminMoney.format(dashboard.dailyRevenue)} note={copy.paidRefundedNote} />
         <MetricCard
-          label="Next appointment"
+          label={copy.nextAppointment}
           value={dashboard.nextAppointment?.time ?? "-"}
-          note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : "no upcoming appointments"}
+          note={dashboard.nextAppointment ? `${dashboard.nextAppointment.client}, ${dashboard.nextAppointment.service}` : copy.noUpcomingAppointments}
         />
-        <MetricCard label="Low stock" value={String(dashboard.lowStockProducts)} note="products need restocking" />
-        <MetricCard label="Consumables used" value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} write-offs · ${analytics.periodLabel.toLowerCase()}`} />
-        <MetricCard label="Low consumables" value={String(analytics.lowConsumableProducts)} note="package-content stock alerts" />
+        <MetricCard label={copy.lowStock} value={String(dashboard.lowStockProducts)} note={copy.productsNeedRestocking} />
+        <MetricCard label={copy.consumablesUsed} value={formatAnalyticsTotals(analytics)} note={`${analytics.logsCount} ${copy.writeOffs} · ${analytics.periodLabel.toLowerCase()}`} />
+        <MetricCard label={copy.lowConsumables} value={String(analytics.lowConsumableProducts)} note={copy.packageAlerts} />
       </section>
 
       <section className="admin-panel dashboard-analytics-panel">
         <div className="dashboard-panel-heading">
           <div className="dashboard-panel-title">
-            <span>Net financial report</span>
-            <h2>Business analytics</h2>
+            <span>{copy.netFinancialReport}</span>
+            <h2>{copy.businessAnalytics}</h2>
           </div>
           <div className="dashboard-heading-actions">
-            <span>{isBusinessAnalyticsLoading ? "Loading..." : visibleBusinessAnalytics.periodLabel}</span>
+            <span>{isBusinessAnalyticsLoading ? copy.loading : visibleBusinessAnalytics.periodLabel}</span>
             <div className="dashboard-export-actions">
               <button className="panel-action icon-button" onClick={() => exportAnalyticsCsv(visibleBusinessAnalytics)} type="button">
                 <Download aria-hidden="true" size={15} />
-                Analytics CSV
+                {copy.analyticsCsv}
               </button>
               <button className="panel-action icon-button" onClick={() => exportAppointmentsCsv(appointments)} type="button">
                 <Download aria-hidden="true" size={15} />
-                Appointments CSV
+                {copy.appointmentsCsv}
               </button>
               <button className="panel-action icon-button" onClick={() => exportInventoryCsv(products, analytics)} type="button">
                 <Download aria-hidden="true" size={15} />
-                Inventory CSV
+                {copy.inventoryCsv}
               </button>
             </div>
           </div>
         </div>
 
         <div className="analytics-period-toolbar">
-          <div className="segmented-control analytics-period-tabs" aria-label="Business analytics period">
+          <div className="segmented-control analytics-period-tabs" aria-label={copy.businessAnalytics}>
             <button className={selectedBusinessPeriod === "week" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("week")} type="button">
-              Week
+              {copy.week}
             </button>
             <button className={selectedBusinessPeriod === "month" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("month")} type="button">
-              Month
+              {copy.month}
             </button>
             <button className={selectedBusinessPeriod === "custom" ? "active" : ""} disabled={isBusinessAnalyticsLoading} onClick={() => setSelectedBusinessPeriod("custom")} type="button">
-              Custom
+              {copy.custom}
             </button>
           </div>
 
           {selectedBusinessPeriod === "custom" ? (
             <div className="analytics-custom-range">
               <label>
-                <span>From</span>
+                <span>{copy.from}</span>
                 <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessFrom(event.target.value)} type="date" value={customBusinessFrom} />
               </label>
               <label>
-                <span>To</span>
+                <span>{copy.to}</span>
                 <input disabled={isBusinessAnalyticsLoading} onChange={(event) => setCustomBusinessTo(event.target.value)} type="date" value={customBusinessTo} />
               </label>
               <button className="panel-action" disabled={isBusinessAnalyticsLoading} onClick={() => void loadBusinessAnalytics("custom")} type="button">
-                Apply
+                {copy.apply}
               </button>
             </div>
           ) : null}
@@ -144,71 +344,71 @@ export function DashboardSection({
 
         <div className="dashboard-insight-grid">
           <article>
-            <span>Completed visits</span>
+            <span>{copy.completedVisits}</span>
             <strong>{completedVisits}</strong>
           </article>
           <article>
-            <span>Net service revenue</span>
+            <span>{copy.netServiceRevenue}</span>
             <strong>{formatMoneyRange(serviceRevenueFrom, serviceRevenueTo)}</strong>
           </article>
           <article>
-            <span>Net service profit</span>
+            <span>{copy.netServiceProfit}</span>
             <strong>{formatNullableMoneyRange(serviceProfitFrom, serviceProfitTo)}</strong>
           </article>
           <article>
-            <span>Net product revenue</span>
+            <span>{copy.netProductRevenue}</span>
             <strong>{adminMoney.format(productRevenue)}</strong>
           </article>
           <article>
-            <span>Consumable cost</span>
+            <span>{copy.consumableCost}</span>
             <strong>{formatNullableMoney(materialCost)}</strong>
           </article>
           <article>
-            <span>Net retail product profit</span>
+            <span>{copy.netRetailProductProfit}</span>
             <strong>{formatNullableMoney(productProfit)}</strong>
           </article>
           <article>
-            <span>Critical forecast</span>
+            <span>{copy.criticalForecast}</span>
             <strong>{criticalProcedureProducts}</strong>
           </article>
         </div>
 
         <div className="analytics-comparison-grid">
-          <ComparisonCard label="Visits" metric={visibleBusinessAnalytics.comparison.completedVisits} />
-          <ComparisonCard label="Net service revenue" metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
-          <ComparisonCard label="Net service profit" metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
-          <ComparisonCard label="Net product profit" metric={visibleBusinessAnalytics.comparison.productProfit} money />
+          <ComparisonCard label={copy.visits} metric={visibleBusinessAnalytics.comparison.completedVisits} />
+          <ComparisonCard label={copy.netServiceRevenue} metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
+          <ComparisonCard label={copy.netServiceProfit} metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
+          <ComparisonCard label={copy.netProductProfit} metric={visibleBusinessAnalytics.comparison.productProfit} money />
         </div>
 
         <div className="analytics-visual-grid">
           <section className="analytics-chart-card wide">
             <div className="chart-heading">
-              <h3>Net revenue / profit by day</h3>
+              <h3>{copy.revenueProfitByDay}</h3>
               <span>{visibleBusinessAnalytics.periodLabel}</span>
             </div>
             <DailyTrendChart items={visibleBusinessAnalytics.dailyTrend} />
           </section>
           <section className="analytics-chart-card">
             <div className="chart-heading">
-              <h3>Top consumables</h3>
-              <span>by material cost</span>
+              <h3>{copy.topConsumables}</h3>
+              <span>{copy.byMaterialCost}</span>
             </div>
             <HorizontalBarChart
-              emptyLabel="No consumables yet"
+              emptyLabel={copy.noConsumablesYet}
               items={visibleBusinessAnalytics.procedureProductUsage.slice(0, 5).map((item) => ({
                 label: item.productName,
                 value: item.consumableCost ?? 0,
-                text: item.consumableCost === null ? "not tracked" : formatHryvnia(item.consumableCost)
+                text: item.consumableCost === null ? copy.notTracked : formatHryvnia(item.consumableCost)
               }))}
             />
           </section>
           <section className="analytics-chart-card">
             <div className="chart-heading">
-              <h3>Low-stock forecast</h3>
-              <span>visits left</span>
+              <h3>{copy.lowStockForecast}</h3>
+              <span>{copy.visitsLeft}</span>
             </div>
             <HorizontalBarChart
-              emptyLabel="No forecast data"
+              emptyLabel={copy.noForecastData}
               invert
               items={visibleBusinessAnalytics.procedureProductUsage
                 .filter((item) => item.estimatedProceduresLeft !== null)
@@ -217,7 +417,7 @@ export function DashboardSection({
                 .map((item) => ({
                   label: item.productName,
                   value: item.estimatedProceduresLeft ?? 0,
-                  text: `${item.estimatedProceduresLeft} visits`
+                  text: `${item.estimatedProceduresLeft} ${copy.visits}`
                 }))}
             />
           </section>
@@ -225,8 +425,8 @@ export function DashboardSection({
 
         <section className="attention-panel">
           <div className="chart-heading">
-            <h3>Attention needed</h3>
-            <span>{visibleBusinessAnalytics.attentionItems.length} signals</span>
+            <h3>{copy.attentionNeeded}</h3>
+            <span>{visibleBusinessAnalytics.attentionItems.length} {copy.signals}</span>
           </div>
           <div className="attention-list">
             {visibleBusinessAnalytics.attentionItems.length > 0 ? (
@@ -237,12 +437,12 @@ export function DashboardSection({
                 </article>
               ))
             ) : (
-              <div className="modal-state">No urgent business signals for this period.</div>
+              <div className="modal-state">{copy.noSignals}</div>
             )}
           </div>
         </section>
 
-        <div className="dashboard-report-tabs" aria-label="Business report type">
+        <div className="dashboard-report-tabs" aria-label={copy.businessReportType}>
           {reportTabs.map((tab) => (
             <button className={activeReport === tab.id ? "active" : ""} key={tab.id} onClick={() => setActiveReport(tab.id)} type="button">
               {tab.label}
@@ -250,54 +450,54 @@ export function DashboardSection({
           ))}
         </div>
 
-        <section className="dashboard-report-card active">{renderBusinessReport(activeReport, visibleBusinessAnalytics)}</section>
+        <section className="dashboard-report-card active">{renderBusinessReport(activeReport, visibleBusinessAnalytics, copy)}</section>
       </section>
 
       <section className="dashboard-secondary-grid">
-        <Panel title="Today's appointments" action="Create appointment">
+        <Panel title={copy.todaysAppointments} action={copy.createAppointment}>
           <DataTable
-            columns={["Time", "Client", "Service", "Employee", "Status"]}
+            columns={[copy.time, copy.client, copy.service, copy.employee, copy.status]}
             rows={
               todayAppointments.length > 0
                 ? todayAppointments.map((item) => [item.time, item.client, item.service, item.master, <StatusBadge status={item.status} />])
-                : [["No appointments today", "-", "-", "-", "-"]]
+                : [[copy.noAppointmentsToday, "-", "-", "-", "-"]]
             }
           />
         </Panel>
 
-        <Panel title="Restock suggestions">
+        <Panel title={copy.restockSuggestions}>
           <DataTable
-            columns={["Product", "Stock", "Minimum", "Buy"]}
+            columns={[copy.product, copy.stock, copy.minimum, copy.buy]}
             rows={
               visibleBusinessAnalytics.restock.length > 0
                 ? visibleBusinessAnalytics.restock.map((item) => [
                     item.categoryName ? `${item.productName} · ${item.categoryName}` : item.productName,
-                    formatBusinessStock(item),
-                    `${item.minStockQuantity} packs`,
-                    item.packagesToBuy > 0 ? `${item.packagesToBuy} packs` : "check stock"
+                    formatBusinessStock(item, copy),
+                    `${item.minStockQuantity} ${copy.packs}`,
+                    item.packagesToBuy > 0 ? `${item.packagesToBuy} ${copy.packs}` : copy.checkStock
                   ])
-                : [["Stock is healthy", "-", "-", "-"]]
+                : [[copy.stockHealthy, "-", "-", "-"]]
             }
           />
         </Panel>
 
-        <Panel title="Consumable analytics">
+        <Panel title={copy.consumableAnalytics}>
           <DataTable
-            columns={["Product", "Used", "Appointments", "Current stock"]}
+            columns={[copy.product, copy.used, copy.appointments, copy.currentStock]}
             rows={
               analytics.products.length > 0
                 ? analytics.products.map((item) => [
                     item.productCategory ? `${item.productName} · ${item.productCategory}` : item.productName,
                     `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)}`,
-                    `${item.appointmentCount} appointments`,
-                    formatAnalyticsStock(item)
+                    `${item.appointmentCount} ${copy.appointmentCount}`,
+                    formatAnalyticsStock(item, copy)
                   ])
-                : [["No write-offs yet", "-", "-", "-"]]
+                : [[copy.noWriteOffsYet, "-", "-", "-"]]
             }
           />
         </Panel>
 
-        <Panel title="Recent write-offs">
+        <Panel title={copy.recentWriteOffs}>
           <InfoList
             items={
               analytics.recentLogs.length > 0
@@ -305,7 +505,7 @@ export function DashboardSection({
                     `${formatShortDate(log.createdAt)} · ${log.productName}`,
                     `${formatPlainNumber(log.quantity)} ${formatUnit(log.unit)} · ${log.serviceName} · ${log.clientName}`
                   ])
-                : [["No data", "Complete an appointment with consumables to see write-offs here."]]
+                : [[copy.noData, copy.completeAppointmentHint]]
             }
           />
         </Panel>
@@ -650,23 +850,23 @@ function HorizontalBarChart({
   );
 }
 
-function renderBusinessReport(report: "service" | "materials" | "forecast" | "products" | "brands" | "employees", analytics: AdminData["businessAnalytics"]) {
+function renderBusinessReport(report: "service" | "materials" | "forecast" | "products" | "brands" | "employees", analytics: AdminData["businessAnalytics"], copy: DashboardCopy) {
   if (report === "materials") {
     return (
       <>
-        <h3>Material pressure by service</h3>
+        <h3>{copy.materialPressureByService}</h3>
         <DataTable
-          columns={["Service", "Visits", "Used", "Consumables", "Net profit after materials"]}
+          columns={[copy.service, copy.visits, copy.used, copy.consumableCost, copy.netServiceProfit]}
           rows={
             analytics.materialUsageByService.length > 0
               ? analytics.materialUsageByService.map((item) => [
                   item.serviceName,
-                  `${item.appointmentCount} visits`,
+                  `${item.appointmentCount} ${copy.visits}`,
                   formatMaterialUsage(item.usedMl, item.usedGram),
-                  formatNullableMoney(item.consumableCost),
-                  formatNullableMoneyRange(item.profitFrom, item.profitTo)
+                  formatNullableMoney(item.consumableCost, copy),
+                  formatNullableMoneyRange(item.profitFrom, item.profitTo, copy)
                 ])
-              : [["No material write-offs", "-", "-", "-", "-"]]
+              : [[copy.noMaterialWriteOffs, "-", "-", "-", "-"]]
           }
         />
       </>
@@ -676,19 +876,19 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
   if (report === "forecast") {
     return (
       <>
-        <h3>Procedure product forecast</h3>
+        <h3>{copy.procedureProductForecast}</h3>
         <DataTable
-          columns={["Product", "Used", "Cost", "Average / visit", "Stock forecast"]}
+          columns={[copy.product, copy.used, copy.cost, copy.averageVisit, copy.stockForecast]}
           rows={
             analytics.procedureProductUsage.length > 0
               ? analytics.procedureProductUsage.map((item) => [
                   item.categoryName ? `${item.productName} · ${item.categoryName}` : item.productName,
-                  `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)} · ${item.appointmentCount} visits`,
-                  formatNullableMoney(item.consumableCost),
-                  item.averagePerAppointment === null ? "not tracked" : `${formatPlainNumber(item.averagePerAppointment)} ${formatUnit(item.unit)}`,
-                  formatProcedureForecast(item)
+                  `${formatPlainNumber(item.usedQuantity)} ${formatUnit(item.unit)} · ${item.appointmentCount} ${copy.visits}`,
+                  formatNullableMoney(item.consumableCost, copy),
+                  item.averagePerAppointment === null ? copy.notTracked : `${formatPlainNumber(item.averagePerAppointment)} ${formatUnit(item.unit)}`,
+                  formatProcedureForecast(item, copy)
                 ])
-              : [["No procedure product usage", "-", "-", "-", "-"]]
+              : [[copy.noProcedureUsage, "-", "-", "-", "-"]]
           }
         />
       </>
@@ -698,13 +898,13 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
   if (report === "products") {
     return (
       <>
-        <h3>Product sales</h3>
+        <h3>{copy.productSales}</h3>
         <DataTable
-          columns={["Category", "Units", "Net revenue", "Net profit"]}
+          columns={[copy.category, copy.units, copy.netProductRevenue, copy.netProductProfit]}
           rows={
             analytics.productSalesByCategory.length > 0
-              ? analytics.productSalesByCategory.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
-              : [["No product sales", "-", "-", "-"]]
+              ? analytics.productSalesByCategory.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit, copy)])
+              : [[copy.noProductSales, "-", "-", "-"]]
           }
         />
       </>
@@ -714,13 +914,13 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
   if (report === "brands") {
     return (
       <>
-        <h3>Brand performance</h3>
+        <h3>{copy.brandPerformance}</h3>
         <DataTable
-          columns={["Brand", "Units", "Net revenue", "Net profit"]}
+          columns={[copy.brands, copy.units, copy.netProductRevenue, copy.netProductProfit]}
           rows={
             analytics.productSalesByBrand.length > 0
-              ? analytics.productSalesByBrand.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit)])
-              : [["No product sales", "-", "-", "-"]]
+              ? analytics.productSalesByBrand.map((item) => [item.name, String(item.quantity), adminMoney.format(item.revenue), formatNullableMoney(item.profit, copy)])
+              : [[copy.noProductSales, "-", "-", "-"]]
           }
         />
       </>
@@ -730,20 +930,20 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
   if (report === "employees") {
     return (
       <>
-        <h3>Employee performance</h3>
+        <h3>{copy.employeePerformance}</h3>
         <DataTable
-          columns={["Employee", "Visits", "Net revenue", "Consumables", "Avg net profit", "Materials"]}
+          columns={[copy.employee, copy.visits, copy.netServiceRevenue, copy.consumableCost, copy.avgNetProfit, copy.materials]}
           rows={
             analytics.employeePerformance.length > 0
               ? analytics.employeePerformance.map((item) => [
                   item.employeeName,
-                  `${item.completedVisits} visits`,
+                  `${item.completedVisits} ${copy.visits}`,
                   formatMoneyRange(item.revenueFrom, item.revenueTo),
-                  formatNullableMoney(item.consumableCost),
-                  formatNullableMoneyRange(item.averageProfitFrom, item.averageProfitTo),
+                  formatNullableMoney(item.consumableCost, copy),
+                  formatNullableMoneyRange(item.averageProfitFrom, item.averageProfitTo, copy),
                   formatMaterialUsage(item.usedMl, item.usedGram)
                 ])
-              : [["No employee performance yet", "-", "-", "-", "-", "-"]]
+              : [[copy.noEmployeePerformance, "-", "-", "-", "-", "-"]]
           }
         />
       </>
@@ -752,19 +952,19 @@ function renderBusinessReport(report: "service" | "materials" | "forecast" | "pr
 
   return (
     <>
-      <h3>Net service profit</h3>
+      <h3>{copy.netServiceProfit}</h3>
       <DataTable
-        columns={["Service", "Visits", "Net revenue", "Consumables", "Net profit"]}
+        columns={[copy.service, copy.visits, copy.netServiceRevenue, copy.consumableCost, copy.netServiceProfit]}
         rows={
           analytics.services.length > 0
             ? analytics.services.map((item) => [
                 item.serviceName,
-                `${item.appointmentCount} visits`,
+                `${item.appointmentCount} ${copy.visits}`,
                 formatMoneyRange(item.revenueFrom, item.revenueTo),
-                formatNullableMoney(item.consumableCost),
-                formatNullableMoneyRange(item.profitFrom, item.profitTo)
+                formatNullableMoney(item.consumableCost, copy),
+                formatNullableMoneyRange(item.profitFrom, item.profitTo, copy)
               ])
-            : [["No completed services", "-", "-", "-", "-"]]
+            : [[copy.noCompletedServices, "-", "-", "-", "-"]]
         }
       />
     </>
@@ -775,12 +975,12 @@ function formatMoneyRange(from: number, to: number) {
   return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
 }
 
-function formatNullableMoney(value: number | null) {
-  return value === null ? "not tracked" : formatHryvnia(value);
+function formatNullableMoney(value: number | null, copy: DashboardCopy = dashboardCopy.en) {
+  return value === null ? copy.notTracked : formatHryvnia(value);
 }
 
-function formatNullableMoneyRange(from: number | null, to: number | null) {
-  return from === null || to === null ? "not tracked" : formatMoneyRange(from, to);
+function formatNullableMoneyRange(from: number | null, to: number | null, copy: DashboardCopy = dashboardCopy.en) {
+  return from === null || to === null ? copy.notTracked : formatMoneyRange(from, to);
 }
 
 function formatAnalyticsTotals(analytics: AdminData["consumableAnalytics"]) {
@@ -811,33 +1011,33 @@ function formatMaterialUsage(usedMl: number, usedGram: number) {
   return parts.length > 0 ? parts.join(" / ") : "0";
 }
 
-function formatAnalyticsStock(item: AdminData["consumableAnalytics"]["products"][number]) {
+function formatAnalyticsStock(item: AdminData["consumableAnalytics"]["products"][number], copy: DashboardCopy = dashboardCopy.en) {
   if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null) {
-    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`;
+    return `${formatPlainNumber(item.stockPackageEquivalent)} ${copy.packs} · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`;
   }
 
-  return "not tracked";
+  return copy.notTracked;
 }
 
-function formatBusinessStock(item: AdminData["businessAnalytics"]["restock"][number]) {
+function formatBusinessStock(item: AdminData["businessAnalytics"]["restock"][number], copy: DashboardCopy = dashboardCopy.en) {
   if (item.stockContentAmount !== null && item.stockPackageEquivalent !== null && item.contentUnit !== null) {
-    return `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.contentUnit)}`;
+    return `${formatPlainNumber(item.stockPackageEquivalent)} ${copy.packs} · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.contentUnit)}`;
   }
 
-  return `${item.stockQuantity} packs`;
+  return `${item.stockQuantity} ${copy.packs}`;
 }
 
-function formatProcedureForecast(item: AdminData["businessAnalytics"]["procedureProductUsage"][number]) {
+function formatProcedureForecast(item: AdminData["businessAnalytics"]["procedureProductUsage"][number], copy: DashboardCopy = dashboardCopy.en) {
   const stock =
     item.stockContentAmount !== null && item.stockPackageEquivalent !== null
-      ? `${formatPlainNumber(item.stockPackageEquivalent)} packs · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`
-      : "stock not tracked";
+      ? `${formatPlainNumber(item.stockPackageEquivalent)} ${copy.packs} · ${formatPlainNumber(item.stockContentAmount)} ${formatUnit(item.unit)}`
+      : copy.stockNotTracked;
 
   if (item.estimatedProceduresLeft === null) {
     return stock;
   }
 
-  return `${item.estimatedProceduresLeft} visits left · ${stock}`;
+  return `${item.estimatedProceduresLeft} ${copy.visitsLeft} · ${stock}`;
 }
 
 function getDateInputValue(value: Date) {

@@ -25,6 +25,7 @@ import {
   type StockMovementInput
 } from "../../api";
 import { AdminModal, DataTable, InlineActions, PaginationControls, Panel, StatusBadge } from "../../components/admin-ui";
+import { useCrmT } from "../../crm-i18n";
 import { adminMoney, formatPlainNumber, formatUnit } from "../../utils/format";
 
 type StockMovementHistoryRow = {
@@ -63,6 +64,7 @@ export function ProductsSection({
   products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingComponent, setIsCreatingComponent] = useState(false);
@@ -120,20 +122,20 @@ export function ProductsSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Catalog setup" wide>
+      <Panel title={t("catalogSetup")} wide>
         <div className="compact-management-grid">
           <section className="compact-management-card">
             <div className="compact-management-header">
               <div>
-                <p className="admin-kicker">Categories</p>
+                <p className="admin-kicker">{t("categories")}</p>
                 <strong>{categories.length}</strong>
               </div>
               <button className="panel-action" onClick={() => setIsCreatingCategory(true)} type="button">
-                + Add category
+                + {t("addCategory")}
               </button>
             </div>
             <DataTable
-              columns={["Photo", "Category", "Products", "Actions"]}
+              columns={[t("photo"), t("category"), t("products"), t("actions")]}
               rows={
                 categories.length > 0
                   ? categories.map((category) => [
@@ -141,9 +143,9 @@ export function ProductsSection({
                       category.name,
                       String(category.productCount),
                       <InlineActions
-                        labels={["Edit", "Delete"]}
+                        labels={[t("edit"), t("delete")]}
                         onAction={(label) => {
-                          if (label === "Edit") {
+                          if (label === t("edit")) {
                             setEditingCategoryId(category.id);
                             return;
                           }
@@ -152,7 +154,7 @@ export function ProductsSection({
                         }}
                       />
                     ])
-                  : [["-", "No categories yet", "-", "-"]]
+                  : [["-", t("noCategoriesYet"), "-", "-"]]
               }
             />
           </section>
@@ -160,24 +162,24 @@ export function ProductsSection({
           <section className="compact-management-card">
             <div className="compact-management-header">
               <div>
-                <p className="admin-kicker">Brands</p>
+                <p className="admin-kicker">{t("brands")}</p>
                 <strong>{brands.length}</strong>
               </div>
               <button className="panel-action" onClick={() => setIsCreatingBrand(true)} type="button">
-                + Add brand
+                + {t("addBrand")}
               </button>
             </div>
             <DataTable
-              columns={["Brand", "Products", "Actions"]}
+              columns={[t("brand"), t("products"), t("actions")]}
               rows={
                 brands.length > 0
                   ? brands.map((brand) => [
                       brand.name,
                       String(brand.productCount),
                       <InlineActions
-                        labels={["Edit", "Delete"]}
+                        labels={[t("edit"), t("delete")]}
                         onAction={(label) => {
-                          if (label === "Edit") {
+                          if (label === t("edit")) {
                             setEditingBrandId(brand.id);
                             return;
                           }
@@ -186,7 +188,7 @@ export function ProductsSection({
                         }}
                       />
                     ])
-                : [["No brands yet", "-", "-"]]
+                : [[t("noBrandsYet"), "-", "-"]]
               }
             />
           </section>
@@ -194,24 +196,24 @@ export function ProductsSection({
           <section className="compact-management-card">
             <div className="compact-management-header">
               <div>
-                <p className="admin-kicker">Components</p>
+                <p className="admin-kicker">{t("components")}</p>
                 <strong>{components.length}</strong>
               </div>
               <button className="panel-action" onClick={() => setIsCreatingComponent(true)} type="button">
-                + Add component
+                + {t("addComponent")}
               </button>
             </div>
             <DataTable
-              columns={["Component", "Products", "Actions"]}
+              columns={[t("component"), t("products"), t("actions")]}
               rows={
                 components.length > 0
                   ? components.map((component) => [
                       component.name,
                       String(component.productCount),
                       <InlineActions
-                        labels={["Edit", "Delete"]}
+                        labels={[t("edit"), t("delete")]}
                         onAction={(label) => {
-                          if (label === "Edit") {
+                          if (label === t("edit")) {
                             setEditingComponentId(component.id);
                             return;
                           }
@@ -220,48 +222,48 @@ export function ProductsSection({
                         }}
                       />
                     ])
-                  : [["No components yet", "-", "-"]]
+                  : [[t("noComponentsYet"), "-", "-"]]
               }
             />
           </section>
         </div>
       </Panel>
-      <Panel title="Products / inventory" action="Add product" onAction={() => setIsCreatingProduct(true)} wide>
+      <Panel title={t("productsInventory")} action={t("addProduct")} onAction={() => setIsCreatingProduct(true)} wide>
         <div className="inventory-summary-grid">
           <article>
-            <span>Total products</span>
+            <span>{t("totalProducts")}</span>
             <strong>{inventorySummary.totalProducts}</strong>
-            <small>{inventorySummary.trackedProducts} tracked in stock</small>
+            <small>{inventorySummary.trackedProducts} {t("trackedInStock")}</small>
           </article>
           <article>
-            <span>Low stock</span>
+            <span>{t("lowStock")}</span>
             <strong>{inventorySummary.lowStockProducts}</strong>
-            <small>{inventorySummary.outOfStockProducts} out of stock</small>
+            <small>{inventorySummary.outOfStockProducts} {t("outOfStock")}</small>
           </article>
           <article>
-            <span>Procedure materials</span>
+            <span>{t("procedureMaterials")}</span>
             <strong>{inventorySummary.procedureProducts}</strong>
-            <small>Products used in services</small>
+            <small>{t("productsUsedInServices")}</small>
           </article>
           <article>
-            <span>Retail stock value</span>
+            <span>{t("retailStockValue")}</span>
             <strong>{adminMoney.format(inventorySummary.retailValue)}</strong>
-            <small>Estimated by sale price</small>
+            <small>{t("estimatedBySalePrice")}</small>
           </article>
         </div>
         <div className="table-toolbar">
           <label>
-            <span>Search</span>
+            <span>{t("search")}</span>
             <div className="admin-search table-search">
               <Search aria-hidden="true" size={17} />
-              <input placeholder="Name, SKU, brand" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} />
+              <input placeholder={t("nameSkuBrand")} value={productSearch} onChange={(event) => setProductSearch(event.target.value)} />
             </div>
           </label>
           <label>
-            <span>Category filter</span>
+            <span>{t("categoryFilter")}</span>
             <select value={productCategoryFilter} onChange={(event) => setProductCategoryFilter(event.target.value)}>
-              <option value="all">All categories</option>
-              <option value="">Uncategorized</option>
+              <option value="all">{t("allCategories")}</option>
+              <option value="">{t("uncategorized")}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -270,10 +272,10 @@ export function ProductsSection({
             </select>
           </label>
           <label>
-            <span>Brand filter</span>
+            <span>{t("brandFilter")}</span>
             <select value={productBrandFilter} onChange={(event) => setProductBrandFilter(event.target.value)}>
-              <option value="all">All brands</option>
-              <option value="">No brand</option>
+              <option value="all">{t("allBrands")}</option>
+              <option value="">{t("noBrand")}</option>
               {brands.map((brand) => (
                 <option key={brand.id} value={brand.id}>
                   {brand.name}
@@ -282,17 +284,17 @@ export function ProductsSection({
             </select>
           </label>
           <label>
-            <span>Purpose filter</span>
+            <span>{t("purposeFilter")}</span>
             <select value={productPurposeFilter} onChange={(event) => setProductPurposeFilter(event.target.value)}>
-              <option value="all">All purposes</option>
-              <option value="sale">For sale</option>
-              <option value="procedure">For procedures</option>
-              <option value="both">Both</option>
+              <option value="all">{t("allPurposes")}</option>
+              <option value="sale">{t("forSale")}</option>
+              <option value="procedure">{t("forProcedures")}</option>
+              <option value="both">{t("both")}</option>
             </select>
           </label>
         </div>
         <DataTable
-          columns={["Category", "Brand", "Purpose", "Product", "Margin", "Stock", "Package", "Boost", "Status", "Actions"]}
+          columns={[t("category"), t("brand"), t("purpose"), t("product"), t("margin"), t("stock"), t("package"), t("boost"), t("status"), t("actions")]}
           rows={
             pagedProducts.length > 0
               ? pagedProducts.map((item) => {
@@ -307,18 +309,18 @@ export function ProductsSection({
                     </button>,
                     formatProductMargin(item),
                     stockLevel === "low" || stockLevel === "out" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
-                    item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
+                    item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : t("notSet"),
                     item.popularityBoost > 0 ? `+${item.popularityBoost}` : "-",
                     <StatusBadge status={stockLevel} />,
                     <InlineActions
-                      labels={["Details", "Edit", "Delete"]}
+                      labels={[t("details"), t("edit"), t("delete")]}
                       onAction={(label) => {
-                        if (label === "Details") {
+                        if (label === t("details")) {
                           setSelectedProductId(item.id);
                           return;
                         }
 
-                        if (label === "Edit") {
+                        if (label === t("edit")) {
                           setEditingProductId(item.id);
                           return;
                         }
@@ -328,24 +330,24 @@ export function ProductsSection({
                     />
                   ];
                 })
-              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-", "-"]]
+              : [[t("noProductsMatchFilters"), "-", "-", "-", "-", "-", "-", "-", "-", "-"]]
           }
         />
-        <PaginationControls currentPage={currentProductPage} label={`${filteredProducts.length} products`} onPageChange={setProductPage} pageCount={productPageCount} />
+        <PaginationControls currentPage={currentProductPage} label={`${filteredProducts.length} ${t("products")}`} onPageChange={setProductPage} pageCount={productPageCount} />
       </Panel>
-      <Panel title="Stock movement history" action="Add movement" onAction={() => setIsCreatingStockMovement(true)} wide>
+      <Panel title={t("stockMovementHistory")} action={t("addMovement")} onAction={() => setIsCreatingStockMovement(true)} wide>
         <div className="stock-history-summary">
           <div>
-            <p className="admin-kicker">Inventory logistics</p>
-            <strong>{stockMovementRows.length} movements</strong>
-            <span>Track purchases, returns, adjustments and material balance changes.</span>
+            <p className="admin-kicker">{t("inventoryLogistics")}</p>
+            <strong>{stockMovementRows.length} {t("movements")}</strong>
+            <span>{t("stockMovementHelp")}</span>
           </div>
           <button className="secondary-button compact-button" onClick={() => setIsViewingStockHistory(true)} type="button">
-            View full history
+            {t("viewFullHistory")}
           </button>
         </div>
         <DataTable
-          columns={["Date", "Type", "Product", "Amount", "Reason"]}
+          columns={[t("date"), t("type"), t("product"), t("amount"), t("reason")]}
           rows={
             latestStockMovementRows.length > 0
               ? latestStockMovementRows.map((movement) => [
@@ -355,12 +357,12 @@ export function ProductsSection({
                   movement.amount,
                   movement.reason || "-"
                 ])
-              : [["No stock movements yet.", "-", "-", "-", "-"]]
+              : [[t("noStockMovementsYet"), "-", "-", "-", "-"]]
           }
         />
       </Panel>
       {isCreatingBrand ? (
-        <AdminModal title="New product brand" onClose={() => setIsCreatingBrand(false)}>
+        <AdminModal title={t("newProductBrand")} onClose={() => setIsCreatingBrand(false)}>
           <ProductBrandForm
             onCancel={() => setIsCreatingBrand(false)}
             onSubmit={(payload) =>
@@ -373,7 +375,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {editingBrand ? (
-        <AdminModal title={`Edit brand: ${editingBrand.name}`} onClose={() => setEditingBrandId(null)}>
+        <AdminModal title={`${t("editBrand")}: ${editingBrand.name}`} onClose={() => setEditingBrandId(null)}>
           <ProductBrandForm
             brand={editingBrand}
             key={editingBrand.id}
@@ -388,7 +390,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isCreatingComponent ? (
-        <AdminModal title="New key component" onClose={() => setIsCreatingComponent(false)}>
+        <AdminModal title={t("newKeyComponent")} onClose={() => setIsCreatingComponent(false)}>
           <ProductComponentForm
             onCancel={() => setIsCreatingComponent(false)}
             onSubmit={(payload) =>
@@ -401,7 +403,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {editingComponent ? (
-        <AdminModal title={`Edit component: ${editingComponent.name}`} onClose={() => setEditingComponentId(null)}>
+        <AdminModal title={`${t("editComponent")}: ${editingComponent.name}`} onClose={() => setEditingComponentId(null)}>
           <ProductComponentForm
             component={editingComponent}
             key={editingComponent.id}
@@ -416,7 +418,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isCreatingCategory ? (
-        <AdminModal title="New product category" onClose={() => setIsCreatingCategory(false)}>
+        <AdminModal title={t("newProductCategory")} onClose={() => setIsCreatingCategory(false)}>
           <ProductCategoryForm
             onCancel={() => setIsCreatingCategory(false)}
             onSubmit={(payload) =>
@@ -429,7 +431,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {editingCategory ? (
-        <AdminModal title={`Edit category: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
+        <AdminModal title={`${t("editCategory")}: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
           <ProductCategoryForm
             category={editingCategory}
             key={editingCategory.id}
@@ -444,7 +446,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isCreatingProduct ? (
-        <AdminModal title="New product" onClose={() => setIsCreatingProduct(false)}>
+        <AdminModal title={t("newProduct")} onClose={() => setIsCreatingProduct(false)}>
           <ProductForm
             brands={brands}
             categories={categories}
@@ -460,7 +462,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {editingProduct ? (
-        <AdminModal title={`Edit product: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
+        <AdminModal title={`${t("editProduct")}: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
           <ProductForm
             brands={brands}
             categories={categories}
@@ -478,7 +480,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isCreatingStockMovement ? (
-        <AdminModal title="Stock movement" onClose={() => setIsCreatingStockMovement(false)}>
+        <AdminModal title={t("stockMovement")} onClose={() => setIsCreatingStockMovement(false)}>
           <StockMovementForm
             onCancel={() => setIsCreatingStockMovement(false)}
             products={products}
@@ -522,6 +524,7 @@ function ProductBrandForm({
   onCancel: () => void;
   onSubmit: (payload: ProductBrandInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     name: brand?.name ?? "",
     description: brand?.description ?? ""
@@ -539,19 +542,19 @@ function ProductBrandForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Brand name</span>
+        <span>{t("brandName")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" type="submit">
-          {brand ? "Save brand" : "Create brand"}
+          {brand ? t("saveBrand") : t("createBrand")}
         </button>
       </div>
     </form>
@@ -567,6 +570,7 @@ function ProductComponentForm({
   onCancel: () => void;
   onSubmit: (payload: ProductComponentInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     name: component?.name ?? "",
     description: component?.description ?? ""
@@ -584,24 +588,24 @@ function ProductComponentForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Component name</span>
+        <span>{t("componentName")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea
           value={form.description}
           onChange={(event) => setForm({ ...form, description: event.target.value })}
-          placeholder="What it does, why it matters, and how it works in the formula"
+          placeholder={t("componentPlaceholder")}
           rows={7}
         />
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" type="submit">
-          {component ? "Save component" : "Create component"}
+          {component ? t("saveComponent") : t("createComponent")}
         </button>
       </div>
     </form>
@@ -617,6 +621,7 @@ function ProductCategoryForm({
   onCancel: () => void;
   onSubmit: (payload: ProductCategoryInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     name: category?.name ?? "",
     description: category?.description ?? "",
@@ -637,7 +642,7 @@ function ProductCategoryForm({
       const result = await uploadAdminProductImage(file);
       setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+      setUploadError(error instanceof Error ? error.message : t("couldNotUploadImage"));
     } finally {
       setIsUploading(false);
     }
@@ -656,29 +661,29 @@ function ProductCategoryForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Category name</span>
+        <span>{t("categoryName")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <label>
-        <span>Category photo</span>
+        <span>{t("categoryPhoto")}</span>
         <input accept="image/jpeg,image/png,image/webp,image/gif" disabled={isUploading} onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)} type="file" />
       </label>
       {uploadError ? <p className="form-note">{uploadError}</p> : null}
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt="Product category preview" src={form.imageUrl} />
+          <img alt={t("productCategoryPreview")} src={form.imageUrl} />
         </div>
       ) : null}
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={isUploading || !form.imageUrl} type="submit">
-          {isUploading ? "Uploading..." : category ? "Save category" : "Create category"}
+          {isUploading ? t("uploading") : category ? t("saveCategory") : t("createCategory")}
         </button>
       </div>
     </form>
@@ -700,6 +705,7 @@ function ProductForm({
   onSubmit: (payload: ProductInput) => Promise<void>;
   product?: AdminData["products"][number];
 }) {
+  const t = useCrmT();
   const initialComponentIds = product?.components.map((component) => component.id) ?? [];
   const [form, setForm] = useState({
     categoryId: product?.categoryId ?? categories[0]?.id ?? "",
@@ -736,7 +742,7 @@ function ProductForm({
       const result = await uploadAdminProductImage(file);
       setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+      setUploadError(error instanceof Error ? error.message : t("couldNotUploadImage"));
     } finally {
       setIsUploading(false);
     }
@@ -770,9 +776,9 @@ function ProductForm({
     <form className="admin-form" onSubmit={submit}>
       {categories.length > 0 ? (
         <label>
-          <span>Category</span>
+          <span>{t("category")}</span>
           <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} required>
-            <option value="">Select category</option>
+            <option value="">{t("selectCategory")}</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
@@ -782,23 +788,23 @@ function ProductForm({
         </label>
       ) : (
         <label>
-          <span>Category</span>
+          <span>{t("category")}</span>
           <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
         </label>
       )}
       <label>
-        <span>Product</span>
+        <span>{t("product")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
-        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="For all hair types" rows={6} />
+        <span>{t("description")}</span>
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={6} />
       </label>
       {brands.length > 0 ? (
         <label>
-          <span>Brand</span>
+          <span>{t("brand")}</span>
           <select value={form.brandId} onChange={(event) => setForm({ ...form, brandId: event.target.value })} required>
-            <option value="">Select brand</option>
+            <option value="">{t("selectBrand")}</option>
             {brands.map((brand) => (
               <option key={brand.id} value={brand.id}>
                 {brand.name}
@@ -808,16 +814,16 @@ function ProductForm({
         </label>
       ) : (
         <label>
-          <span>Brand</span>
+          <span>{t("brand")}</span>
           <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
         </label>
       )}
       <label>
-        <span>Product quote</span>
+        <span>{t("productQuote")}</span>
         <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A short elegant line for the client product card" rows={3} />
       </label>
       <fieldset className="component-picker">
-        <legend>Key components</legend>
+        <legend>{t("keyComponents")}</legend>
         {components.length > 0 ? (
           <div className="component-picker-grid">
             {components.map((component) => {
@@ -846,58 +852,58 @@ function ProductForm({
             })}
           </div>
         ) : (
-          <p className="form-note">Create key components first, then select them here for the public product page.</p>
+          <p className="form-note">{t("componentHint")}</p>
         )}
       </fieldset>
       <label>
-        <span>SKU</span>
+        <span>{t("sku")}</span>
         <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
       </label>
       <label>
-        <span>Purpose</span>
+        <span>{t("purpose")}</span>
         <select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}>
-          <option value="sale">For sale</option>
-          <option value="procedure">For procedures</option>
-          <option value="both">Both</option>
+          <option value="sale">{t("forSale")}</option>
+          <option value="procedure">{t("forProcedures")}</option>
+          <option value="both">{t("both")}</option>
         </select>
       </label>
       <label>
-        <span>Product photo</span>
+        <span>{t("productPhoto")}</span>
         <input accept="image/jpeg,image/png,image/webp,image/gif" disabled={isUploading} onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)} type="file" />
       </label>
       {uploadError ? <p className="form-note">{uploadError}</p> : null}
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt="Product preview" src={form.imageUrl} />
+          <img alt={t("productPreview")} src={form.imageUrl} />
         </div>
       ) : null}
       <label>
-        <span>Purchase price</span>
+        <span>{t("purchasePrice")}</span>
         <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
       </label>
       <label>
-        <span>Sale price</span>
+        <span>{t("salePrice")}</span>
         <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
       </label>
       <label>
-        <span>Stock</span>
+        <span>{t("stock")}</span>
         <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
       </label>
       <label>
-        <span>Minimum stock</span>
+        <span>{t("minimumStock")}</span>
         <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
       </label>
       <label>
-        <span>Popularity boost</span>
+        <span>{t("popularityBoost")}</span>
         <input type="number" min="0" max="1000" step="1" value={form.popularityBoost} onChange={(event) => setForm({ ...form, popularityBoost: event.target.value })} />
-        <small className="form-hint">Adds marketing weight to the popular-products ranking.</small>
+        <small className="form-hint">{t("popularityBoostHint")}</small>
       </label>
       <label>
-        <span>Package content</span>
+        <span>{t("packageContent")}</span>
         <input type="number" min="0.01" step="0.01" value={form.contentAmount} onChange={(event) => setForm({ ...form, contentAmount: event.target.value })} placeholder="60" />
       </label>
       <label>
-        <span>Content unit</span>
+        <span>{t("contentUnit")}</span>
         <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
           <option value="ml">ml</option>
           <option value="gram">g</option>
@@ -906,7 +912,7 @@ function ProductForm({
       <div className="form-actions">
         {onCancel ? (
           <button className="secondary-button compact-button" onClick={onCancel} type="button">
-            Cancel
+            {t("cancel")}
           </button>
         ) : null}
         <button
@@ -914,7 +920,7 @@ function ProductForm({
           disabled={isUploading || !form.imageUrl || (categories.length > 0 ? !form.categoryId : !form.category.trim()) || (brands.length > 0 ? !form.brandId : false)}
           type="submit"
         >
-          {isUploading ? "Uploading..." : product ? "Save product" : "Add product"}
+          {isUploading ? t("uploading") : product ? t("saveProduct") : t("addProduct")}
         </button>
       </div>
     </form>
@@ -930,6 +936,7 @@ function StockMovementForm({
   onSubmit: (payload: StockMovementInput) => Promise<void>;
   products: AdminData["products"];
 }) {
+  const t = useCrmT();
   const initialProduct = products[0];
   const [form, setForm] = useState({
     categoryId: initialProduct?.categoryId ?? "",
@@ -945,7 +952,7 @@ function StockMovementForm({
     products.forEach((product) => {
       const categoryId = product.categoryId ?? "";
       if (!categoryMap.has(categoryId)) {
-        categoryMap.set(categoryId, product.category || "Uncategorized");
+        categoryMap.set(categoryId, product.category || t("uncategorized"));
       }
     });
 
@@ -1005,7 +1012,7 @@ function StockMovementForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Category</span>
+        <span>{t("category")}</span>
         <select
           value={form.categoryId}
           onChange={(event) => {
@@ -1022,7 +1029,7 @@ function StockMovementForm({
         </select>
       </label>
       <label>
-        <span>Product</span>
+        <span>{t("product")}</span>
         <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
           {categoryProducts.map((product) => (
             <option key={product.id} value={product.id}>
@@ -1032,38 +1039,38 @@ function StockMovementForm({
         </select>
       </label>
       <label>
-        <span>Movement type</span>
+        <span>{t("movementType")}</span>
         <select value={form.movementType} onChange={(event) => setForm({ ...form, movementType: event.target.value as StockMovementInput["movementType"] })}>
-          <option value="purchase">Purchase</option>
-          <option value="adjustment">Adjustment</option>
-          <option value="return">Return</option>
+          <option value="purchase">{t("purchase")}</option>
+          <option value="adjustment">{t("adjustment")}</option>
+          <option value="return">{t("return")}</option>
         </select>
       </label>
       <label>
-        <span>Amount mode</span>
+        <span>{t("amountMode")}</span>
         <select value={form.amountMode} onChange={(event) => setForm({ ...form, amountMode: event.target.value as StockMovementInput["amountMode"] })}>
-          <option value="packages">Packages</option>
+          <option value="packages">{t("packages")}</option>
           <option value="content" disabled={!canUseContent}>
             {selectedProduct?.contentUnit ? formatUnit(selectedProduct.contentUnit) : "ml/g"}
           </option>
         </select>
       </label>
       <label>
-        <span>{form.amountMode === "content" ? `Amount, ${formatUnit(selectedProduct?.contentUnit)}` : "Packages"}</span>
+        <span>{form.amountMode === "content" ? `${t("amount")}, ${formatUnit(selectedProduct?.contentUnit)}` : t("packages")}</span>
         <input step={form.amountMode === "content" ? "0.01" : "1"} type="number" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} required />
       </label>
       <label>
-        <span>Reason</span>
+        <span>{t("reason")}</span>
         <textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} rows={3} />
       </label>
       {form.movementType === "adjustment" ? <small className="form-note">Adjustment can be positive or negative.</small> : null}
       {!canUseContent ? <small className="form-note">Configure package content on the product to use ml/g movements.</small> : null}
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={!selectedProduct} type="submit">
-          Save movement
+          {t("save")}
         </button>
       </div>
     </form>
@@ -1071,6 +1078,7 @@ function StockMovementForm({
 }
 
 function StockMovementHistoryModal({ movements, onClose }: { movements: StockMovementHistoryRow[]; onClose: () => void }) {
+  const t = useCrmT();
   const [period, setPeriod] = useState<"week" | "month" | "date" | "range">("week");
   const [selectedDate, setSelectedDate] = useState(today);
   const [rangeFrom, setRangeFrom] = useState(addDaysToDateString(today, -7));
@@ -1103,38 +1111,38 @@ function StockMovementHistoryModal({ movements, onClose }: { movements: StockMov
   }, [period, selectedDate, rangeFrom, rangeTo]);
 
   return (
-    <AdminModal className="stock-history-modal" title="Stock movement history" onClose={onClose}>
+    <AdminModal className="stock-history-modal" title={t("stockMovementHistory")} onClose={onClose}>
       <div className="table-toolbar">
         <label>
-          <span>Period</span>
+          <span>{t("period")}</span>
           <select value={period} onChange={(event) => setPeriod(event.target.value as "week" | "month" | "date" | "range")}>
-            <option value="week">Last week</option>
-            <option value="month">Last month</option>
-            <option value="date">Specific date</option>
-            <option value="range">Date range</option>
+            <option value="week">{t("lastWeek")}</option>
+            <option value="month">{t("lastMonth")}</option>
+            <option value="date">{t("specificDate")}</option>
+            <option value="range">{t("dateRange")}</option>
           </select>
         </label>
         {period === "date" ? (
           <label>
-            <span>Date</span>
+            <span>{t("date")}</span>
             <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
           </label>
         ) : null}
         {period === "range" ? (
           <>
             <label>
-              <span>From</span>
+              <span>{t("from")}</span>
               <input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} />
             </label>
             <label>
-              <span>To</span>
+              <span>{t("to")}</span>
               <input min={rangeFrom} type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} />
             </label>
           </>
         ) : null}
       </div>
       <DataTable
-        columns={["Date", "Time", "Type", "Category", "Brand", "Product", "Amount", "Reason"]}
+        columns={[t("date"), t("time"), t("type"), t("category"), t("brand"), t("product"), t("amount"), t("reason")]}
         rows={
           pagedMovements.length > 0
             ? pagedMovements.map((movement) => [
@@ -1147,10 +1155,10 @@ function StockMovementHistoryModal({ movements, onClose }: { movements: StockMov
                 movement.amount,
                 movement.reason || "-"
               ])
-            : [["No stock movements for this period.", "-", "-", "-", "-", "-", "-", "-"]]
+            : [[t("noStockMovementsForPeriod"), "-", "-", "-", "-", "-", "-", "-"]]
         }
       />
-      <PaginationControls currentPage={currentPage} label={`${filteredMovements.length} movements`} onPageChange={setPage} pageCount={pageCount} />
+      <PaginationControls currentPage={currentPage} label={`${filteredMovements.length} ${t("movements")}`} onPageChange={setPage} pageCount={pageCount} />
     </AdminModal>
   );
 }
@@ -1168,21 +1176,22 @@ function ProductInventoryModal({
   product: AdminData["products"][number];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const productMovements = buildStockMovementHistoryRows([product]);
   const latestMovements = productMovements.slice(0, 6);
   const stockLevel = getProductStockLevel(product);
 
   return (
-    <AdminModal className="product-inventory-modal" title="Product card" onClose={onClose}>
+    <AdminModal className="product-inventory-modal" title={t("productCard")} onClose={onClose}>
       <div className="product-inventory-detail">
         <section className="product-inventory-hero">
           <div className="product-inventory-image">
             {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <Package aria-hidden="true" size={30} />}
           </div>
           <div className="product-inventory-title">
-            <p className="admin-kicker">{product.brand || "No brand"}</p>
+            <p className="admin-kicker">{product.brand || t("noBrand")}</p>
             <h3>{product.name}</h3>
-            <span>{product.description || "No product description."}</span>
+            <span>{product.description || t("noProductDescription")}</span>
           </div>
           <StatusBadge status={stockLevel} />
         </section>
@@ -1191,46 +1200,46 @@ function ProductInventoryModal({
           <section className="product-inventory-panel">
             <div className="product-stat-grid">
               <div>
-                <span>Category</span>
+                <span>{t("category")}</span>
                 <strong>{product.category}</strong>
               </div>
               <div>
-                <span>Purpose</span>
+                <span>{t("purpose")}</span>
                 <strong>{formatProductPurpose(product.purpose)}</strong>
               </div>
               <div>
-                <span>SKU</span>
+                <span>{t("sku")}</span>
                 <strong>{product.sku || "-"}</strong>
               </div>
               <div>
-                <span>Package</span>
-                <strong>{product.contentAmount ? `${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}` : "not set"}</strong>
+                <span>{t("package")}</span>
+                <strong>{product.contentAmount ? `${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}` : t("notSet")}</strong>
               </div>
               <div>
-                <span>Purchase</span>
+                <span>{t("purchase")}</span>
                 <strong>{adminMoney.format(product.purchase)}</strong>
               </div>
               <div>
-                <span>Sale</span>
+                <span>{t("salePrice")}</span>
                 <strong>{adminMoney.format(product.sale)}</strong>
               </div>
               <div>
-                <span>Margin</span>
+                <span>{t("margin")}</span>
                 <strong>{formatProductMargin(product)}</strong>
               </div>
               <div>
-                <span>Popularity boost</span>
+                <span>{t("popularityBoost")}</span>
                 <strong>{product.popularityBoost > 0 ? `+${product.popularityBoost}` : "-"}</strong>
               </div>
               <div>
-                <span>Stock</span>
+                <span>{t("stock")}</span>
                 <strong>{formatProductStock(product)}</strong>
               </div>
             </div>
             {product.quote ? <blockquote>{product.quote}</blockquote> : null}
             {product.components.length > 0 ? (
               <div className="product-component-summary">
-                <p className="admin-kicker">Key components</p>
+                <p className="admin-kicker">{t("keyComponents")}</p>
                 <div>
                   {product.components.map((component) => (
                     <span key={component.id}>{component.name}</span>
@@ -1240,24 +1249,24 @@ function ProductInventoryModal({
             ) : null}
             <div className="product-card-actions">
               <button className="secondary-button compact-button" onClick={onEdit} type="button">
-                Edit product
+                {t("editProduct")}
               </button>
               <button
                 className="secondary-button compact-button danger-action"
                 onClick={() => {
-                  if (window.confirm("Remove this product? If it is used in history, it will be deactivated instead.")) {
+                  if (window.confirm(t("removeProductConfirm"))) {
                     void onDelete();
                   }
                 }}
                 type="button"
               >
-                Remove / deactivate
+                {t("delete")}
               </button>
             </div>
           </section>
 
           <section className="product-inventory-panel">
-            <p className="admin-kicker">Quick stock action</p>
+            <p className="admin-kicker">{t("quickStockAction")}</p>
             <QuickProductMovementForm product={product} runAction={runAction} />
           </section>
         </div>
@@ -1265,17 +1274,17 @@ function ProductInventoryModal({
         <section className="product-inventory-panel">
           <div className="product-history-header">
             <div>
-              <p className="admin-kicker">Local movement history</p>
-              <strong>{productMovements.length} movements</strong>
+              <p className="admin-kicker">{t("localMovementHistory")}</p>
+              <strong>{productMovements.length} {t("movements")}</strong>
             </div>
-            <small>Latest changes for this product only.</small>
+            <small>{t("latestProductChanges")}</small>
           </div>
           <DataTable
-            columns={["Date", "Type", "Amount", "Reason"]}
+            columns={[t("date"), t("type"), t("amount"), t("reason")]}
             rows={
               latestMovements.length > 0
                 ? latestMovements.map((movement) => [formatStockMovementDateTime(movement.createdAt), movement.type, movement.amount, movement.reason || "-"])
-                : [["No movements for this product yet.", "-", "-", "-"]]
+                : [[t("noMovementsForProduct"), "-", "-", "-"]]
             }
           />
         </section>
@@ -1291,6 +1300,7 @@ function QuickProductMovementForm({
   product: AdminData["products"][number];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [action, setAction] = useState<"restock" | "write_off" | "correct">("restock");
   const [amountMode, setAmountMode] = useState<StockMovementInput["amountMode"]>(product.contentAmount ? "content" : "packages");
   const [amount, setAmount] = useState("1");
@@ -1330,29 +1340,29 @@ function QuickProductMovementForm({
 
   return (
     <form className="quick-stock-form" onSubmit={submit}>
-      <div className="segmented-control" role="group" aria-label="Stock action">
+      <div className="segmented-control" role="group" aria-label={t("stockAction")}>
         <button className={action === "restock" ? "active" : ""} onClick={() => setAction("restock")} type="button">
-          Restock
+          {t("stockReplenishment")}
         </button>
         <button className={action === "write_off" ? "active" : ""} onClick={() => setAction("write_off")} type="button">
-          Write off
+          {t("manualWriteOff")}
         </button>
         <button className={action === "correct" ? "active" : ""} onClick={() => setAction("correct")} type="button">
-          Correct
+          {t("stockCorrection")}
         </button>
       </div>
       <div className="quick-stock-grid">
         <label>
-          <span>Amount mode</span>
+          <span>{t("amountMode")}</span>
           <select value={amountMode} onChange={(event) => setAmountMode(event.target.value as StockMovementInput["amountMode"])}>
-            <option value="packages">Packages</option>
+            <option value="packages">{t("packages")}</option>
             <option value="content" disabled={!canUseContent}>
               {product.contentUnit ? formatUnit(product.contentUnit) : "ml/g"}
             </option>
           </select>
         </label>
         <label>
-          <span>{amountMode === "content" ? `Amount, ${formatUnit(product.contentUnit)}` : "Packages"}</span>
+          <span>{amountMode === "content" ? `${t("amount")}, ${formatUnit(product.contentUnit)}` : t("packages")}</span>
           <input
             step={amountMode === "content" ? "0.01" : "1"}
             type="number"
@@ -1363,13 +1373,13 @@ function QuickProductMovementForm({
         </label>
       </div>
       <label>
-        <span>Reason</span>
+        <span>{t("reason")}</span>
         <textarea placeholder={defaultStockReason(action)} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
       {action === "correct" ? <small className="form-note">Use a positive number to add stock or a negative number to reduce it.</small> : null}
       {!canUseContent ? <small className="form-note">Package content is not configured, so only package movements are available.</small> : null}
       <button className="primary-button admin-submit" disabled={!Number(amount)} type="submit">
-        Save stock action
+        {t("save")}
       </button>
     </form>
   );

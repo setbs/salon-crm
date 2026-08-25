@@ -13,6 +13,7 @@ import {
   type ServiceInput
 } from "../../api";
 import { AdminModal, DataTable, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
+import { useCrmT } from "../../crm-i18n";
 import { formatPlainNumber, formatUnit } from "../../utils/format";
 
 type DisplayPrice = {
@@ -59,6 +60,7 @@ export function ServicesSection({
   products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -102,14 +104,14 @@ export function ServicesSection({
   function renderServiceActions(item: AdminData["services"][number]) {
     return (
       <InlineActions
-        labels={[item.active ? "Disable" : "Enable", "Edit", ...(item.canDelete ? ["Delete"] : [])]}
+        labels={[item.active ? t("disable") : t("enable"), t("edit"), ...(item.canDelete ? [t("delete")] : [])]}
         onAction={(label) => {
-          if (label === "Edit") {
+          if (label === t("edit")) {
             setEditingServiceId(item.id);
             return;
           }
 
-          if (label === "Delete") {
+          if (label === t("delete")) {
             void runAction(() => deleteAdminService(item.id));
             return;
           }
@@ -122,22 +124,22 @@ export function ServicesSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Service categories" action="Add category" onAction={() => setIsCreatingCategory(true)} wide>
+      <Panel title={t("serviceCategories")} action={t("addCategory")} onAction={() => setIsCreatingCategory(true)} wide>
         <DataTable
-          columns={["Name", "Description", "Status", "Actions"]}
+          columns={[t("name"), t("description"), t("status"), t("actions")]}
           rows={categories.map((category) => [
             category.name,
-            category.description ?? "no description",
+            category.description ?? t("noDescription"),
             <StatusBadge status={category.active ? "active" : "disabled"} />,
             <InlineActions
-              labels={[category.active ? "Disable" : "Enable", "Edit", "Delete"]}
+              labels={[category.active ? t("disable") : t("enable"), t("edit"), t("delete")]}
               onAction={(label) => {
-                if (label === "Edit") {
+                if (label === t("edit")) {
                   setEditingCategoryId(category.id);
                   return;
                 }
 
-                if (label === "Delete") {
+                if (label === t("delete")) {
                   void runAction(() => deleteAdminServiceCategory(category.id));
                   return;
                 }
@@ -148,42 +150,42 @@ export function ServicesSection({
           ])}
         />
       </Panel>
-      <Panel title="Services" action="Add service" onAction={() => setIsCreatingService(true)} wide>
+      <Panel title={t("services")} action={t("addService")} onAction={() => setIsCreatingService(true)} wide>
         <div className="service-summary-grid">
           <article>
-            <span>Total services</span>
+            <span>{t("totalServices")}</span>
             <strong>{serviceSummary.total}</strong>
-            <small>{filteredServices.length} visible with current filters</small>
+            <small>{filteredServices.length} {t("visibleWithFilters")}</small>
           </article>
           <article>
-            <span>Active</span>
+            <span>{t("active")}</span>
             <strong>{serviceSummary.active}</strong>
-            <small>{serviceSummary.disabled} disabled</small>
+            <small>{serviceSummary.disabled} {t("disabled")}</small>
           </article>
           <article>
-            <span>Assigned</span>
+            <span>{t("assigned")}</span>
             <strong>{serviceSummary.assigned}</strong>
-            <small>{serviceSummary.unassigned} without specialist</small>
+            <small>{serviceSummary.unassigned} {t("withoutSpecialist")}</small>
           </article>
           <article>
-            <span>Consumables</span>
+            <span>{t("consumables")}</span>
             <strong>{serviceSummary.withConsumables}</strong>
-            <small>{serviceSummary.withoutConsumables} without materials</small>
+            <small>{serviceSummary.withoutConsumables} {t("withoutMaterials")}</small>
           </article>
         </div>
         <div className="table-toolbar">
           <label>
-            <span>Search</span>
+            <span>{t("search")}</span>
             <div className="admin-search table-search">
               <Search aria-hidden="true" size={17} />
-              <input placeholder="Name, description, specialist, material" value={serviceSearch} onChange={(event) => setServiceSearch(event.target.value)} />
+              <input placeholder={t("serviceSearchPlaceholder")} value={serviceSearch} onChange={(event) => setServiceSearch(event.target.value)} />
             </div>
           </label>
           <label>
-            <span>Category filter</span>
+            <span>{t("categoryFilter")}</span>
             <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-              <option value="all">All categories</option>
-              <option value="">Uncategorized</option>
+              <option value="all">{t("allCategories")}</option>
+              <option value="">{t("uncategorized")}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -192,10 +194,10 @@ export function ServicesSection({
             </select>
           </label>
           <label>
-            <span>Specialist filter</span>
+            <span>{t("specialistFilter")}</span>
             <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
-              <option value="all">All specialists</option>
-              <option value="">Unassigned</option>
+              <option value="all">{t("allSpecialists")}</option>
+              <option value="">{t("unassigned")}</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
                   {employee.name}
@@ -204,19 +206,19 @@ export function ServicesSection({
             </select>
           </label>
           <label>
-            <span>Status filter</span>
+            <span>{t("statusFilter")}</span>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="disabled">Disabled</option>
+              <option value="all">{t("allStatuses")}</option>
+              <option value="active">{t("active")}</option>
+              <option value="disabled">{t("disabled")}</option>
             </select>
           </label>
           <label>
-            <span>Consumables filter</span>
+            <span>{t("consumablesFilter")}</span>
             <select value={consumableFilter} onChange={(event) => setConsumableFilter(event.target.value)}>
-              <option value="all">All services</option>
-              <option value="configured">With consumables</option>
-              <option value="not_set">Without consumables</option>
+              <option value="all">{t("allServices")}</option>
+              <option value="configured">{t("withConsumables")}</option>
+              <option value="not_set">{t("withoutConsumables")}</option>
             </select>
           </label>
         </div>
@@ -236,39 +238,39 @@ export function ServicesSection({
                     <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
                       <ArrowRight aria-hidden="true" size={16} />
                     </span>
-                    <strong>{group.name}</strong>
-                    <span>{group.services.length} services</span>
+                    <strong>{group.id === "uncategorized" ? t("uncategorized") : group.name}</strong>
+                    <span>{group.services.length} {t("services")}</span>
                   </button>
                   {isOpen ? (
                     group.services.length > 0 ? (
                       <DataTable
-                        columns={["Name", "Description", "Specialists", "Price", "Duration", "Consumables", "History", "Status", "Actions"]}
+                        columns={[t("name"), t("description"), t("specialists"), t("price"), t("duration"), t("consumables"), t("history"), t("status"), t("actions")]}
                         rows={group.services.map((item) => [
                           item.name,
                           item.description || "-",
-                          item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : "not assigned",
+                          item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : t("notAssigned"),
                           formatServicePrice(item),
-                          `${item.duration} min`,
-                          formatConsumables(item.consumables),
-                          item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
+                          `${item.duration} ${t("minutesShort")}`,
+                          formatConsumables(item.consumables, t("notSet")),
+                          item.appointmentCount > 0 ? `${item.appointmentCount} ${t("appointments")}` : t("noAppointmentsSmall"),
                           <StatusBadge status={item.active ? "active" : "disabled"} />,
                           renderServiceActions(item)
                         ])}
                       />
                     ) : (
-                      <div className="empty-state">No services in this category.</div>
+                      <div className="empty-state">{t("noServicesInCategory")}</div>
                     )
                   ) : null}
                 </section>
               );
             })
           ) : (
-            <div className="empty-state">No services match the current filters.</div>
+            <div className="empty-state">{t("noServicesMatchFilters")}</div>
           )}
         </div>
       </Panel>
       {isCreatingCategory ? (
-        <AdminModal title="New category" onClose={() => setIsCreatingCategory(false)}>
+        <AdminModal title={t("newCategory")} onClose={() => setIsCreatingCategory(false)}>
           <ServiceCategoryForm
             onCancel={() => setIsCreatingCategory(false)}
             onSubmit={(payload) =>
@@ -281,7 +283,7 @@ export function ServicesSection({
         </AdminModal>
       ) : null}
       {editingCategory ? (
-        <AdminModal title={`Edit category: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
+        <AdminModal title={`${t("editCategory")}: ${editingCategory.name}`} onClose={() => setEditingCategoryId(null)}>
           <ServiceCategoryEditForm
             category={editingCategory}
             key={editingCategory.id}
@@ -296,7 +298,7 @@ export function ServicesSection({
         </AdminModal>
       ) : null}
       {isCreatingService ? (
-        <AdminModal title="New service" onClose={() => setIsCreatingService(false)}>
+        <AdminModal title={t("newService")} onClose={() => setIsCreatingService(false)}>
           <ServiceForm
             categories={categories}
             employees={employees}
@@ -312,7 +314,7 @@ export function ServicesSection({
         </AdminModal>
       ) : null}
       {editingService ? (
-        <AdminModal title={`Edit service: ${editingService.name}`} onClose={() => setEditingServiceId(null)}>
+        <AdminModal title={`${t("editService")}: ${editingService.name}`} onClose={() => setEditingServiceId(null)}>
           <ServiceEditForm
             categories={categories}
             employees={employees}
@@ -403,6 +405,7 @@ function ServiceCategoryForm({
   onCancel: () => void;
   onSubmit: (payload: ServiceCategoryInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({ name: "", description: "", active: true });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -417,23 +420,23 @@ function ServiceCategoryForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Name</span>
+        <span>{t("name")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <label className="checkbox-line">
         <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-        <span>Active category</span>
+        <span>{t("activeCategory")}</span>
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" type="submit">
-          Add category
+          {t("addCategory")}
         </button>
       </div>
     </form>
@@ -449,6 +452,7 @@ function ServiceCategoryEditForm({
   onCancel: () => void;
   onSubmit: (payload: ServiceCategoryInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     name: category.name,
     description: category.description ?? "",
@@ -467,23 +471,23 @@ function ServiceCategoryEditForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Name</span>
+        <span>{t("name")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <label className="checkbox-line">
         <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-        <span>Active category</span>
+        <span>{t("activeCategory")}</span>
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" type="submit">
-          Save category
+          {t("saveCategory")}
         </button>
       </div>
     </form>
@@ -503,6 +507,7 @@ function ServiceForm({
   products: AdminData["products"];
   onSubmit: (payload: ServiceInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     categoryId: categories[0]?.id ?? "",
     name: "",
@@ -535,9 +540,9 @@ function ServiceForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Category</span>
+        <span>{t("category")}</span>
         <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-          <option value="">Uncategorized</option>
+          <option value="">{t("uncategorized")}</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
@@ -546,27 +551,27 @@ function ServiceForm({
         </select>
       </label>
       <label>
-        <span>Name</span>
+        <span>{t("name")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Base price</span>
+        <span>{t("basePrice")}</span>
         <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
       </label>
       <label>
-        <span>Price from</span>
+        <span>{t("priceFrom")}</span>
         <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
       </label>
       <label>
-        <span>Price to</span>
+        <span>{t("priceTo")}</span>
         <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
       </label>
       <label>
-        <span>Duration, min</span>
+        <span>{t("durationMin")}</span>
         <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <EmployeeSelector
@@ -579,17 +584,17 @@ function ServiceForm({
         products={products}
         onChange={(consumables) => setForm({ ...form, consumables })}
       />
-      {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
+      {form.employeeIds.length === 0 ? <small className="form-note">{t("assignSpecialistHint")}</small> : null}
       <label className="checkbox-line">
         <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-        <span>Active service</span>
+        <span>{t("activeService")}</span>
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
-          Add service
+          {t("addService")}
         </button>
       </div>
     </form>
@@ -611,6 +616,7 @@ function ServiceEditForm({
   onSubmit: (payload: ServiceInput) => Promise<void>;
   service: AdminData["services"][number];
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     categoryId: service.categoryId ?? "",
     name: service.name,
@@ -647,9 +653,9 @@ function ServiceEditForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Category</span>
+        <span>{t("category")}</span>
         <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-          <option value="">Uncategorized</option>
+          <option value="">{t("uncategorized")}</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
@@ -658,27 +664,27 @@ function ServiceEditForm({
         </select>
       </label>
       <label>
-        <span>Name</span>
+        <span>{t("name")}</span>
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
       </label>
       <label>
-        <span>Base price</span>
+        <span>{t("basePrice")}</span>
         <input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required />
       </label>
       <label>
-        <span>Price from</span>
+        <span>{t("priceFrom")}</span>
         <input type="number" min="0" value={form.priceFrom} onChange={(event) => setForm({ ...form, priceFrom: event.target.value })} />
       </label>
       <label>
-        <span>Price to</span>
+        <span>{t("priceTo")}</span>
         <input type="number" min="0" value={form.priceTo} onChange={(event) => setForm({ ...form, priceTo: event.target.value })} />
       </label>
       <label>
-        <span>Duration, min</span>
+        <span>{t("durationMin")}</span>
         <input type="number" min="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <EmployeeSelector
@@ -691,17 +697,17 @@ function ServiceEditForm({
         products={products}
         onChange={(consumables) => setForm({ ...form, consumables })}
       />
-      {form.employeeIds.length === 0 ? <small className="form-note">Assign at least one specialist so clients can book this service.</small> : null}
+      {form.employeeIds.length === 0 ? <small className="form-note">{t("assignSpecialistHint")}</small> : null}
       <label className="checkbox-line">
         <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
-        <span>Active service</span>
+        <span>{t("activeService")}</span>
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={form.employeeIds.length === 0} type="submit">
-          Save service
+          {t("saveService")}
         </button>
       </div>
     </form>
@@ -717,13 +723,14 @@ function EmployeeSelector({
   onChange: (employeeIds: string[]) => void;
   selectedIds: string[];
 }) {
+  const t = useCrmT();
   function toggleEmployee(employeeId: string) {
     onChange(selectedIds.includes(employeeId) ? selectedIds.filter((id) => id !== employeeId) : [...selectedIds, employeeId]);
   }
 
   return (
     <div className="checkbox-group">
-      <span>Specialists</span>
+      <span>{t("specialists")}</span>
       {employees.length > 0 ? (
         employees.map((employee) => (
           <label className="checkbox-line" key={employee.id}>
@@ -732,7 +739,7 @@ function EmployeeSelector({
           </label>
         ))
       ) : (
-        <small>No employees available. Add an employee before publishing the service.</small>
+        <small>{t("noEmployeesAvailable")}</small>
       )}
     </div>
   );
@@ -753,6 +760,7 @@ function ConsumableSelector({
   onChange: (items: ConsumableFormItem[]) => void;
   products: AdminData["products"];
 }) {
+  const t = useCrmT();
   const availableProducts = products.filter(canUseProductInProcedure);
   const defaultProductId = availableProducts[0]?.id ?? "";
 
@@ -775,17 +783,17 @@ function ConsumableSelector({
   return (
     <div className="consumable-builder">
       <div className="consumable-builder-header">
-        <span>Consumable cosmetics</span>
+        <span>{t("consumables")}</span>
         <button className="secondary-button compact-button" disabled={!defaultProductId} onClick={addItem} type="button">
-          Add item
+          {t("addMaterial")}
         </button>
       </div>
-      <small className="form-note">Internal service parameters for analytics. Clients do not see these values.</small>
-      {availableProducts.length === 0 ? <small className="form-note">Add products for procedures first to use them as consumables.</small> : null}
+      <small className="form-note">{t("internalServiceParameters")}</small>
+      {availableProducts.length === 0 ? <small className="form-note">{t("noProcedureProducts")}</small> : null}
       {items.map((item, index) => (
         <div className="consumable-row" key={`${item.productId}-${index}`}>
           <label>
-            <span>Product</span>
+            <span>{t("product")}</span>
             <select value={item.productId} onChange={(event) => updateItem(index, { productId: event.target.value })}>
               {availableProducts.map((product) => (
                 <option key={product.id} value={product.id}>
@@ -795,7 +803,7 @@ function ConsumableSelector({
             </select>
           </label>
           <label>
-            <span>Amount</span>
+            <span>{t("quantity")}</span>
             <input
               min="0.01"
               step="0.01"
@@ -806,13 +814,13 @@ function ConsumableSelector({
             />
           </label>
           <label>
-            <span>Unit</span>
+            <span>{t("unit")}</span>
             <select value={item.unit} onChange={(event) => updateItem(index, { unit: event.target.value as MeasurementUnit })}>
               <option value="ml">ml</option>
               <option value="gram">g</option>
             </select>
           </label>
-          <button aria-label="Remove consumable" className="icon-only-button" onClick={() => removeItem(index)} title="Remove" type="button">
+          <button aria-label={t("remove")} className="icon-only-button" onClick={() => removeItem(index)} title={t("remove")} type="button">
             <Trash2 aria-hidden="true" size={16} />
           </button>
         </div>
@@ -835,9 +843,9 @@ function optionalPriceInput(value: string) {
   return value.trim() ? Number(value) : null;
 }
 
-function formatConsumables(consumables: AdminData["services"][number]["consumables"]) {
+function formatConsumables(consumables: AdminData["services"][number]["consumables"], emptyLabel = "not set") {
   if (consumables.length === 0) {
-    return "not set";
+    return emptyLabel;
   }
 
   return consumables.map((consumable) => `${consumable.productName}: ${consumable.quantity} ${formatUnit(consumable.unit)}`).join(", ");

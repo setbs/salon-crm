@@ -15,6 +15,7 @@ import {
   type Slot
 } from "../../api";
 import { AdminModal, DataTable, InfoList, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
+import { useCrmT } from "../../crm-i18n";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "../../utils/format";
 
 type DisplayPrice = {
@@ -44,12 +45,12 @@ function formatMoneyRange(from: number, to: number) {
   return from === to ? formatHryvnia(from) : `${plainHryvnia.format(from)} - ${plainHryvnia.format(to)} ₴`;
 }
 
-function formatNullableMoney(value: number | null) {
-  return value === null ? "not tracked" : formatHryvnia(value);
+function formatNullableMoney(value: number | null, notTrackedLabel = "not tracked") {
+  return value === null ? notTrackedLabel : formatHryvnia(value);
 }
 
-function formatNullableMoneyRange(from: number | null, to: number | null) {
-  return from === null || to === null ? "not tracked" : formatMoneyRange(from, to);
+function formatNullableMoneyRange(from: number | null, to: number | null, notTrackedLabel = "not tracked") {
+  return from === null || to === null ? notTrackedLabel : formatMoneyRange(from, to);
 }
 
 function roundDisplayMoney(value: number) {
@@ -209,6 +210,7 @@ export function CalendarSection({
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [calendarView, setCalendarView] = useState<"day" | "week" | "range">("day");
   const [calendarAnchorDate, setCalendarAnchorDate] = useState(today);
   const [calendarRangeEndDate, setCalendarRangeEndDate] = useState(addDaysToDateString(today, 6));
@@ -273,7 +275,7 @@ export function CalendarSection({
       })
       .catch((error) => {
         if (!cancelled) {
-          setClientProfileError(error instanceof Error ? error.message : "Could not load client profile.");
+          setClientProfileError(error instanceof Error ? error.message : t("couldNotLoadClientProfile"));
         }
       })
       .finally(() => {
@@ -321,35 +323,35 @@ export function CalendarSection({
       <InlineActions
         labels={
           item.status === "scheduled"
-            ? ["Details", "Complete", "Reschedule", "Comment", "No-show", "Cancel"]
+            ? [t("detailsAction"), t("complete"), t("reschedule"), t("comment"), t("noShow"), t("cancel")]
             : item.status === "completed"
-              ? ["Details", "Edit completion", "Comment"]
-              : ["Details", "Comment"]
+              ? [t("detailsAction"), t("editCompletion"), t("comment")]
+              : [t("detailsAction"), t("comment")]
         }
         onAction={(label) => {
-          if (label === "Details") {
+          if (label === t("detailsAction")) {
             setSelectedAppointmentId(item.id);
             return;
           }
 
-          if (label === "Complete" || label === "Edit completion") {
+          if (label === t("complete") || label === t("editCompletion")) {
             void openCompletionPreview(item.id);
             return;
           }
 
-          if (label === "Reschedule") {
+          if (label === t("reschedule")) {
             setReschedulingAppointmentId(item.id);
             return;
           }
 
-          if (label === "Comment") {
+          if (label === t("comment")) {
             setCommentingAppointmentId(item.id);
             return;
           }
 
           void runAction(() =>
             updateAdminAppointment(item.id, {
-              status: label === "No-show" ? "no_show" : "cancelled"
+              status: label === t("noShow") ? "no_show" : "cancelled"
             })
           );
         }}
@@ -359,48 +361,48 @@ export function CalendarSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Calendar" action="Create appointment manually" onAction={() => setIsCreatingAppointment(true)} wide>
+      <Panel title={t("calendar")} action={t("createAppointmentManually")} onAction={() => setIsCreatingAppointment(true)} wide>
         <div className="calendar-toolbar">
-          <div className="segmented-control calendar-view-toggle" aria-label="Calendar view">
+          <div className="segmented-control calendar-view-toggle" aria-label={t("calendarView")}>
             <button className={calendarView === "day" ? "active" : ""} onClick={() => setCalendarView("day")} type="button">
-              Day
+              {t("day")}
             </button>
             <button className={calendarView === "week" ? "active" : ""} onClick={() => setCalendarView("week")} type="button">
-              Week
+              {t("week")}
             </button>
             <button className={calendarView === "range" ? "active" : ""} onClick={() => setCalendarView("range")} type="button">
-              Range
+              {t("range")}
             </button>
           </div>
-          <div className="calendar-shortcuts" aria-label="Calendar shortcuts">
+          <div className="calendar-shortcuts" aria-label={t("calendarShortcuts")}>
             <button onClick={() => selectQuickDate("day", today)} type="button">
-              Today
+              {t("today")}
             </button>
             <button onClick={() => selectQuickDate("day", addDaysToDateString(today, 1))} type="button">
-              Tomorrow
+              {t("tomorrow")}
             </button>
             <button onClick={() => selectQuickDate("week", today)} type="button">
-              This week
+              {t("thisWeek")}
             </button>
             <button onClick={() => selectQuickDate("range", today)} type="button">
-              Next 14 days
+              {t("next14Days")}
             </button>
           </div>
           <div className="calendar-filter-grid">
             <label>
-              <span>{calendarView === "range" ? "From" : "Date"}</span>
+              <span>{calendarView === "range" ? t("from") : t("date")}</span>
               <input type="date" value={calendarAnchorDate} onChange={(event) => setCalendarAnchorDate(event.target.value)} />
             </label>
             {calendarView === "range" ? (
               <label>
-                <span>To</span>
+                <span>{t("to")}</span>
                 <input min={calendarAnchorDate} type="date" value={calendarRangeEndDate} onChange={(event) => setCalendarRangeEndDate(event.target.value)} />
               </label>
             ) : null}
             <label>
-              <span>Employee</span>
+              <span>{t("employee")}</span>
               <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
-                <option value="all">All employees</option>
+                <option value="all">{t("allEmployees")}</option>
                 {employees.map((employee) => (
                   <option key={employee.id} value={employee.id}>
                     {employee.name}
@@ -409,13 +411,13 @@ export function CalendarSection({
               </select>
             </label>
             <label>
-              <span>Status</span>
+              <span>{t("status")}</span>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="all">All statuses</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="no_show">No-show</option>
+                <option value="all">{t("allStatuses")}</option>
+                <option value="scheduled">{t("scheduled")}</option>
+                <option value="completed">{t("completed")}</option>
+                <option value="cancelled">{t("cancelled")}</option>
+                <option value="no_show">{t("noShow")}</option>
               </select>
             </label>
           </div>
@@ -423,15 +425,15 @@ export function CalendarSection({
 
         <div className="calendar-summary-strip">
           <div>
-            <span>Period</span>
+            <span>{t("period")}</span>
             <strong>{periodLabel}</strong>
           </div>
           <div>
-            <span>Appointments</span>
+            <span>{t("appointments")}</span>
             <strong>{visibleAppointments.length}</strong>
           </div>
           <div>
-            <span>Scheduled</span>
+            <span>{t("scheduled")}</span>
             <strong>{scheduledCount}</strong>
           </div>
         </div>
@@ -444,7 +446,7 @@ export function CalendarSection({
                   <span>{formatCalendarWeekday(group.date)}</span>
                   <strong>{formatCalendarDate(group.date)}</strong>
                 </div>
-                <small>{group.appointments.length} appointments</small>
+                <small>{group.appointments.length} {t("appointments")}</small>
               </header>
               {group.appointments.length > 0 ? (
                 <div className="calendar-appointment-list">
@@ -467,7 +469,7 @@ export function CalendarSection({
                   ))}
                 </div>
               ) : (
-                <div className="empty-state">No appointments match these filters.</div>
+                <div className="empty-state">{t("noAppointmentsMatchFilters")}</div>
               )}
             </section>
           ))}
@@ -507,7 +509,7 @@ export function CalendarSection({
         />
       ) : null}
       {isCreatingAppointment ? (
-        <AdminModal title="New appointment" onClose={() => setIsCreatingAppointment(false)}>
+        <AdminModal title={t("newAppointment")} onClose={() => setIsCreatingAppointment(false)}>
           <AppointmentCreateForm
             clients={clients}
             employees={employees}
@@ -523,7 +525,7 @@ export function CalendarSection({
         </AdminModal>
       ) : null}
       {reschedulingAppointment ? (
-        <AdminModal title="Reschedule appointment" onClose={() => setReschedulingAppointmentId(null)}>
+        <AdminModal title={t("reschedule")} onClose={() => setReschedulingAppointmentId(null)}>
           <AppointmentRescheduleForm
             appointments={appointments}
             initialAppointmentId={reschedulingAppointment.id}
@@ -539,7 +541,7 @@ export function CalendarSection({
         </AdminModal>
       ) : null}
       {commentingAppointment ? (
-        <AdminModal title="Visit comment" onClose={() => setCommentingAppointmentId(null)}>
+        <AdminModal title={t("visitComment")} onClose={() => setCommentingAppointmentId(null)}>
           <AppointmentCommentForm
             appointments={appointments}
             initialAppointmentId={commentingAppointment.id}
@@ -570,8 +572,8 @@ export function CalendarSection({
         />
       ) : null}
       {selectedClientId ? (
-        <AdminModal title={clientProfile ? `Client: ${clientProfile.name}` : "Client profile"} onClose={() => setSelectedClientId(null)}>
-          {isClientProfileLoading ? <div className="modal-state">Loading client profile...</div> : null}
+        <AdminModal title={clientProfile ? `${t("client")}: ${clientProfile.name}` : t("clientProfile")} onClose={() => setSelectedClientId(null)}>
+          {isClientProfileLoading ? <div className="modal-state">{t("loadingClientProfile")}</div> : null}
           {clientProfileError ? <div className="admin-alert">{clientProfileError}</div> : null}
           {clientProfile ? <CalendarClientProfile profile={clientProfile} /> : null}
         </AdminModal>
@@ -599,6 +601,7 @@ function AppointmentDetailsDialog({
   onReschedule: () => void;
   onStatusChange: (status: "cancelled" | "no_show") => Promise<void>;
 }) {
+  const t = useCrmT();
   const isScheduled = appointment.status === "scheduled";
   const clientRevenue = getAppointmentClientRevenueRange(appointment);
   const clientProfit = getAppointmentClientProfitRange(appointment);
@@ -608,7 +611,7 @@ function AppointmentDetailsDialog({
       : [
           {
             id: "summary",
-            name: appointment.service || "Service",
+            name: appointment.service || t("serviceFallback"),
             duration: appointment.durationMinutes,
             price: appointment.amount,
             priceFrom: null,
@@ -621,13 +624,13 @@ function AppointmentDetailsDialog({
       <section aria-modal="true" className="admin-modal appointment-detail-modal" role="dialog">
         <div className="panel-header">
           <div>
-            <p className="admin-kicker">Appointment details</p>
+            <p className="admin-kicker">{t("appointmentDetails")}</p>
             <h2>{appointment.client}</h2>
             <button className="table-link-button appointment-client-link" onClick={onOpenClient} type="button">
-              Open client card
+              {t("openClientCard")}
             </button>
           </div>
-          <button aria-label="Close appointment details" className="icon-only-button" onClick={onClose} title="Close" type="button">
+          <button aria-label={t("appointmentDetails")} className="icon-only-button" onClick={onClose} title={t("close")} type="button">
             <X aria-hidden="true" size={16} />
           </button>
         </div>
@@ -636,7 +639,7 @@ function AppointmentDetailsDialog({
           <section className="appointment-detail-hero">
             <div>
               <span>{formatAppointmentDateTimeRange(appointment)}</span>
-              <strong>{appointment.service || "Appointment"}</strong>
+              <strong>{appointment.service || t("appointmentFallback")}</strong>
               <small>{appointment.master}</small>
             </div>
             <StatusBadge status={appointment.status} />
@@ -644,20 +647,24 @@ function AppointmentDetailsDialog({
 
           <div className="appointment-status-panel">
             <div>
-              <span>Visit status</span>
+              <span>{t("visitStatus")}</span>
               <StatusBadge status={appointment.status} />
             </div>
             <div>
-              <span>Payment status</span>
-              <div className="status-button-row" aria-label="Payment status">
-                {(["pending", "paid", "refunded"] as const).map((status) => (
+              <span>{t("paymentStatusLabel")}</span>
+              <div className="status-button-row" aria-label={t("paymentStatusLabel")}>
+                {([
+                  ["pending", t("pending")],
+                  ["paid", t("paid")],
+                  ["refunded", t("refunded")]
+                ] as const).map(([status, label]) => (
                   <button
                     className={appointment.paymentStatus === status ? "active" : ""}
                     key={status}
                     onClick={() => void onPaymentStatusChange(status)}
                     type="button"
                   >
-                    {status}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -667,27 +674,27 @@ function AppointmentDetailsDialog({
           <div className="appointment-detail-grid">
             <InfoList
               items={[
-                ["Phone", appointment.clientPhone || "-"],
-                ["Email", appointment.clientEmail || "-"],
-                ["Employee", appointment.master],
-                ["Duration", `${appointment.durationMinutes} min`],
-                ["Total", appointment.amount > 0 ? adminMoney.format(appointment.amount) : formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)],
-                ["Payment", appointment.paymentStatus],
-                ["Rating", appointment.rating ? `${appointment.rating}/5` : "-"]
+                [t("phone"), appointment.clientPhone || "-"],
+                [t("email"), appointment.clientEmail || "-"],
+                [t("employee"), appointment.master],
+                [t("duration"), `${appointment.durationMinutes} ${t("minutesShort")}`],
+                [t("total"), appointment.amount > 0 ? adminMoney.format(appointment.amount) : formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)],
+                [t("payment"), appointment.paymentStatus],
+                [t("rating"), appointment.rating ? `${appointment.rating}/5` : "-"]
               ]}
             />
 
             <section className="appointment-service-detail">
               <div className="profile-section-heading">
-                <h3>Services</h3>
-                <span>{serviceRows.length} selected</span>
+                <h3>{t("services")}</h3>
+                <span>{serviceRows.length} {t("selected")}</span>
               </div>
               <div className="appointment-service-detail-list">
                 {serviceRows.map((service) => (
                   <article className="appointment-service-detail-item" key={service.id}>
                     <div>
                       <strong>{service.name}</strong>
-                      <span>{service.duration} min</span>
+                      <span>{service.duration} {t("minutesShort")}</span>
                     </div>
                     <small>{formatServicePrice(service)}</small>
                   </article>
@@ -698,40 +705,40 @@ function AppointmentDetailsDialog({
 
           <section className="appointment-finance-card">
             <div className="profile-section-heading">
-              <h3>Procedure finances</h3>
+              <h3>{t("procedureFinances")}</h3>
               <span>{appointment.paymentStatus}</span>
             </div>
             <div className="appointment-finance-metrics">
               <div>
-                <span>Services total</span>
+                <span>{t("servicesTotal")}</span>
                 <strong>{formatMoneyRange(appointment.revenueFrom, appointment.revenueTo)}</strong>
               </div>
               <div>
-                <span>Client paid</span>
+                <span>{t("clientPaid")}</span>
                 <strong>{formatMoneyRange(clientRevenue.from, clientRevenue.to)}</strong>
               </div>
               <div>
-                <span>Consumables</span>
-                <strong>{formatNullableMoney(appointment.consumableCost)}</strong>
+                <span>{t("consumables")}</span>
+                <strong>{formatNullableMoney(appointment.consumableCost, t("notTracked"))}</strong>
               </div>
               <div>
-                <span>Net profit</span>
-                <strong>{formatNullableMoneyRange(clientProfit.from, clientProfit.to)}</strong>
+                <span>{t("netProfit")}</span>
+                <strong>{formatNullableMoneyRange(clientProfit.from, clientProfit.to, t("notTracked"))}</strong>
               </div>
             </div>
             <InfoList
               items={[
-                ["Payment method", appointment.paymentMethod],
-                ["Payment status", appointment.paymentStatus],
-                ["Amount source", appointment.amount > 0 ? "actual payment" : "service price estimate"]
+                [t("paymentMethod"), appointment.paymentMethod],
+                [t("paymentStatusLabel"), appointment.paymentStatus],
+                [t("amountSource"), appointment.amount > 0 ? t("actualPayment") : t("servicePriceEstimate")]
               ]}
             />
           </section>
 
           <section className="appointment-audit-card">
             <div className="profile-section-heading">
-              <h3>Change history</h3>
-              <span>{appointment.auditLogs.length} events</span>
+              <h3>{t("changeHistory")}</h3>
+              <span>{appointment.auditLogs.length} {t("events")}</span>
             </div>
             {appointment.auditLogs.length > 0 ? (
               <div className="appointment-audit-list">
@@ -746,47 +753,47 @@ function AppointmentDetailsDialog({
                 ))}
               </div>
             ) : (
-              <div className="modal-state">No changes have been recorded yet.</div>
+              <div className="modal-state">{t("noChangesRecorded")}</div>
             )}
           </section>
 
           <div className="appointment-comment-grid">
             <article>
-              <span>Client comment</span>
-              <p>{appointment.clientComment || "No client comment."}</p>
+              <span>{t("clientComment")}</span>
+              <p>{appointment.clientComment || t("noClientComment")}</p>
             </article>
             <article>
-              <span>Internal comment</span>
-              <p>{appointment.employeeComment || "No internal comment."}</p>
+              <span>{t("internalComment")}</span>
+              <p>{appointment.employeeComment || t("noInternalComment")}</p>
             </article>
           </div>
         </div>
 
         <div className="modal-actions appointment-detail-actions">
           <button className="secondary-button compact-button" onClick={onClose} type="button">
-            Close
+            {t("close")}
           </button>
           <button className="secondary-button compact-button" onClick={onComment} type="button">
-            Comment
+            {t("comment")}
           </button>
           {isScheduled ? (
             <>
               <button className="secondary-button compact-button" onClick={onReschedule} type="button">
-                Reschedule
+                {t("reschedule")}
               </button>
               <button className="secondary-button compact-button" onClick={() => void onStatusChange("no_show")} type="button">
-                No-show
+                {t("noShowShort")}
               </button>
               <button className="secondary-button compact-button" onClick={() => void onStatusChange("cancelled")} type="button">
-                Cancel
+                {t("cancel")}
               </button>
               <button className="primary-button compact-button" onClick={onComplete} type="button">
-                Complete
+                {t("complete")}
               </button>
             </>
           ) : appointment.status === "completed" ? (
             <button className="primary-button compact-button" onClick={onComplete} type="button">
-              Edit completion
+              {t("editCompletion")}
             </button>
           ) : null}
         </div>
@@ -796,21 +803,23 @@ function AppointmentDetailsDialog({
 }
 
 function CalendarClientProfile({ profile }: { profile: AdminClientProfile }) {
+  const t = useCrmT();
+
   return (
     <div className="calendar-client-profile">
       <InfoList
         items={[
-          ["Phone", profile.phone],
-          ["Email", profile.email ?? "-"],
-          ["Visits", String(profile.visits)],
-          ["Total spent", adminMoney.format(profile.spent)]
+          [t("phone"), profile.phone],
+          [t("email"), profile.email ?? "-"],
+          [t("visits"), String(profile.visits)],
+          [t("totalSpent"), adminMoney.format(profile.spent)]
         ]}
       />
 
       <section className="profile-section client-alias-section">
         <div className="profile-section-heading">
-          <h3>Registered names</h3>
-          <span>{profile.nameAliases.length} variants</span>
+          <h3>{t("registeredNames")}</h3>
+          <span>{profile.nameAliases.length} {t("variants")}</span>
         </div>
         <div className="client-alias-list">
           {profile.nameAliases.length > 0 ? profile.nameAliases.map((alias) => <span key={alias.id}>{alias.name}</span>) : <span>{profile.name}</span>}
@@ -819,8 +828,8 @@ function CalendarClientProfile({ profile }: { profile: AdminClientProfile }) {
 
       <section className="profile-section">
         <div className="profile-section-heading">
-          <h3>Latest notes</h3>
-          <span>{profile.notes.length} notes</span>
+          <h3>{t("latestNote")}</h3>
+          <span>{profile.notes.length} {t("notes")}</span>
         </div>
         <div className="client-note-list compact">
           {profile.notes.slice(0, 3).map((note) => (
@@ -831,17 +840,17 @@ function CalendarClientProfile({ profile }: { profile: AdminClientProfile }) {
               </small>
             </article>
           ))}
-          {profile.notes.length === 0 ? <div className="modal-state">No client notes yet.</div> : null}
+          {profile.notes.length === 0 ? <div className="modal-state">{t("noNotesForClient")}</div> : null}
         </div>
       </section>
 
       <section className="profile-section">
         <div className="profile-section-heading">
-          <h3>Appointment history</h3>
-          <span>{profile.appointments.length} records</span>
+          <h3>{t("appointments")}</h3>
+          <span>{profile.appointments.length} {t("records")}</span>
         </div>
         <DataTable
-          columns={["Date", "Service", "Employee", "Payment", "Status"]}
+          columns={[t("date"), t("service"), t("employee"), t("payment"), t("status")]}
           rows={
             profile.appointments.length > 0
               ? profile.appointments.map((appointment) => [
@@ -851,7 +860,7 @@ function CalendarClientProfile({ profile }: { profile: AdminClientProfile }) {
                   `${adminMoney.format(appointment.amount)} · ${appointment.paymentStatus}`,
                   <StatusBadge status={appointment.status} />
                 ])
-              : [["No appointments", "-", "-", "-", "-"]]
+              : [[t("noAppointments"), "-", "-", "-", "-"]]
           }
         />
       </section>
@@ -881,6 +890,7 @@ function CompletionPreviewDialog({
   preview: AppointmentConsumablePreview | null;
   products: AdminData["products"];
 }) {
+  const t = useCrmT();
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "blik" | "transfer">("cash");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -930,16 +940,16 @@ function CompletionPreviewDialog({
       const stockAfter = product.stockContentAmount !== null ? Math.max(product.stockContentAmount - quantity, 0) : null;
       const issue =
         product.contentAmount === null || product.stockContentAmount === null || product.contentUnit === null
-          ? `Product ${product.name} does not have package content configured.`
+          ? `${product.name}: ${t("packageContent")} ${t("notSet")}.`
           : product.stockContentAmount < quantity
-            ? `Not enough consumable stock for ${product.name}.`
+            ? `${product.name}: ${t("lowStock")}.`
             : null;
 
       return {
         productId: product.id,
         productName: product.name,
         productCategory: product.category,
-        services: "Unplanned material",
+        services: t("unplannedMaterial"),
         quantity,
         unit,
         contentAmount: product.contentAmount,
@@ -972,7 +982,7 @@ function CompletionPreviewDialog({
   const receivedAmount = Math.max(0, Number(paymentAmount) || 0);
   const profitAfterConsumables = actualConsumableCost === null ? null : roundDisplayMoney(receivedAmount - actualConsumableCost);
   const canConfirm = preview ? preview.canComplete && receivedAmount >= 0 && actualItems.every((item) => item.enough) : false;
-  const completionMode = preview?.status === "completed" ? "Edit completed appointment" : "Complete appointment";
+  const completionMode = preview?.status === "completed" ? t("editCompletedAppointment") : t("completeAppointment");
 
   function addExtraConsumable() {
     const productId = newConsumable.productId || availableExtraProducts[0]?.id;
@@ -991,30 +1001,30 @@ function CompletionPreviewDialog({
       <section aria-modal="true" className="admin-modal completion-modal" role="dialog">
         <div className="panel-header">
           <div>
-            <p className="admin-kicker">Completion workflow</p>
+            <p className="admin-kicker">{t("completionWorkflow")}</p>
             <h2>{completionMode}</h2>
           </div>
-          <button aria-label="Close completion preview" className="icon-only-button" onClick={onClose} title="Close" type="button">
+          <button aria-label={t("closeCompletionPreview")} className="icon-only-button" onClick={onClose} title={t("close")} type="button">
             <X aria-hidden="true" size={16} />
           </button>
         </div>
 
-        {isLoading ? <div className="modal-state">Loading consumables...</div> : null}
+        {isLoading ? <div className="modal-state">{t("loadingConsumables")}</div> : null}
         {error ? <div className="admin-alert">{error}</div> : null}
 
         {preview ? (
           <>
             <div className="completion-summary-strip">
               <div>
-                <span>Client</span>
+                <span>{t("client")}</span>
                 <strong>{preview.appointment.client}</strong>
               </div>
               <div>
-                <span>Time</span>
+                <span>{t("time")}</span>
                 <strong>{formatShortDate(preview.appointment.time)}</strong>
               </div>
               <div>
-                <span>Services total</span>
+                <span>{t("servicesTotal")}</span>
                 <strong>{formatMoneyRange(preview.financials.revenueFrom, preview.financials.revenueTo)}</strong>
               </div>
             </div>
@@ -1031,10 +1041,10 @@ function CompletionPreviewDialog({
               <section className="completion-section">
                 <div className="completion-section-heading">
                   <div>
-                    <span>Step 1</span>
-                    <h3>Actual consumables</h3>
+                    <span>{t("step")} 1</span>
+                    <h3>{t("actualConsumables")}</h3>
                   </div>
-                  <small>{actualItems.length} materials</small>
+                  <small>{actualItems.length} {t("materials")}</small>
                 </div>
                 <div className="consumable-preview-list">
                   {actualItems.length > 0 ? (
@@ -1045,7 +1055,7 @@ function CompletionPreviewDialog({
                           <span>{item.services}</span>
                         </div>
                         <label className="consumable-quantity-field">
-                          <small>actual use</small>
+                          <small>{t("actualUse")}</small>
                           <span>
                             <input
                               min="0"
@@ -1067,16 +1077,16 @@ function CompletionPreviewDialog({
                           </span>
                         </label>
                         <div>
-                          <small>cost</small>
-                          <strong>{formatNullableMoney(item.cost === null ? null : roundDisplayMoney(item.cost))}</strong>
+                          <small>{t("cost")}</small>
+                          <strong>{formatNullableMoney(item.cost === null ? null : roundDisplayMoney(item.cost), t("notTracked"))}</strong>
                         </div>
                         <div>
-                          <small>stock after</small>
+                          <small>{t("stockAfter")}</small>
                           <strong>{formatPreviewStock(item)}</strong>
                         </div>
                         {"extraId" in item ? (
                           <button
-                            aria-label="Remove unplanned material"
+                            aria-label={t("remove")}
                             className="icon-only-button mini"
                             onClick={() => setExtraConsumables((current) => current.filter((extra) => extra.id !== item.extraId))}
                             type="button"
@@ -1089,17 +1099,17 @@ function CompletionPreviewDialog({
                       </article>
                     ))
                   ) : (
-                    <div className="modal-state">No internal consumables are configured for this appointment.</div>
+                    <div className="modal-state">{t("noInternalConsumables")}</div>
                   )}
                 </div>
                 <div className="completion-add-material">
                   <label>
-                    <span>Add unplanned material</span>
+                    <span>{t("addUnplannedMaterial")}</span>
                     <select
                       value={newConsumable.productId}
                       onChange={(event) => setNewConsumable((current) => ({ ...current, productId: event.target.value }))}
                     >
-                      <option value="">Select product</option>
+                      <option value="">{t("selectProduct")}</option>
                       {availableExtraProducts.map((product) => (
                         <option key={product.id} value={product.id}>
                           {product.name} · {product.contentUnit ? formatUnit(product.contentUnit) : "unit"}
@@ -1108,7 +1118,7 @@ function CompletionPreviewDialog({
                     </select>
                   </label>
                   <label>
-                    <span>Amount</span>
+                    <span>{t("amount")}</span>
                     <input
                       min="0"
                       step="0.01"
@@ -1118,7 +1128,7 @@ function CompletionPreviewDialog({
                     />
                   </label>
                   <button className="secondary-button compact-button" disabled={availableExtraProducts.length === 0} onClick={addExtraConsumable} type="button">
-                    Add material
+                    {t("addMaterialButton")}
                   </button>
                 </div>
               </section>
@@ -1126,31 +1136,31 @@ function CompletionPreviewDialog({
               <section className="completion-section">
                 <div className="completion-section-heading">
                   <div>
-                    <span>Step 2</span>
-                    <h3>Payment & profit</h3>
+                    <span>{t("step")} 2</span>
+                    <h3>{t("paymentAndProfit")}</h3>
                   </div>
                 </div>
                 <div className="completion-payment-grid">
                   <label>
-                    <span>Client paid</span>
+                    <span>{t("clientPaid")}</span>
                     <input min="0" step="0.01" type="number" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
                   </label>
                   <label>
-                    <span>Payment method</span>
+                    <span>{t("paymentMethod")}</span>
                     <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)}>
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
+                      <option value="cash">{t("cash")}</option>
+                      <option value="card">{t("card")}</option>
                       <option value="blik">BLIK</option>
-                      <option value="transfer">Transfer</option>
+                      <option value="transfer">{t("transfer")}</option>
                     </select>
                   </label>
                   <div>
-                    <span>Consumables cost</span>
-                    <strong>{formatNullableMoney(actualConsumableCost)}</strong>
+                    <span>{t("consumablesCost")}</span>
+                    <strong>{formatNullableMoney(actualConsumableCost, t("notTracked"))}</strong>
                   </div>
                   <div>
-                    <span>Net profit</span>
-                    <strong>{formatNullableMoney(profitAfterConsumables)}</strong>
+                    <span>{t("netProfit")}</span>
+                    <strong>{formatNullableMoney(profitAfterConsumables, t("notTracked"))}</strong>
                   </div>
                 </div>
               </section>
@@ -1158,7 +1168,7 @@ function CompletionPreviewDialog({
 
             <div className="modal-actions">
               <button className="secondary-button compact-button" onClick={onClose} type="button">
-                Close
+                {t("close")}
               </button>
               <button
                 className="primary-button compact-button"
@@ -1176,7 +1186,7 @@ function CompletionPreviewDialog({
                 }
                 type="button"
               >
-                {preview.status === "completed" ? "Save corrections" : "Confirm completion"}
+                {preview.status === "completed" ? t("saveCorrections") : t("confirmCompletion")}
               </button>
             </div>
           </>
@@ -1199,6 +1209,7 @@ function AppointmentCreateForm({
   services: AdminData["services"];
   onSubmit: (payload: AdminAppointmentInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const activeServices = services.filter((service) => service.active);
   const serviceGroups = buildAppointmentServiceGroups(activeServices);
   const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
@@ -1252,7 +1263,7 @@ function AppointmentCreateForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Employee</span>
+        <span>{t("employee")}</span>
         <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
@@ -1262,7 +1273,7 @@ function AppointmentCreateForm({
         </select>
       </label>
       <div className="appointment-service-picker">
-        <span>Services</span>
+        <span>{t("services")}</span>
         <div className="service-groups compact">
           {serviceGroups.length > 0 ? (
             serviceGroups.map((group) => {
@@ -1280,8 +1291,8 @@ function AppointmentCreateForm({
                     <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
                       <ArrowRight aria-hidden="true" size={16} />
                     </span>
-                    <strong>{group.name}</strong>
-                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} selected` : `${group.services.length} services`}</span>
+                    <strong>{group.id === "uncategorized" ? t("uncategorized") : group.name}</strong>
+                    <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} ${t("selected")}` : `${group.services.length} ${t("services")}`}</span>
                   </button>
                   {isOpen ? (
                     <div className="appointment-service-list">
@@ -1291,7 +1302,7 @@ function AppointmentCreateForm({
                           <span>
                             <strong>{service.name}</strong>
                             <small>
-                              {service.duration} min · {formatServicePrice(service)}
+                              {service.duration} {t("minutesShort")} · {formatServicePrice(service)}
                             </small>
                           </span>
                         </label>
@@ -1302,24 +1313,24 @@ function AppointmentCreateForm({
               );
             })
           ) : (
-            <div className="empty-state">No active services available.</div>
+            <div className="empty-state">{t("noActiveServices")}</div>
           )}
         </div>
       </div>
       <div className="form-section">
         <label>
-          <span>Date</span>
+          <span>{t("date")}</span>
           <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
         </label>
         <label>
-          <span>Time</span>
+          <span>{t("time")}</span>
           <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
         </label>
       </div>
       <label>
-        <span>Client</span>
+        <span>{t("client")}</span>
         <select value={form.clientMode === "existing" ? form.clientId : "new"} onChange={(event) => setForm({ ...form, clientMode: event.target.value === "new" ? "new" : "existing", clientId: event.target.value })}>
-          <option value="new">New client</option>
+          <option value="new">{t("newClient")}</option>
           {clients.map((client) => (
             <option key={client.id} value={client.id}>
               {client.name} · {client.phone}
@@ -1330,37 +1341,37 @@ function AppointmentCreateForm({
       {form.clientMode === "new" ? (
         <div className="client-grid">
           <label>
-            <span>First name</span>
+            <span>{t("firstName")}</span>
             <input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
           </label>
           <label>
-            <span>Last name</span>
+            <span>{t("lastName")}</span>
             <input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
           </label>
           <label>
-            <span>Phone</span>
+            <span>{t("phone")}</span>
             <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
           </label>
           <label>
-            <span>Email</span>
+            <span>{t("email")}</span>
             <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           </label>
         </div>
       ) : null}
       <label>
-        <span>Client comment</span>
+        <span>{t("clientComment")}</span>
         <textarea value={form.clientComment} onChange={(event) => setForm({ ...form, clientComment: event.target.value })} rows={3} />
       </label>
       <label>
-        <span>Visit comment</span>
+        <span>{t("visitComment")}</span>
         <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={serviceIds.length === 0 || !form.employeeId} type="submit">
-          Create appointment
+          {t("createAppointmentManually")}
         </button>
       </div>
     </form>
@@ -1402,6 +1413,7 @@ function AppointmentRescheduleForm({
   onCancel: () => void;
   onSubmit: (id: string, payload: { startTime: string; endTime: string; employeeComment?: string }) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [appointmentId, setAppointmentId] = useState(initialAppointmentId ?? appointments[0]?.id ?? "");
   const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
   const initial = selected ? toDateTimeFields(selected.date) : { date: today, time: "09:00" };
@@ -1437,7 +1449,7 @@ function AppointmentRescheduleForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Appointment</span>
+        <span>{t("appointment")}</span>
         <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
           {appointments.map((appointment) => (
             <option key={appointment.id} value={appointment.id}>
@@ -1448,24 +1460,24 @@ function AppointmentRescheduleForm({
       </label>
       <div className="form-section">
         <label>
-          <span>New date</span>
+          <span>{t("newDate")}</span>
           <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />
         </label>
         <label>
-          <span>New time</span>
+          <span>{t("newTime")}</span>
           <input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} required />
         </label>
       </div>
       <label>
-        <span>Reschedule comment</span>
+        <span>{t("rescheduleComment")}</span>
         <textarea value={form.employeeComment} onChange={(event) => setForm({ ...form, employeeComment: event.target.value })} rows={3} />
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
-          Reschedule
+          {t("reschedule")}
         </button>
       </div>
     </form>
@@ -1483,6 +1495,7 @@ function AppointmentCommentForm({
   onCancel: () => void;
   onSubmit: (id: string, employeeComment: string) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [appointmentId, setAppointmentId] = useState(initialAppointmentId ?? appointments[0]?.id ?? "");
   const selected = appointments.find((appointment) => appointment.id === appointmentId) ?? appointments[0];
   const [comment, setComment] = useState(selected?.employeeComment ?? "");
@@ -1502,7 +1515,7 @@ function AppointmentCommentForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Appointment</span>
+        <span>{t("appointment")}</span>
         <select value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)}>
           {appointments.map((appointment) => (
             <option key={appointment.id} value={appointment.id}>
@@ -1512,15 +1525,15 @@ function AppointmentCommentForm({
         </select>
       </label>
       <label>
-        <span>Internal comment</span>
+        <span>{t("internalComment")}</span>
         <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
       </label>
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={!selected} type="submit">
-          Save comment
+          {t("saveComment")}
         </button>
       </div>
     </form>

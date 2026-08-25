@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { createAdminClientNote, fetchAdminClientProfile, type AdminClientProfile, type AdminData } from "../../api";
 import { AdminModal, DataTable, InfoList, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
+import { useCrmT } from "../../crm-i18n";
 import { adminMoney } from "../../utils/format";
 
 function formatShortDate(value: string) {
@@ -20,6 +21,7 @@ export function ClientsSection({
   clients: AdminData["clients"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [clientProfile, setClientProfile] = useState<AdminClientProfile | null>(null);
@@ -63,7 +65,7 @@ export function ClientsSection({
       })
       .catch((error) => {
         if (!cancelled) {
-          setProfileError(error instanceof Error ? error.message : "Could not load client profile.");
+          setProfileError(error instanceof Error ? error.message : t("couldNotLoadClientProfile"));
         }
       })
       .finally(() => {
@@ -79,17 +81,17 @@ export function ClientsSection({
 
   return (
     <div className="admin-grid">
-      <Panel title="Clients" wide>
+      <Panel title={t("clients")} wide>
         <div className="admin-search wide">
           <Search aria-hidden="true" size={17} />
           <input
-            placeholder="Name, phone, or email"
+            placeholder={t("namePhoneEmail")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
         <DataTable
-          columns={["Client", "Phone", "Email", "Visits", "Spent", "Actions"]}
+          columns={[t("client"), t("phone"), t("email"), t("visits"), t("spent"), t("actions")]}
           rows={
             filteredClients.length > 0
               ? filteredClients.map((item) => [
@@ -100,15 +102,15 @@ export function ClientsSection({
                   item.email ?? "-",
                   item.visits,
                   adminMoney.format(item.spent),
-                  <InlineActions labels={["View"]} onAction={() => setSelectedClientId(item.id)} />
+                  <InlineActions labels={[t("view")]} onAction={() => setSelectedClientId(item.id)} />
                 ])
-              : [["No clients found", "-", "-", "-", "-", "-"]]
+              : [[t("noClientsFound"), "-", "-", "-", "-", "-"]]
           }
         />
       </Panel>
       {selectedClientId ? (
-        <AdminModal title={clientProfile ? `Client: ${clientProfile.name}` : "Client profile"} onClose={() => setSelectedClientId(null)}>
-          {isLoadingProfile ? <div className="modal-state">Loading client profile...</div> : null}
+        <AdminModal title={clientProfile ? `${t("client")}: ${clientProfile.name}` : t("clientProfile")} onClose={() => setSelectedClientId(null)}>
+          {isLoadingProfile ? <div className="modal-state">{t("loadingClientProfile")}</div> : null}
           {profileError ? <div className="admin-alert">{profileError}</div> : null}
           {clientProfile ? (
             <ClientProfileDialog
@@ -128,6 +130,7 @@ export function ClientsSection({
 }
 
 function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: string) => Promise<void>; profile: AdminClientProfile }) {
+  const t = useCrmT();
   const [noteText, setNoteText] = useState("");
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
@@ -145,16 +148,16 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
     <div className="client-profile">
       <InfoList
         items={[
-          ["Phone", profile.phone],
-          ["Email", profile.email ?? "-"],
-          ["Latest note", profile.comment || "no client notes yet"]
+          [t("phone"), profile.phone],
+          [t("email"), profile.email ?? "-"],
+          [t("latestNote"), profile.comment || t("noClientNotesYet")]
         ]}
       />
 
       <section className="profile-section client-alias-section">
         <div className="profile-section-heading">
-          <h3>Registered names</h3>
-          <span>{profile.nameAliases.length} variants</span>
+          <h3>{t("registeredNames")}</h3>
+          <span>{profile.nameAliases.length} {t("variants")}</span>
         </div>
         <div className="client-alias-list">
           {profile.nameAliases.length > 0 ? (
@@ -171,34 +174,34 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
 
       <div className="profile-summary-grid">
         <div>
-          <span>Visits</span>
+          <span>{t("visits")}</span>
           <strong>{profile.visits}</strong>
         </div>
         <div>
-          <span>Total spent</span>
+          <span>{t("totalSpent")}</span>
           <strong>{adminMoney.format(profile.spent)}</strong>
         </div>
         <div>
-          <span>Purchases</span>
+          <span>{t("purchases")}</span>
           <strong>{profile.sales.length}</strong>
         </div>
       </div>
 
       <section className="profile-section client-notes-section">
         <div className="profile-section-heading">
-          <h3>Client notes</h3>
-          <span>{profile.notes.length} notes</span>
+          <h3>{t("clientNotes")}</h3>
+          <span>{profile.notes.length} {t("notes")}</span>
         </div>
         <form className="client-note-form" onSubmit={submitNote}>
           <textarea
             maxLength={3000}
             onChange={(event) => setNoteText(event.target.value)}
-            placeholder="Write an internal note about the client"
+            placeholder={t("writeInternalClientNote")}
             rows={4}
             value={noteText}
           />
           <button className="primary-button compact-button" disabled={!noteText.trim()} type="submit">
-            Save note
+            {t("saveNote")}
           </button>
         </form>
         <div className="client-note-list">
@@ -212,18 +215,18 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
               </article>
             ))
           ) : (
-            <div className="modal-state">No notes for this client yet.</div>
+            <div className="modal-state">{t("noNotesForClient")}</div>
           )}
         </div>
       </section>
 
       <section className="profile-section">
         <div className="profile-section-heading">
-          <h3>Appointments</h3>
-          <span>{profile.appointments.length} records</span>
+          <h3>{t("appointments")}</h3>
+          <span>{profile.appointments.length} {t("records")}</span>
         </div>
         <DataTable
-          columns={["Date", "Service", "Employee", "Payment", "Rating", "Comment", "Status"]}
+          columns={[t("date"), t("service"), t("employee"), t("payment"), t("rating"), t("comment"), t("status")]}
           rows={
             profile.appointments.length > 0
               ? profile.appointments.map((appointment) => [
@@ -235,18 +238,18 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
                   appointment.clientComment || appointment.employeeComment || "-",
                   <StatusBadge status={appointment.status} />
                 ])
-              : [["No appointments", "-", "-", "-", "-", "-", "-"]]
+              : [[t("noAppointments"), "-", "-", "-", "-", "-", "-"]]
           }
         />
       </section>
 
       <section className="profile-section">
         <div className="profile-section-heading">
-          <h3>Purchases</h3>
-          <span>{profile.sales.length} records</span>
+          <h3>{t("purchases")}</h3>
+          <span>{profile.sales.length} {t("records")}</span>
         </div>
         <DataTable
-          columns={["Date", "Products", "Qty", "Employee", "Payment", "Total"]}
+          columns={[t("date"), t("products"), t("qty"), t("employee"), t("payment"), t("total")]}
           rows={
             profile.sales.length > 0
               ? profile.sales.map((sale) => [
@@ -257,7 +260,7 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
                   `${sale.paymentMethod} · ${sale.paymentStatus}`,
                   adminMoney.format(sale.total)
                 ])
-              : [["No purchases", "-", "-", "-", "-", "-"]]
+              : [[t("noPurchases"), "-", "-", "-", "-", "-"]]
           }
         />
       </section>

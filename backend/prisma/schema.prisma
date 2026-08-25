@@ -591,7 +591,6 @@ model StockMovement {
   contentUnit     ConsumableUnit?   @map("content_unit")
   reason          String?
   createdAt       DateTime          @default(now()) @map("created_at")
-
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("stock_movements")
