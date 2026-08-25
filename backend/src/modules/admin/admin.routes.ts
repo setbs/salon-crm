@@ -3,11 +3,14 @@ import { getAuthenticatedUser, requireCrmUser } from "../auth/auth.middleware.js
 import { getBusinessAnalytics, getConsumableAnalytics } from "../analytics/analytics.service.js";
 import {
   createEmployee,
+  createEmployeeScheduleOverride,
   createEmployeeTimeOff,
+  createClientNote,
   createPortfolioPhoto,
   createProduct,
   createProductBrand,
   createProductCategory,
+  createProductComponent,
   createProductSale,
   createAppointment,
   createService,
@@ -16,10 +19,12 @@ import {
   deleteService,
   deleteServiceCategory,
   deleteEmployeeTimeOff,
+  deleteEmployeeScheduleOverride,
   deletePortfolioPhoto,
   deleteProduct,
   deleteProductBrand,
   deleteProductCategory,
+  deleteProductComponent,
   getAppointmentConsumablePreview,
   getClientProfile,
   getAppointments,
@@ -30,12 +35,14 @@ import {
   getPortfolio,
   getProductBrands,
   getProductCategories,
+  getProductComponents,
   getProductSales,
   getProducts,
   getReviews,
   getServiceCategories,
   getServices,
   getSettings,
+  getStoreOrders,
   updateAppointment,
   updateEmployee,
   updateEmployeeWorkingHours,
@@ -44,18 +51,23 @@ import {
   updateProduct,
   updateProductBrand,
   updateProductCategory,
+  updateProductComponent,
   updateService,
   updateServiceCategory,
   updateSettings,
+  updateStoreOrderStatus,
   uploadPortfolioImage,
   uploadProductImage
 } from "./admin.service.js";
 import {
   createEmployeeSchema,
+  createEmployeeScheduleOverrideSchema,
   createEmployeeTimeOffSchema,
+  createClientNoteSchema,
   createPortfolioPhotoSchema,
   createProductBrandSchema,
   createProductCategorySchema,
+  createProductComponentSchema,
   createProductSchema,
   createAppointmentSchema,
   createSaleSchema,
@@ -69,10 +81,12 @@ import {
   updatePortfolioPhotoSchema,
   updateProductBrandSchema,
   updateProductCategorySchema,
+  updateProductComponentSchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
   updateSettingsSchema
+  ,updateStoreOrderSchema
 } from "./admin.schemas.js";
 
 export const adminRouter = Router();
@@ -154,6 +168,15 @@ adminRouter.get("/admin/clients", async (request, response, next) => {
 adminRouter.get("/admin/clients/:id", async (request, response, next) => {
   try {
     response.json({ data: await getClientProfile(getAuthenticatedUser(request), BigInt(request.params.id)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/clients/:id/notes", async (request, response, next) => {
+  try {
+    const body = createClientNoteSchema.parse(request.body);
+    response.status(201).json({ data: await createClientNote(getAuthenticatedUser(request), BigInt(request.params.id), body) });
   } catch (error) {
     next(error);
   }
@@ -259,6 +282,24 @@ adminRouter.patch("/admin/employees/:id/working-hours", async (request, response
   try {
     const body = updateEmployeeWorkingHoursSchema.parse(request.body);
     response.json({ data: await updateEmployeeWorkingHours(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/employees/:id/schedule-overrides", async (request, response, next) => {
+  try {
+    const body = createEmployeeScheduleOverrideSchema.parse(request.body);
+    response.status(201).json({ data: await createEmployeeScheduleOverride(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/employees/:employeeId/schedule-overrides/:overrideId", async (request, response, next) => {
+  try {
+    await deleteEmployeeScheduleOverride(getAuthenticatedUser(request), BigInt(request.params.employeeId), BigInt(request.params.overrideId));
+    response.status(204).send();
   } catch (error) {
     next(error);
   }
@@ -423,6 +464,41 @@ adminRouter.delete("/admin/product-brands/:id", async (request, response, next) 
   }
 });
 
+adminRouter.get("/admin/product-components", async (request, response, next) => {
+  try {
+    response.json({ data: await getProductComponents(getAuthenticatedUser(request)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post("/admin/product-components", async (request, response, next) => {
+  try {
+    const body = createProductComponentSchema.parse(request.body);
+    response.status(201).json({ data: await createProductComponent(getAuthenticatedUser(request), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.patch("/admin/product-components/:id", async (request, response, next) => {
+  try {
+    const body = updateProductComponentSchema.parse(request.body);
+    response.json({ data: await updateProductComponent(getAuthenticatedUser(request), BigInt(request.params.id), body) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.delete("/admin/product-components/:id", async (request, response, next) => {
+  try {
+    await deleteProductComponent(getAuthenticatedUser(request), BigInt(request.params.id));
+    response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.get("/admin/products", async (request, response, next) => {
   try {
     response.json({ data: await getProducts(getAuthenticatedUser(request)) });
@@ -473,6 +549,14 @@ adminRouter.get("/admin/sales", async (request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+adminRouter.get("/admin/store-orders", async (request, response, next) => {
+  try { response.json({ data: await getStoreOrders(getAuthenticatedUser(request)) }); } catch (error) { next(error); }
+});
+
+adminRouter.patch("/admin/store-orders/:id", async (request, response, next) => {
+  try { const body = updateStoreOrderSchema.parse(request.body); response.json({ data: await updateStoreOrderStatus(getAuthenticatedUser(request), BigInt(request.params.id), body.status) }); } catch (error) { next(error); }
 });
 
 adminRouter.post("/admin/sales", async (request, response, next) => {

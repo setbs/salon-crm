@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
-import { fetchAdminClientProfile, type AdminClientProfile, type AdminData } from "../../api";
+import { FormEvent, useEffect, useState } from "react";
+import { createAdminClientNote, fetchAdminClientProfile, type AdminClientProfile, type AdminData } from "../../api";
 import { AdminModal, DataTable, InfoList, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
 import { adminMoney } from "../../utils/format";
 
@@ -13,7 +13,13 @@ function formatShortDate(value: string) {
   }).format(new Date(value));
 }
 
-export function ClientsSection({ clients }: { clients: AdminData["clients"] }) {
+export function ClientsSection({
+  clients,
+  runAction
+}: {
+  clients: AdminData["clients"];
+  runAction: (action: () => Promise<unknown>) => Promise<void>;
+}) {
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [clientProfile, setClientProfile] = useState<AdminClientProfile | null>(null);
@@ -22,9 +28,19 @@ export function ClientsSection({ clients }: { clients: AdminData["clients"] }) {
   const normalizedSearch = search.trim().toLowerCase();
   const filteredClients = normalizedSearch
     ? clients.filter((client) =>
-        [client.name, client.phone, client.email ?? ""].some((value) => value.toLowerCase().includes(normalizedSearch))
+        [client.name, client.phone, client.email ?? "", ...client.nameAliases.map((alias) => alias.name)].some((value) =>
+          value.toLowerCase().includes(normalizedSearch)
+        )
       )
     : clients;
+
+  async function reloadSelectedClientProfile() {
+    if (!selectedClientId) {
+      return;
+    }
+
+    setClientProfile(await fetchAdminClientProfile(selectedClientId));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -94,23 +110,64 @@ export function ClientsSection({ clients }: { clients: AdminData["clients"] }) {
         <AdminModal title={clientProfile ? `Client: ${clientProfile.name}` : "Client profile"} onClose={() => setSelectedClientId(null)}>
           {isLoadingProfile ? <div className="modal-state">Loading client profile...</div> : null}
           {profileError ? <div className="admin-alert">{profileError}</div> : null}
-          {clientProfile ? <ClientProfileDialog profile={clientProfile} /> : null}
+          {clientProfile ? (
+            <ClientProfileDialog
+              profile={clientProfile}
+              onCreateNote={(text) =>
+                runAction(async () => {
+                  await createAdminClientNote(clientProfile.id, { text });
+                  await reloadSelectedClientProfile();
+                })
+              }
+            />
+          ) : null}
         </AdminModal>
       ) : null}
     </div>
   );
 }
 
-function ClientProfileDialog({ profile }: { profile: AdminClientProfile }) {
+function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: string) => Promise<void>; profile: AdminClientProfile }) {
+  const [noteText, setNoteText] = useState("");
+
+  function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = noteText.trim();
+
+    if (!text) {
+      return;
+    }
+
+    void onCreateNote(text).then(() => setNoteText(""));
+  }
+
   return (
     <div className="client-profile">
       <InfoList
         items={[
           ["Phone", profile.phone],
           ["Email", profile.email ?? "-"],
-          ["Latest note", profile.comment || "no comments"]
+          ["Latest note", profile.comment || "no client notes yet"]
         ]}
       />
+
+      <section className="profile-section client-alias-section">
+        <div className="profile-section-heading">
+          <h3>Registered names</h3>
+          <span>{profile.nameAliases.length} variants</span>
+        </div>
+        <div className="client-alias-list">
+          {profile.nameAliases.length > 0 ? (
+            profile.nameAliases.map((alias) => (
+              <span key={alias.id} title={alias.source ?? undefined}>
+                {alias.name}
+              </span>
+            ))
+          ) : (
+            <span>{profile.name}</span>
+          )}
+        </div>
+      </section>
 
       <div className="profile-summary-grid">
         <div>
@@ -126,6 +183,39 @@ function ClientProfileDialog({ profile }: { profile: AdminClientProfile }) {
           <strong>{profile.sales.length}</strong>
         </div>
       </div>
+
+      <section className="profile-section client-notes-section">
+        <div className="profile-section-heading">
+          <h3>Client notes</h3>
+          <span>{profile.notes.length} notes</span>
+        </div>
+        <form className="client-note-form" onSubmit={submitNote}>
+          <textarea
+            maxLength={3000}
+            onChange={(event) => setNoteText(event.target.value)}
+            placeholder="Write an internal note about the client"
+            rows={4}
+            value={noteText}
+          />
+          <button className="primary-button compact-button" disabled={!noteText.trim()} type="submit">
+            Save note
+          </button>
+        </form>
+        <div className="client-note-list">
+          {profile.notes.length > 0 ? (
+            profile.notes.map((note) => (
+              <article key={note.id}>
+                <p>{note.text}</p>
+                <small>
+                  {note.author} · {formatShortDate(note.createdAt)}
+                </small>
+              </article>
+            ))
+          ) : (
+            <div className="modal-state">No notes for this client yet.</div>
+          )}
+        </div>
+      </section>
 
       <section className="profile-section">
         <div className="profile-section-heading">

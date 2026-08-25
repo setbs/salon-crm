@@ -4,18 +4,22 @@ import {
   createAdminProduct,
   createAdminProductBrand,
   createAdminProductCategory,
+  createAdminProductComponent,
   createAdminStockMovement,
   deleteAdminProduct,
   deleteAdminProductBrand,
   deleteAdminProductCategory,
+  deleteAdminProductComponent,
   updateAdminProduct,
   updateAdminProductBrand,
   updateAdminProductCategory,
+  updateAdminProductComponent,
   uploadAdminProductImage,
   type AdminData,
   type MeasurementUnit,
   type ProductBrandInput,
   type ProductCategoryInput,
+  type ProductComponentInput,
   type ProductInput,
   type ProductPurpose,
   type StockMovementInput
@@ -38,19 +42,30 @@ const today = new Date().toISOString().slice(0, 10);
 const PRODUCTS_PAGE_SIZE = 7;
 const STOCK_MOVEMENT_PAGE_SIZE = 8;
 
+function addDaysToDateString(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+
+  return [String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
 export function ProductsSection({
   brands,
   categories,
+  components,
   products,
   runAction
 }: {
   brands: AdminData["productBrands"];
   categories: AdminData["productCategories"];
+  components: AdminData["productComponents"];
   products: AdminData["products"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [isCreatingComponent, setIsCreatingComponent] = useState(false);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [isCreatingStockMovement, setIsCreatingStockMovement] = useState(false);
   const [productCategoryFilter, setProductCategoryFilter] = useState("all");
@@ -61,10 +76,12 @@ export function ProductsSection({
   const [isViewingStockHistory, setIsViewingStockHistory] = useState(false);
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const editingBrand = brands.find((brand) => brand.id === editingBrandId) ?? null;
   const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
+  const editingComponent = components.find((component) => component.id === editingComponentId) ?? null;
   const editingProduct = products.find((product) => product.id === editingProductId) ?? null;
   const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const normalizedProductSearch = productSearch.trim().toLowerCase();
@@ -76,7 +93,15 @@ export function ProductsSection({
     const matchesPurpose = productPurposeFilter === "all" || product.purpose === productPurposeFilter;
     const matchesSearch =
       normalizedProductSearch.length === 0 ||
-      [product.name, product.category, product.brand ?? "", product.sku ?? "", product.description ?? "", formatProductPurpose(product.purpose)].some((value) =>
+      [
+        product.name,
+        product.category,
+        product.brand ?? "",
+        product.sku ?? "",
+        product.description ?? "",
+        product.components.map((component) => `${component.name} ${component.description ?? ""}`).join(" "),
+        formatProductPurpose(product.purpose)
+      ].some((value) =>
         value.toLowerCase().includes(normalizedProductSearch)
       );
 
@@ -161,7 +186,41 @@ export function ProductsSection({
                         }}
                       />
                     ])
-                  : [["No brands yet", "-", "-"]]
+                : [["No brands yet", "-", "-"]]
+              }
+            />
+          </section>
+
+          <section className="compact-management-card">
+            <div className="compact-management-header">
+              <div>
+                <p className="admin-kicker">Components</p>
+                <strong>{components.length}</strong>
+              </div>
+              <button className="panel-action" onClick={() => setIsCreatingComponent(true)} type="button">
+                + Add component
+              </button>
+            </div>
+            <DataTable
+              columns={["Component", "Products", "Actions"]}
+              rows={
+                components.length > 0
+                  ? components.map((component) => [
+                      component.name,
+                      String(component.productCount),
+                      <InlineActions
+                        labels={["Edit", "Delete"]}
+                        onAction={(label) => {
+                          if (label === "Edit") {
+                            setEditingComponentId(component.id);
+                            return;
+                          }
+
+                          void runAction(() => deleteAdminProductComponent(component.id));
+                        }}
+                      />
+                    ])
+                  : [["No components yet", "-", "-"]]
               }
             />
           </section>
@@ -233,7 +292,7 @@ export function ProductsSection({
           </label>
         </div>
         <DataTable
-          columns={["Category", "Brand", "Purpose", "Product", "Margin", "Stock", "Package", "Status", "Actions"]}
+          columns={["Category", "Brand", "Purpose", "Product", "Margin", "Stock", "Package", "Boost", "Status", "Actions"]}
           rows={
             pagedProducts.length > 0
               ? pagedProducts.map((item) => {
@@ -249,6 +308,7 @@ export function ProductsSection({
                     formatProductMargin(item),
                     stockLevel === "low" || stockLevel === "out" ? <span className="danger-text">{formatProductStock(item)}</span> : formatProductStock(item),
                     item.contentAmount ? `${formatPlainNumber(item.contentAmount)} ${formatUnit(item.contentUnit)}` : "not set",
+                    item.popularityBoost > 0 ? `+${item.popularityBoost}` : "-",
                     <StatusBadge status={stockLevel} />,
                     <InlineActions
                       labels={["Details", "Edit", "Delete"]}
@@ -268,7 +328,7 @@ export function ProductsSection({
                     />
                   ];
                 })
-              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-"]]
+              : [["No products match the current filters.", "-", "-", "-", "-", "-", "-", "-", "-", "-"]]
           }
         />
         <PaginationControls currentPage={currentProductPage} label={`${filteredProducts.length} products`} onPageChange={setProductPage} pageCount={productPageCount} />
@@ -327,6 +387,34 @@ export function ProductsSection({
           />
         </AdminModal>
       ) : null}
+      {isCreatingComponent ? (
+        <AdminModal title="New key component" onClose={() => setIsCreatingComponent(false)}>
+          <ProductComponentForm
+            onCancel={() => setIsCreatingComponent(false)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await createAdminProductComponent(payload);
+                setIsCreatingComponent(false);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
+      {editingComponent ? (
+        <AdminModal title={`Edit component: ${editingComponent.name}`} onClose={() => setEditingComponentId(null)}>
+          <ProductComponentForm
+            component={editingComponent}
+            key={editingComponent.id}
+            onCancel={() => setEditingComponentId(null)}
+            onSubmit={(payload) =>
+              runAction(async () => {
+                await updateAdminProductComponent(editingComponent.id, payload);
+                setEditingComponentId(null);
+              })
+            }
+          />
+        </AdminModal>
+      ) : null}
       {isCreatingCategory ? (
         <AdminModal title="New product category" onClose={() => setIsCreatingCategory(false)}>
           <ProductCategoryForm
@@ -360,6 +448,7 @@ export function ProductsSection({
           <ProductForm
             brands={brands}
             categories={categories}
+            components={components}
             onCancel={() => setIsCreatingProduct(false)}
             onSubmit={(payload) =>
               runAction(async () => {
@@ -375,6 +464,7 @@ export function ProductsSection({
           <ProductForm
             brands={brands}
             categories={categories}
+            components={components}
             key={editingProduct.id}
             onCancel={() => setEditingProductId(null)}
             onSubmit={(payload) =>
@@ -468,6 +558,56 @@ function ProductBrandForm({
   );
 }
 
+function ProductComponentForm({
+  component,
+  onCancel,
+  onSubmit
+}: {
+  component?: AdminData["productComponents"][number];
+  onCancel: () => void;
+  onSubmit: (payload: ProductComponentInput) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    name: component?.name ?? "",
+    description: component?.description ?? ""
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onSubmit({
+      name: form.name,
+      description: form.description || undefined
+    });
+  }
+
+  return (
+    <form className="admin-form" onSubmit={submit}>
+      <label>
+        <span>Component name</span>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+      </label>
+      <label>
+        <span>Description</span>
+        <textarea
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          placeholder="What it does, why it matters, and how it works in the formula"
+          rows={7}
+        />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button compact-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button admin-submit" type="submit">
+          {component ? "Save component" : "Create component"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ProductCategoryForm({
   category,
   onCancel,
@@ -548,16 +688,19 @@ function ProductCategoryForm({
 function ProductForm({
   brands,
   categories,
+  components,
   onCancel,
   onSubmit,
   product
 }: {
   brands: AdminData["productBrands"];
   categories: AdminData["productCategories"];
+  components: AdminData["productComponents"];
   onCancel?: () => void;
   onSubmit: (payload: ProductInput) => Promise<void>;
   product?: AdminData["products"][number];
 }) {
+  const initialComponentIds = product?.components.map((component) => component.id) ?? [];
   const [form, setForm] = useState({
     categoryId: product?.categoryId ?? categories[0]?.id ?? "",
     brandId: product?.brandId ?? brands[0]?.id ?? "",
@@ -573,8 +716,10 @@ function ProductForm({
     sale: String(product?.sale ?? 0),
     stock: String(product?.stock ?? 0),
     min: String(product?.min ?? 0),
+    popularityBoost: String(product?.popularityBoost ?? 0),
     contentAmount: product?.contentAmount ? String(product.contentAmount) : "",
-    contentUnit: product?.contentUnit ?? ("ml" as MeasurementUnit)
+    contentUnit: product?.contentUnit ?? ("ml" as MeasurementUnit),
+    componentIds: initialComponentIds
   });
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -614,8 +759,10 @@ function ProductForm({
       sale: Number(form.sale),
       stock: Number(form.stock),
       min: Number(form.min),
+      popularityBoost: Number(form.popularityBoost),
       contentAmount: form.contentAmount ? Number(form.contentAmount) : undefined,
-      contentUnit: form.contentAmount ? form.contentUnit : undefined
+      contentUnit: form.contentAmount ? form.contentUnit : undefined,
+      componentIds: form.componentIds
     });
   }
 
@@ -645,7 +792,7 @@ function ProductForm({
       </label>
       <label>
         <span>Description</span>
-        <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="For all hair types" />
+        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="For all hair types" rows={6} />
       </label>
       {brands.length > 0 ? (
         <label>
@@ -669,6 +816,39 @@ function ProductForm({
         <span>Product quote</span>
         <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A short elegant line for the client product card" rows={3} />
       </label>
+      <fieldset className="component-picker">
+        <legend>Key components</legend>
+        {components.length > 0 ? (
+          <div className="component-picker-grid">
+            {components.map((component) => {
+              const checked = form.componentIds.includes(component.id);
+
+              return (
+                <label className="checkbox-line component-option" key={component.id}>
+                  <input
+                    checked={checked}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        componentIds: event.target.checked
+                          ? [...current.componentIds, component.id]
+                          : current.componentIds.filter((componentId) => componentId !== component.id)
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{component.name}</strong>
+                    {component.description ? <small>{component.description}</small> : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="form-note">Create key components first, then select them here for the public product page.</p>
+        )}
+      </fieldset>
       <label>
         <span>SKU</span>
         <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
@@ -706,6 +886,11 @@ function ProductForm({
       <label>
         <span>Minimum stock</span>
         <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
+      </label>
+      <label>
+        <span>Popularity boost</span>
+        <input type="number" min="0" max="1000" step="1" value={form.popularityBoost} onChange={(event) => setForm({ ...form, popularityBoost: event.target.value })} />
+        <small className="form-hint">Adds marketing weight to the popular-products ranking.</small>
       </label>
       <label>
         <span>Package content</span>
@@ -886,14 +1071,21 @@ function StockMovementForm({
 }
 
 function StockMovementHistoryModal({ movements, onClose }: { movements: StockMovementHistoryRow[]; onClose: () => void }) {
-  const [period, setPeriod] = useState<"week" | "month" | "date">("week");
+  const [period, setPeriod] = useState<"week" | "month" | "date" | "range">("week");
   const [selectedDate, setSelectedDate] = useState(today);
+  const [rangeFrom, setRangeFrom] = useState(addDaysToDateString(today, -7));
+  const [rangeTo, setRangeTo] = useState(today);
   const [page, setPage] = useState(1);
   const filteredMovements = movements.filter((movement) => {
     const movementDate = new Date(movement.createdAt);
+    const movementDateKey = toDateTimeFields(movement.createdAt).date;
 
     if (period === "date") {
-      return toDateTimeFields(movement.createdAt).date === selectedDate;
+      return movementDateKey === selectedDate;
+    }
+
+    if (period === "range") {
+      return movementDateKey >= rangeFrom && movementDateKey <= rangeTo;
     }
 
     const cutoff = new Date();
@@ -908,17 +1100,18 @@ function StockMovementHistoryModal({ movements, onClose }: { movements: StockMov
 
   useEffect(() => {
     setPage(1);
-  }, [period, selectedDate]);
+  }, [period, selectedDate, rangeFrom, rangeTo]);
 
   return (
     <AdminModal className="stock-history-modal" title="Stock movement history" onClose={onClose}>
       <div className="table-toolbar">
         <label>
           <span>Period</span>
-          <select value={period} onChange={(event) => setPeriod(event.target.value as "week" | "month" | "date")}>
+          <select value={period} onChange={(event) => setPeriod(event.target.value as "week" | "month" | "date" | "range")}>
             <option value="week">Last week</option>
             <option value="month">Last month</option>
             <option value="date">Specific date</option>
+            <option value="range">Date range</option>
           </select>
         </label>
         {period === "date" ? (
@@ -926,6 +1119,18 @@ function StockMovementHistoryModal({ movements, onClose }: { movements: StockMov
             <span>Date</span>
             <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
           </label>
+        ) : null}
+        {period === "range" ? (
+          <>
+            <label>
+              <span>From</span>
+              <input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} />
+            </label>
+            <label>
+              <span>To</span>
+              <input min={rangeFrom} type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} />
+            </label>
+          </>
         ) : null}
       </div>
       <DataTable
@@ -1014,11 +1219,25 @@ function ProductInventoryModal({
                 <strong>{formatProductMargin(product)}</strong>
               </div>
               <div>
+                <span>Popularity boost</span>
+                <strong>{product.popularityBoost > 0 ? `+${product.popularityBoost}` : "-"}</strong>
+              </div>
+              <div>
                 <span>Stock</span>
                 <strong>{formatProductStock(product)}</strong>
               </div>
             </div>
             {product.quote ? <blockquote>{product.quote}</blockquote> : null}
+            {product.components.length > 0 ? (
+              <div className="product-component-summary">
+                <p className="admin-kicker">Key components</p>
+                <div>
+                  {product.components.map((component) => (
+                    <span key={component.id}>{component.name}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="product-card-actions">
               <button className="secondary-button compact-button" onClick={onEdit} type="button">
                 Edit product

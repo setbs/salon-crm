@@ -37,6 +37,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Product inventory and product sales.
 - Product categories, brands, product photos, public product detail modals, and internal product purpose control.
 - Product editing and manual stock movements.
+- Store order management with search, status workflow, idempotent stock deduction on confirmation, and stock restoration on cancellation.
 - Appointment completion workflow with consumable write-off preview.
 - Consumable analytics with week, month, and custom period views.
 - CSV export for business analytics, appointments, inventory, and consumables.
@@ -149,6 +150,24 @@ Local URLs:
 Frontend: http://localhost:5173
 Backend:  http://localhost:4000
 Health:   http://localhost:4000/api/health
+```
+
+To allow the independent `product-store` frontend to call the API, configure its origin in `salon-crm/.env`:
+
+```text
+FRONTEND_ORIGIN=http://localhost:5173
+STOREFRONT_ORIGIN=http://localhost:5174
+```
+
+Public read-only product endpoints are available without CRM authentication:
+
+```text
+GET /api/public/products
+GET /api/public/products/:id
+GET /api/public/popular-products
+GET /api/public/store-reviews
+POST /api/public/store-reviews
+POST /api/public/orders
 ```
 
 ## Demo Credentials

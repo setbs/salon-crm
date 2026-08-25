@@ -49,6 +49,12 @@ export type PublicProduct = {
   price: number;
   contentAmount: number | null;
   contentUnit: MeasurementUnit | null;
+  stockQuantity: number;
+  components: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
   inStock: boolean;
 };
 
@@ -314,11 +320,26 @@ export type AdminClient = {
   visits: number;
   spent: number;
   comment: string;
+  nameAliases: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    name: string;
+    source: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type AdminClientProfile = AdminClient & {
   firstName: string;
   lastName: string;
+  notes: Array<{
+    id: string;
+    text: string;
+    author: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
   appointments: Array<{
     id: string;
     date: string;
@@ -396,6 +417,15 @@ export type AdminTimeOff = {
   reason: string | null;
 };
 
+export type AdminScheduleOverride = {
+  id: string;
+  workDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  isClosed: boolean;
+  reason: string | null;
+};
+
 export type AdminEmployee = {
   id: string;
   firstName: string;
@@ -414,6 +444,7 @@ export type AdminEmployee = {
     categoryName: string | null;
   }>;
   workingHours: AdminWorkingHour[];
+  scheduleOverrides: AdminScheduleOverride[];
   timeOffItems: AdminTimeOff[];
   hours: string;
   timeOff: string;
@@ -445,10 +476,16 @@ export type AdminProduct = {
   sale: number;
   stock: number;
   min: number;
+  popularityBoost: number;
   contentAmount: number | null;
   contentUnit: MeasurementUnit | null;
   stockContentAmount: number | null;
   stockPackageEquivalent: number | null;
+  components: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
   stockStatus: "ok" | "low" | "not_tracked";
   movements: Array<{
     type: string;
@@ -469,6 +506,13 @@ export type AdminProductCategory = {
 };
 
 export type AdminProductBrand = {
+  id: string;
+  name: string;
+  description: string | null;
+  productCount: number;
+};
+
+export type AdminProductComponent = {
   id: string;
   name: string;
   description: string | null;
@@ -520,6 +564,22 @@ export type AdminReview = {
   text: string;
 };
 
+export type StoreOrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "completed" | "cancelled";
+
+export type AdminStoreOrder = {
+  id: string;
+  status: StoreOrderStatus;
+  customer: { firstName: string; lastName: string; phone: string; email: string | null };
+  deliveryMethod: "pickup" | "delivery";
+  deliveryAddress: string | null;
+  comment: string | null;
+  totalAmount: number;
+  stockDeductedAt: string | null;
+  stockRestoredAt: string | null;
+  createdAt: string;
+  items: Array<{ id: string; productId: string; productName: string; unitPrice: number; quantity: number }>;
+};
+
 export type AdminSettings = {
   salonName: string;
   phone: string;
@@ -541,8 +601,10 @@ export type AdminData = {
   portfolio: AdminPortfolioPhoto[];
   productCategories: AdminProductCategory[];
   productBrands: AdminProductBrand[];
+  productComponents: AdminProductComponent[];
   products: AdminProduct[];
   sales: AdminSale[];
+  storeOrders: AdminStoreOrder[];
   payments: AdminPayment[];
   reviews: AdminReview[];
   settings: AdminSettings;
@@ -597,6 +659,15 @@ export type EmployeeTimeOffInput = {
   reason?: string;
 };
 
+export type EmployeeScheduleOverrideInput = {
+  startDate: string;
+  endDate: string;
+  startTime?: string;
+  endTime?: string;
+  isClosed: boolean;
+  reason?: string;
+};
+
 export type PortfolioInput = {
   employeeId: string;
   imageUrl: string;
@@ -635,8 +706,10 @@ export type ProductInput = {
   sale: number;
   stock: number;
   min: number;
+  popularityBoost?: number;
   contentAmount?: number;
   contentUnit?: MeasurementUnit;
+  componentIds?: string[];
 };
 
 export type ProductCategoryInput = {
@@ -646,6 +719,11 @@ export type ProductCategoryInput = {
 };
 
 export type ProductBrandInput = {
+  name: string;
+  description?: string;
+};
+
+export type ProductComponentInput = {
   name: string;
   description?: string;
 };
@@ -752,7 +830,7 @@ export async function createAppointment(payload: AppointmentPayload) {
 }
 
 export async function fetchAdminData(): Promise<AdminData> {
-  const [dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings] = await Promise.all([
+  const [dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, productComponents, products, sales, storeOrders, payments, reviews, settings] = await Promise.all([
     getAdmin<AdminDashboard>("dashboard"),
     getAdmin<AdminConsumableAnalytics>("consumable-analytics"),
     getAdmin<AdminBusinessAnalytics>("business-analytics"),
@@ -764,14 +842,16 @@ export async function fetchAdminData(): Promise<AdminData> {
     getAdmin<AdminPortfolioPhoto[]>("portfolio"),
     getAdmin<AdminProductCategory[]>("product-categories"),
     getAdmin<AdminProductBrand[]>("product-brands"),
+    getAdmin<AdminProductComponent[]>("product-components"),
     getAdmin<AdminProduct[]>("products"),
     getAdmin<AdminSale[]>("sales"),
+    getAdmin<AdminStoreOrder[]>("store-orders"),
     getAdmin<AdminPayment[]>("payments"),
     getAdmin<AdminReview[]>("reviews"),
     getAdmin<AdminSettings>("settings")
   ]);
 
-  return { dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, products, sales, payments, reviews, settings };
+  return { dashboard, consumableAnalytics, businessAnalytics, appointments, clients, serviceCategories, services, employees, portfolio, productCategories, productBrands, productComponents, products, sales, storeOrders, payments, reviews, settings };
 }
 
 export async function fetchAdminBusinessAnalytics(input: { period: AdminBusinessAnalyticsPeriod; from?: string; to?: string }) {
@@ -826,6 +906,10 @@ export async function fetchAppointmentConsumablePreview(id: string) {
 
 export async function fetchAdminClientProfile(id: string) {
   return request<ApiResponse<AdminClientProfile>>(`/api/admin/clients/${id}`).then((response) => response.data);
+}
+
+export async function createAdminClientNote(id: string, payload: { text: string }) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/clients/${id}/notes`, jsonRequest("POST", payload)).then((response) => response.data);
 }
 
 export async function createAdminPortfolioPhoto(payload: PortfolioInput) {
@@ -892,6 +976,16 @@ export async function updateAdminEmployeeWorkingHours(id: string, payload: Emplo
   return request<ApiResponse<{ id: string }>>(`/api/admin/employees/${id}/working-hours`, jsonRequest("PATCH", payload)).then((response) => response.data);
 }
 
+export async function createAdminEmployeeScheduleOverride(id: string, payload: EmployeeScheduleOverrideInput) {
+  return request<ApiResponse<{ id: string; count: number }>>(`/api/admin/employees/${id}/schedule-overrides`, jsonRequest("POST", payload)).then(
+    (response) => response.data
+  );
+}
+
+export async function deleteAdminEmployeeScheduleOverride(employeeId: string, overrideId: string) {
+  return request<void>(`/api/admin/employees/${employeeId}/schedule-overrides/${overrideId}`, { method: "DELETE" });
+}
+
 export async function createAdminEmployeeTimeOff(id: string, payload: EmployeeTimeOffInput) {
   return request<ApiResponse<{ id: string }>>(`/api/admin/employees/${id}/time-off`, jsonRequest("POST", payload)).then((response) => response.data);
 }
@@ -936,8 +1030,24 @@ export async function deleteAdminProductBrand(id: string) {
   return request<void>(`/api/admin/product-brands/${id}`, { method: "DELETE" });
 }
 
+export async function createAdminProductComponent(payload: ProductComponentInput) {
+  return request<ApiResponse<{ id: string }>>("/api/admin/product-components", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminProductComponent(id: string, payload: Partial<ProductComponentInput>) {
+  return request<ApiResponse<{ id: string }>>(`/api/admin/product-components/${id}`, jsonRequest("PATCH", payload)).then((response) => response.data);
+}
+
+export async function deleteAdminProductComponent(id: string) {
+  return request<void>(`/api/admin/product-components/${id}`, { method: "DELETE" });
+}
+
 export async function createAdminStockMovement(payload: StockMovementInput) {
   return request<ApiResponse<{ id: string }>>("/api/admin/stock-movements", jsonRequest("POST", payload)).then((response) => response.data);
+}
+
+export async function updateAdminStoreOrder(id: string, status: StoreOrderStatus) {
+  return request<ApiResponse<AdminStoreOrder>>(`/api/admin/store-orders/${id}`, jsonRequest("PATCH", { status })).then((response) => response.data);
 }
 
 export async function createAdminSale(payload: SaleInput) {

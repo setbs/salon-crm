@@ -11,6 +11,7 @@ before(async () => {
   process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
   process.env.AUTH_SECRET ??= "test-only-salon-crm-auth-secret";
   process.env.FRONTEND_ORIGIN ??= "http://localhost:5173";
+  process.env.STOREFRONT_ORIGIN ??= "http://localhost:5174";
 
   const [{ app }, authCrypto] = await Promise.all([import("../src/app.js"), import("../src/modules/auth/auth.crypto.js")]);
   createSessionToken = authCrypto.createSessionToken;
@@ -45,6 +46,44 @@ describe("API smoke and CRM guards", () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(body, { status: "ok" });
+  });
+
+  test("storefront origin is allowed by CORS", async () => {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: { origin: "http://localhost:5174" }
+    });
+
+    assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5174");
+  });
+
+  test("public product details reject an invalid id without authentication", async () => {
+    const response = await fetch(`${baseUrl}/public/products/not-an-id`);
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.message, "Invalid product id.");
+  });
+
+  test("public store review validation rejects invalid input without touching the database", async () => {
+    const response = await fetch(`${baseUrl}/public/store-reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authorName: "A", rating: 6, comment: "short", website: "bot" })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(body.message, /Validation failed/);
+  });
+
+  test("public store order validation rejects an empty cart without touching the database", async () => {
+    const response = await fetch(`${baseUrl}/public/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer: { firstName: "Test", lastName: "User", phone: "+380000000000" }, deliveryMethod: "pickup", items: [] })
+    });
+
+    assert.equal(response.status, 400);
   });
 
   test("admin routes require a CRM session", async () => {

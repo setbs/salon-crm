@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { getEmployees, getPortfolio, getProducts, getServices } from "./catalog.service.js";
+import { createStoreOrder, createStoreReview, getEmployees, getPopularProducts, getPortfolio, getProduct, getProducts, getServices, getStoreReviews } from "./catalog.service.js";
 import { parseIdList } from "../../utils/time.js";
+import { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 
 export const catalogRouter = Router();
 
@@ -31,6 +32,54 @@ catalogRouter.get("/portfolio", async (_request, response, next) => {
 catalogRouter.get("/products", async (_request, response, next) => {
   try {
     response.json({ data: await getProducts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.get("/public/products", async (_request, response, next) => {
+  try {
+    response.json({ data: await getProducts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.get("/public/popular-products", async (_request, response, next) => {
+  try {
+    response.json({ data: await getPopularProducts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.get("/public/store-reviews", async (_request, response, next) => {
+  try {
+    response.json({ data: await getStoreReviews() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.post("/public/store-reviews", async (request, response, next) => {
+  try {
+    response.status(201).json({ data: await createStoreReview(storeReviewSchema.parse(request.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.post("/public/orders", async (request, response, next) => {
+  try {
+    response.status(201).json({ data: await createStoreOrder(storeOrderSchema.parse(request.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.get("/public/products/:id", async (request, response, next) => {
+  try {
+    response.json({ data: await getProduct(request.params.id) });
   } catch (error) {
     next(error);
   }

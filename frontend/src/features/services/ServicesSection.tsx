@@ -1,5 +1,5 @@
-import { ArrowRight, Trash2 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { ArrowRight, Search, Trash2 } from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
 import {
   createAdminService,
   createAdminServiceCategory,
@@ -12,7 +12,7 @@ import {
   type ServiceCategoryInput,
   type ServiceInput
 } from "../../api";
-import { AdminModal, DataTable, InlineActions, Panel } from "../../components/admin-ui";
+import { AdminModal, DataTable, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
 import { formatPlainNumber, formatUnit } from "../../utils/format";
 
 type DisplayPrice = {
@@ -60,6 +60,10 @@ export function ServicesSection({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [consumableFilter, setConsumableFilter] = useState("all");
+  const [serviceSearch, setServiceSearch] = useState("");
   const [isCreatingService, setIsCreatingService] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -67,7 +71,29 @@ export function ServicesSection({
   const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
   const editingService = services.find((service) => service.id === editingServiceId) ?? null;
   const editingCategory = categories.find((category) => category.id === editingCategoryId) ?? null;
-  const serviceGroups = buildServiceGroups(services, categories, categoryFilter);
+  const normalizedServiceSearch = serviceSearch.trim().toLowerCase();
+  const filteredServices = services.filter((service) => {
+    const matchesCategory = categoryFilter === "all" || (categoryFilter === "" ? service.categoryId === null : service.categoryId === categoryFilter);
+    const matchesEmployee =
+      employeeFilter === "all" || (employeeFilter === "" ? service.employeeIds.length === 0 : service.employeeIds.includes(employeeFilter));
+    const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? service.active : !service.active);
+    const matchesConsumables =
+      consumableFilter === "all" || (consumableFilter === "configured" ? service.consumables.length > 0 : service.consumables.length === 0);
+    const matchesSearch =
+      normalizedServiceSearch.length === 0 ||
+      [
+        service.name,
+        service.description ?? "",
+        service.category?.name ?? "Uncategorized",
+        service.active ? "active" : "disabled",
+        service.employees.map((employee) => `${employee.name} ${employee.specialization ?? ""}`).join(" "),
+        service.consumables.map((consumable) => `${consumable.productName} ${consumable.productCategory ?? ""}`).join(" ")
+      ].some((value) => value.toLowerCase().includes(normalizedServiceSearch));
+
+    return matchesCategory && matchesEmployee && matchesStatus && matchesConsumables && matchesSearch;
+  });
+  const serviceGroups = buildServiceGroups(filteredServices, categories, categoryFilter);
+  const serviceSummary = useMemo(() => buildServiceSummary(services), [services]);
 
   function toggleServiceGroup(groupId: string) {
     setCollapsedServiceGroups((current) => (current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]));
@@ -102,7 +128,7 @@ export function ServicesSection({
           rows={categories.map((category) => [
             category.name,
             category.description ?? "no description",
-            category.active ? "active" : "disabled",
+            <StatusBadge status={category.active ? "active" : "disabled"} />,
             <InlineActions
               labels={[category.active ? "Disable" : "Enable", "Edit", "Delete"]}
               onAction={(label) => {
@@ -123,7 +149,36 @@ export function ServicesSection({
         />
       </Panel>
       <Panel title="Services" action="Add service" onAction={() => setIsCreatingService(true)} wide>
+        <div className="service-summary-grid">
+          <article>
+            <span>Total services</span>
+            <strong>{serviceSummary.total}</strong>
+            <small>{filteredServices.length} visible with current filters</small>
+          </article>
+          <article>
+            <span>Active</span>
+            <strong>{serviceSummary.active}</strong>
+            <small>{serviceSummary.disabled} disabled</small>
+          </article>
+          <article>
+            <span>Assigned</span>
+            <strong>{serviceSummary.assigned}</strong>
+            <small>{serviceSummary.unassigned} without specialist</small>
+          </article>
+          <article>
+            <span>Consumables</span>
+            <strong>{serviceSummary.withConsumables}</strong>
+            <small>{serviceSummary.withoutConsumables} without materials</small>
+          </article>
+        </div>
         <div className="table-toolbar">
+          <label>
+            <span>Search</span>
+            <div className="admin-search table-search">
+              <Search aria-hidden="true" size={17} />
+              <input placeholder="Name, description, specialist, material" value={serviceSearch} onChange={(event) => setServiceSearch(event.target.value)} />
+            </div>
+          </label>
           <label>
             <span>Category filter</span>
             <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
@@ -134,6 +189,34 @@ export function ServicesSection({
                   {category.name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            <span>Specialist filter</span>
+            <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
+              <option value="all">All specialists</option>
+              <option value="">Unassigned</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status filter</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </label>
+          <label>
+            <span>Consumables filter</span>
+            <select value={consumableFilter} onChange={(event) => setConsumableFilter(event.target.value)}>
+              <option value="all">All services</option>
+              <option value="configured">With consumables</option>
+              <option value="not_set">Without consumables</option>
             </select>
           </label>
         </div>
@@ -168,7 +251,7 @@ export function ServicesSection({
                           `${item.duration} min`,
                           formatConsumables(item.consumables),
                           item.appointmentCount > 0 ? `${item.appointmentCount} appointments` : "no appointments",
-                          item.active ? "active" : "disabled",
+                          <StatusBadge status={item.active ? "active" : "disabled"} />,
                           renderServiceActions(item)
                         ])}
                       />
@@ -180,7 +263,7 @@ export function ServicesSection({
               );
             })
           ) : (
-            <div className="empty-state">No services match this category filter.</div>
+            <div className="empty-state">No services match the current filters.</div>
           )}
         </div>
       </Panel>
@@ -300,6 +383,18 @@ function buildServiceGroups(
   }
 
   return groups;
+}
+
+function buildServiceSummary(services: AdminData["services"]) {
+  return {
+    total: services.length,
+    active: services.filter((service) => service.active).length,
+    disabled: services.filter((service) => !service.active).length,
+    assigned: services.filter((service) => service.employeeIds.length > 0).length,
+    unassigned: services.filter((service) => service.employeeIds.length === 0).length,
+    withConsumables: services.filter((service) => service.consumables.length > 0).length,
+    withoutConsumables: services.filter((service) => service.consumables.length === 0).length
+  };
 }
 function ServiceCategoryForm({
   onCancel,

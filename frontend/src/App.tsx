@@ -16,6 +16,7 @@ import {
   Scissors,
   Settings,
   ShoppingCart,
+  Store,
   Star,
   Trash2,
   UserRound,
@@ -29,14 +30,17 @@ import { ClientsSection } from "./features/clients/ClientsSection";
 import { DashboardSection } from "./features/dashboard/DashboardSection";
 import { ProductsSection } from "./features/products/ProductsSection";
 import { ServicesSection } from "./features/services/ServicesSection";
+import { StoreOrdersSection } from "./features/store-orders/StoreOrdersSection";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "./utils/format";
 import {
   createAdminEmployee,
+  createAdminEmployeeScheduleOverride,
   createAdminEmployeeTimeOff,
   createAdminPortfolioPhoto,
   createAdminSale,
   createAppointment,
   deleteAdminEmployeeTimeOff,
+  deleteAdminEmployeeScheduleOverride,
   deleteAdminPortfolioPhoto,
   fetchAdminData,
   fetchAvailability,
@@ -58,6 +62,7 @@ import {
   type AuthUser,
   type Employee,
   type EmployeeInput,
+  type EmployeeScheduleOverrideInput,
   type EmployeeTimeOffInput,
   type EmployeeWorkingHoursInput,
   type MeasurementUnit,
@@ -288,6 +293,14 @@ function addDaysToDateString(value: string, days: number) {
   ].join("-");
 }
 
+function formatDateOnly(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(`${value}T00:00:00`));
+}
+
 function formatSuggestedDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
@@ -306,6 +319,7 @@ type AdminSection =
   | "portfolio"
   | "products"
   | "sales"
+  | "store-orders"
   | "payments"
   | "reviews"
   | "settings";
@@ -319,6 +333,7 @@ const adminNav: Array<{ id: AdminSection; label: string; icon: typeof LayoutDash
   { id: "portfolio", label: "Portfolio", icon: Camera },
   { id: "products", label: "Products", icon: Package },
   { id: "sales", label: "Sales", icon: ShoppingCart },
+  { id: "store-orders", label: "Store orders", icon: Store },
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "reviews", label: "Reviews", icon: Star },
   { id: "settings", label: "Settings", icon: Settings }
@@ -454,6 +469,8 @@ const shopProductFallback: PublicProduct[] = [
     price: 950,
     contentAmount: 250,
     contentUnit: "ml",
+    stockQuantity: 5,
+    components: [],
     inStock: true
   },
   {
@@ -468,6 +485,8 @@ const shopProductFallback: PublicProduct[] = [
     price: 900,
     contentAmount: 250,
     contentUnit: "ml",
+    stockQuantity: 5,
+    components: [],
     inStock: true
   },
   {
@@ -482,6 +501,8 @@ const shopProductFallback: PublicProduct[] = [
     price: 1050,
     contentAmount: 250,
     contentUnit: "ml",
+    stockQuantity: 5,
+    components: [],
     inStock: true
   },
   {
@@ -496,6 +517,8 @@ const shopProductFallback: PublicProduct[] = [
     price: 1050,
     contentAmount: 250,
     contentUnit: "ml",
+    stockQuantity: 5,
+    components: [],
     inStock: true
   }
 ];
@@ -1244,7 +1267,7 @@ function AdminContent({
   }
 
   if (section === "clients") {
-    return <ClientsSection clients={data.clients} />;
+    return <ClientsSection clients={data.clients} runAction={runAction} />;
   }
 
   if (section === "services") {
@@ -1276,11 +1299,15 @@ function AdminContent({
   }
 
   if (section === "products") {
-    return <ProductsSection brands={data.productBrands} categories={data.productCategories} products={data.products} runAction={runAction} />;
+    return <ProductsSection brands={data.productBrands} categories={data.productCategories} components={data.productComponents} products={data.products} runAction={runAction} />;
   }
 
   if (section === "sales") {
     return <SalesSection sales={data.sales} products={data.products} clients={data.clients} employees={data.employees} runAction={runAction} />;
+  }
+
+  if (section === "store-orders") {
+    return <StoreOrdersSection orders={data.storeOrders} runAction={runAction} />;
   }
 
   if (section === "payments") {
@@ -1393,6 +1420,8 @@ function EmployeesSection({
           <EmployeeScheduleForm
             employee={schedulingEmployee}
             onCancel={() => setSchedulingEmployeeId(null)}
+            onCreateScheduleOverride={(payload) => runAction(() => createAdminEmployeeScheduleOverride(schedulingEmployee.id, payload))}
+            onDeleteScheduleOverride={(overrideId) => runAction(() => deleteAdminEmployeeScheduleOverride(schedulingEmployee.id, overrideId))}
             onCreateTimeOff={(payload) => runAction(() => createAdminEmployeeTimeOff(schedulingEmployee.id, payload))}
             onDeleteTimeOff={(timeOffId) => runAction(() => deleteAdminEmployeeTimeOff(schedulingEmployee.id, timeOffId))}
             onSubmit={(payload) =>
@@ -1584,13 +1613,17 @@ function EmployeeForm({
 function EmployeeScheduleForm({
   employee,
   onCancel,
+  onCreateScheduleOverride,
   onCreateTimeOff,
+  onDeleteScheduleOverride,
   onDeleteTimeOff,
   onSubmit
 }: {
   employee: AdminData["employees"][number];
   onCancel: () => void;
+  onCreateScheduleOverride: (payload: EmployeeScheduleOverrideInput) => Promise<void>;
   onCreateTimeOff: (payload: EmployeeTimeOffInput) => Promise<void>;
+  onDeleteScheduleOverride: (overrideId: string) => Promise<void>;
   onDeleteTimeOff: (timeOffId: string) => Promise<void>;
   onSubmit: (payload: EmployeeWorkingHoursInput) => Promise<void>;
 }) {
@@ -1610,6 +1643,14 @@ function EmployeeScheduleForm({
     startTime: "09:00",
     endDate: today,
     endTime: "18:00",
+    reason: ""
+  });
+  const [overrideForm, setOverrideForm] = useState({
+    startDate: today,
+    endDate: addDaysToDateString(today, 30),
+    startTime: "09:00",
+    endTime: "18:00",
+    isClosed: false,
     reason: ""
   });
 
@@ -1644,6 +1685,19 @@ function EmployeeScheduleForm({
       startTime: toIsoDateTime(timeOffForm.startDate, timeOffForm.startTime),
       endTime: toIsoDateTime(timeOffForm.endDate, timeOffForm.endTime),
       reason: timeOffForm.reason || undefined
+    });
+  }
+
+  function submitScheduleOverride(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    void onCreateScheduleOverride({
+      startDate: overrideForm.startDate,
+      endDate: overrideForm.endDate,
+      startTime: overrideForm.isClosed ? undefined : overrideForm.startTime,
+      endTime: overrideForm.isClosed ? undefined : overrideForm.endTime,
+      isClosed: overrideForm.isClosed,
+      reason: overrideForm.reason || undefined
     });
   }
 
@@ -1689,6 +1743,73 @@ function EmployeeScheduleForm({
           </button>
         </div>
       </form>
+
+      <div className="schedule-divider" />
+
+      <section className="schedule-timeoff">
+        <div>
+          <p className="admin-kicker">Custom period schedule</p>
+          <DataTable
+            columns={["Date", "Hours", "Reason", "Actions"]}
+            rows={
+              employee.scheduleOverrides.length > 0
+                ? employee.scheduleOverrides.map((item) => [
+                    formatDateOnly(item.workDate),
+                    item.isClosed ? "closed" : `${item.startTime}-${item.endTime}`,
+                    item.reason || "-",
+                    <InlineActions labels={["Delete"]} onAction={() => void onDeleteScheduleOverride(item.id)} />
+                  ])
+                : [["No custom schedule days", "-", "-", "-"]]
+            }
+          />
+        </div>
+
+        <form className="admin-form" onSubmit={submitScheduleOverride}>
+          <div className="form-section">
+            <label>
+              <span>From date</span>
+              <input
+                onChange={(event) => setOverrideForm({ ...overrideForm, startDate: event.target.value })}
+                type="date"
+                value={overrideForm.startDate}
+              />
+            </label>
+            <label>
+              <span>To date</span>
+              <input
+                min={overrideForm.startDate}
+                onChange={(event) => setOverrideForm({ ...overrideForm, endDate: event.target.value })}
+                type="date"
+                value={overrideForm.endDate}
+              />
+            </label>
+          </div>
+          <label className="checkbox-line">
+            <input checked={overrideForm.isClosed} onChange={(event) => setOverrideForm({ ...overrideForm, isClosed: event.target.checked })} type="checkbox" />
+            <span>Close this period</span>
+          </label>
+          {!overrideForm.isClosed ? (
+            <div className="form-section">
+              <label>
+                <span>Start</span>
+                <input onChange={(event) => setOverrideForm({ ...overrideForm, startTime: event.target.value })} type="time" value={overrideForm.startTime} />
+              </label>
+              <label>
+                <span>End</span>
+                <input onChange={(event) => setOverrideForm({ ...overrideForm, endTime: event.target.value })} type="time" value={overrideForm.endTime} />
+              </label>
+            </div>
+          ) : null}
+          <label>
+            <span>Reason</span>
+            <input value={overrideForm.reason} onChange={(event) => setOverrideForm({ ...overrideForm, reason: event.target.value })} />
+          </label>
+          <small className="form-note neutral-note">Overrides replace the weekly schedule for selected dates. Maximum range is 62 days.</small>
+          <button className="secondary-button compact-button" type="submit">
+            Apply period schedule
+          </button>
+        </form>
+      </section>
 
       <div className="schedule-divider" />
 

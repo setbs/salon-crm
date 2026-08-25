@@ -1,0 +1,2 @@
+ALTER TABLE "products"
+ADD COLUMN "popularity_boost" INTEGER NOT NULL DEFAULT 0;

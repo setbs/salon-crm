@@ -87,14 +87,18 @@ export function listClients(search?: string, employeeId?: bigint) {
               { firstName: { contains: search, mode: "insensitive" } },
               { lastName: { contains: search, mode: "insensitive" } },
               { phone: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } }
+              { email: { contains: search, mode: "insensitive" } },
+              { nameAliases: { some: { firstName: { contains: search, mode: "insensitive" } } } },
+              { nameAliases: { some: { lastName: { contains: search, mode: "insensitive" } } } }
             ]
           }
         : {})
     },
     include: {
       clientAppointments: { include: { payment: true } },
-      productSales: { include: { payment: true } }
+      productSales: { include: { payment: true } },
+      nameAliases: { orderBy: { createdAt: "desc" } },
+      clientNotes: { orderBy: { createdAt: "desc" }, take: 1 }
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
   });
@@ -180,6 +184,7 @@ export function listEmployees(employeeId?: bigint) {
       user: true,
       services: { include: { service: true } },
       workingHours: { orderBy: { dayOfWeek: "asc" } },
+      scheduleOverrides: { orderBy: { workDate: "asc" } },
       timeOff: { orderBy: { startTime: "asc" } }
     },
     orderBy: { user: { firstName: "asc" } }
@@ -199,6 +204,10 @@ export function listProducts() {
     where: { isActive: true },
     include: {
       category: true,
+      components: {
+        include: { component: true },
+        orderBy: [{ sortOrder: "asc" }, { component: { name: "asc" } }]
+      },
       stockMovements: { orderBy: { createdAt: "desc" }, take: 12 }
     },
     orderBy: { name: "asc" }

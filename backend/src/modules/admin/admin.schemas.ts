@@ -59,6 +59,10 @@ export const createAppointmentSchema = z.object({
   employeeComment: z.string().trim().max(1000).optional()
 });
 
+export const createClientNoteSchema = z.object({
+  text: z.string().trim().min(1).max(3000)
+});
+
 export const createServiceSchema = z
   .object({
     categoryId: optionalCategoryIdSchema,
@@ -156,6 +160,41 @@ export const createEmployeeTimeOffSchema = z
     path: ["endTime"]
   });
 
+export const createEmployeeScheduleOverrideSchema = z
+  .object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    startTime: timeStringSchema.optional(),
+    endTime: timeStringSchema.optional(),
+    isClosed: z.boolean().default(false),
+    reason: z.string().trim().max(500).optional()
+  })
+  .superRefine((input, context) => {
+    if (input.endDate < input.startDate) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "End date must be later than or equal to start date.",
+        path: ["endDate"]
+      });
+    }
+
+    if (!input.isClosed) {
+      if (!input.startTime || !input.endTime) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Start and end time are required for working days.",
+          path: ["startTime"]
+        });
+      } else if (input.endTime <= input.startTime) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "End time must be later than start time.",
+          path: ["endTime"]
+        });
+      }
+    }
+  });
+
 export const createPortfolioPhotoSchema = z.object({
   employeeId: idStringSchema,
   imageUrl: z.string().trim().min(1).max(1000),
@@ -180,12 +219,19 @@ export const createProductBrandSchema = z.object({
 
 export const updateProductBrandSchema = createProductBrandSchema.partial();
 
+export const createProductComponentSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(3000).optional()
+});
+
+export const updateProductComponentSchema = createProductComponentSchema.partial();
+
 export const createProductSchema = z.object({
   categoryId: idStringSchema.optional().or(z.literal("")),
   category: z.string().trim().max(255).optional(),
   brandId: idStringSchema.optional().or(z.literal("")),
   name: z.string().trim().min(1).max(255),
-  description: z.string().trim().max(1000).optional(),
+  description: z.string().trim().max(5000).optional(),
   quote: z.string().trim().max(1000).optional(),
   brand: z.string().trim().max(255).optional(),
   sku: z.string().trim().max(100).optional(),
@@ -195,11 +241,15 @@ export const createProductSchema = z.object({
   sale: z.coerce.number().nonnegative(),
   stock: z.coerce.number().int(),
   min: z.coerce.number().int().nonnegative(),
+  popularityBoost: z.coerce.number().int().min(0).max(1000).optional(),
   contentAmount: z.coerce.number().positive().optional(),
-  contentUnit: consumableUnitSchema.optional()
+  contentUnit: consumableUnitSchema.optional(),
+  componentIds: z.array(idStringSchema).default([])
 });
 
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = createProductSchema.partial().extend({
+  componentIds: z.array(idStringSchema).optional()
+});
 
 export const createStockMovementSchema = z
   .object({
@@ -262,6 +312,10 @@ export const updateSettingsSchema = z.object({
   logoUrl: z.string().trim().max(1000).optional(),
   openingTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   closingTime: z.string().regex(/^\d{2}:\d{2}$/).optional()
+});
+
+export const updateStoreOrderSchema = z.object({
+  status: z.enum(["pending", "confirmed", "processing", "shipped", "completed", "cancelled"])
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;

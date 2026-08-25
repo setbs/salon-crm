@@ -5,6 +5,7 @@ import {
   createAppointmentWithClient,
   findActiveServicesByIds,
   findAppointmentsForDay,
+  findScheduleOverride,
   findTimeOffForRange,
   findWorkingHour
 } from "./booking.repository.js";
@@ -19,9 +20,10 @@ export async function getAvailability(input: { employeeId: bigint; serviceIds: b
 
   const totalDuration = services.reduce((sum, service) => sum + service.durationMinutes, 0);
   const selectedDate = parseDate(input.date);
-  const workingHour = await findWorkingHour(input.employeeId, selectedDate.getDay());
+  const scheduleOverride = await findScheduleOverride(input.employeeId, selectedDate);
+  const workingHour = scheduleOverride?.isClosed ? null : scheduleOverride ?? (await findWorkingHour(input.employeeId, selectedDate.getDay()));
 
-  if (!workingHour) {
+  if (!workingHour?.startTime || !workingHour.endTime) {
     return [];
   }
 

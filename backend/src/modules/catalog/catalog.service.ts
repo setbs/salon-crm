@@ -1,4 +1,21 @@
-import { listActiveEmployees, listActiveServices, listPublicProducts, listVisiblePortfolio } from "./catalog.repository.js";
+import {
+  findPublicProductById,
+  insertStoreOrder,
+  insertStoreReview,
+  listActiveEmployees,
+  listActiveServices,
+  listPopularPublicProducts,
+  listPublicProductComponents,
+  listPublicProducts,
+  listPublishedStoreReviews,
+  listVisiblePortfolio,
+  StoreOrderIssue,
+  type PublicProductComponentRow,
+  type PublicProductRow
+} from "./catalog.repository.js";
+import { HttpError } from "../../utils/http-error.js";
+import type { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
+import type { z } from "zod";
 
 export async function getServices() {
   const services = await listActiveServices();
@@ -54,8 +71,76 @@ export async function getPortfolio() {
 
 export async function getProducts() {
   const products = await listPublicProducts();
+  const componentsByProduct = await getComponentsByProduct(products);
 
-  return products.map((product) => ({
+  return products.map((product) => formatPublicProduct(product, getPublicProductBadge(product), componentsByProduct.get(product.id.toString()) ?? []));
+}
+
+export async function getPopularProducts() {
+  const products = await listPopularPublicProducts();
+  const componentsByProduct = await getComponentsByProduct(products);
+
+  return products.map((product, index) => {
+    const soldQuantity = Math.max(Number(product.soldLast30Days ?? 0), Number(product.soldLast90Days ?? 0));
+    const badge = index < 3 && soldQuantity > 0 ? "top" : getPublicProductBadge(product);
+
+    return formatPublicProduct(product, badge, componentsByProduct.get(product.id.toString()) ?? []);
+  });
+}
+
+export async function getStoreReviews() {
+  return (await listPublishedStoreReviews()).map(formatStoreReview);
+}
+
+export async function createStoreReview(input: z.infer<typeof storeReviewSchema>) {
+  return formatStoreReview(await insertStoreReview({ authorName: input.authorName, rating: input.rating, comment: input.comment }));
+}
+
+export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) {
+  try {
+    const order = await insertStoreOrder(input);
+    return { id: order.id.toString(), status: order.status.toLowerCase(), totalAmount: Number(order.totalAmount), createdAt: order.createdAt.toISOString() };
+  } catch (error) {
+    if (error instanceof StoreOrderIssue) {
+      if (error.code === "INSUFFICIENT_STOCK") throw new HttpError(409, `${error.productName ?? "Product"} is not available in the requested quantity.`);
+      throw new HttpError(409, "One or more products are no longer available.");
+    }
+    throw error;
+  }
+}
+
+export async function getProduct(idValue: string) {
+  if (!/^\d+$/.test(idValue)) {
+    throw new HttpError(400, "Invalid product id.");
+  }
+
+  const product = await findPublicProductById(BigInt(idValue));
+
+  if (!product) {
+    throw new HttpError(404, "Product not found.");
+  }
+
+  const componentsByProduct = await getComponentsByProduct([product]);
+
+  return formatPublicProduct(product, getPublicProductBadge(product), componentsByProduct.get(product.id.toString()) ?? []);
+}
+
+async function getComponentsByProduct(products: PublicProductRow[]) {
+  const rows = await listPublicProductComponents(products.map((product) => product.id));
+  const componentsByProduct = new Map<string, Array<{ id: string; name: string; description: string | null }>>();
+
+  rows.forEach((row) => {
+    const productId = row.productId.toString();
+    const currentRows = componentsByProduct.get(productId) ?? [];
+    currentRows.push(formatPublicProductComponent(row));
+    componentsByProduct.set(productId, currentRows);
+  });
+
+  return componentsByProduct;
+}
+
+function formatPublicProduct(product: PublicProductRow, badge: "top" | "new" | null = null, components: Array<{ id: string; name: string; description: string | null }> = []) {
+  return {
     id: product.id.toString(),
     category: product.categoryId
       ? {
@@ -74,6 +159,30 @@ export async function getProducts() {
     price: Number(product.price),
     contentAmount: product.contentAmount ? Number(product.contentAmount) : null,
     contentUnit: product.contentUnit,
-    inStock: product.stockQuantity > 0 || (product.stockContentAmount !== null && Number(product.stockContentAmount) > 0)
-  }));
+    stockQuantity: product.stockQuantity,
+    inStock: product.stockQuantity > 0,
+    components,
+    createdAt: product.createdAt.toISOString(),
+    badge,
+    popularityScore: product.popularityScore ? Number(product.popularityScore) : null
+  };
+}
+
+function formatPublicProductComponent(component: PublicProductComponentRow) {
+  return {
+    id: component.componentId.toString(),
+    name: component.componentName,
+    description: component.componentDescription
+  };
+}
+
+function formatStoreReview(review: { id: bigint; authorName: string; rating: number; comment: string; createdAt: Date }) {
+  return { id: review.id.toString(), authorName: review.authorName, rating: review.rating, comment: review.comment, createdAt: review.createdAt.toISOString() };
+}
+
+function getPublicProductBadge(product: PublicProductRow): "new" | null {
+  const twoWeeksAgo = new Date();
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  return product.createdAt >= twoWeeksAgo ? "new" : null;
 }

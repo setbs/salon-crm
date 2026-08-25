@@ -11,7 +11,20 @@ import { HttpError } from "./utils/http-error.js";
 
 export const app = express();
 
-app.use(cors({ origin: env.FRONTEND_ORIGIN }));
+const allowedOrigins = parseAllowedOrigins(env.FRONTEND_ORIGIN, env.STOREFRONT_ORIGIN);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin) || isLocalViteOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    }
+  })
+);
 app.use(express.json());
 app.use("/uploads", express.static(path.resolve(process.cwd(), "public/uploads")));
 
@@ -65,4 +78,43 @@ function formatValidationPath(path: Array<string | number>) {
     )
     .join(" ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function parseAllowedOrigins(...origins: string[]) {
+  return new Set(
+    origins.flatMap((origin) =>
+      origin
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function isLocalViteOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+
+    return url.protocol === "http:" && /^51\d{2}$/.test(url.port) && isLocalDevelopmentHost(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalDevelopmentHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || isPrivateNetworkHost(hostname);
+}
+
+function isPrivateNetworkHost(hostname: string) {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return false;
+  }
+
+  const [first, second, third, fourth] = hostname.split(".").map(Number);
+
+  if ([first, second, third, fourth].some((part) => part < 0 || part > 255)) {
+    return false;
+  }
+
+  return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
 }

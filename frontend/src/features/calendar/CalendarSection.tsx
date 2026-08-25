@@ -2,11 +2,13 @@ import { ArrowRight, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import {
   createAdminAppointment,
+  fetchAdminClientProfile,
   fetchAppointmentConsumablePreview,
   rescheduleAdminAppointment,
   updateAdminAppointment,
   updateAdminAppointmentComment,
   type AdminAppointmentInput,
+  type AdminClientProfile,
   type AdminData,
   type AppointmentConsumablePreview,
   type MeasurementUnit,
@@ -207,8 +209,9 @@ export function CalendarSection({
   services: AdminData["services"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
-  const [calendarView, setCalendarView] = useState<"day" | "week">("day");
+  const [calendarView, setCalendarView] = useState<"day" | "week" | "range">("day");
   const [calendarAnchorDate, setCalendarAnchorDate] = useState(today);
+  const [calendarRangeEndDate, setCalendarRangeEndDate] = useState(addDaysToDateString(today, 6));
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
@@ -219,11 +222,16 @@ export function CalendarSection({
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [completionPreview, setCompletionPreview] = useState<AppointmentConsumablePreview | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [clientProfile, setClientProfile] = useState<AdminClientProfile | null>(null);
+  const [isClientProfileLoading, setIsClientProfileLoading] = useState(false);
+  const [clientProfileError, setClientProfileError] = useState("");
   const selectedAppointment = appointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null;
   const reschedulingAppointment = appointments.find((appointment) => appointment.id === reschedulingAppointmentId) ?? null;
   const commentingAppointment = appointments.find((appointment) => appointment.id === commentingAppointmentId) ?? null;
   const rangeStart = calendarView === "week" ? getWeekStartDateString(calendarAnchorDate) : calendarAnchorDate;
-  const rangeEnd = addDaysToDateString(rangeStart, calendarView === "week" ? 6 : 0);
+  const rangeEnd =
+    calendarView === "week" ? addDaysToDateString(rangeStart, 6) : calendarView === "range" && calendarRangeEndDate >= rangeStart ? calendarRangeEndDate : rangeStart;
   const visibleAppointments = appointments
     .filter((appointment) => {
       const appointmentDate = toLocalDateKey(appointment.date);
@@ -235,7 +243,7 @@ export function CalendarSection({
     })
     .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
   const groupedAppointments = buildCalendarGroups(visibleAppointments, rangeStart, rangeEnd);
-  const periodLabel = calendarView === "week" ? `${formatCalendarDate(rangeStart)} - ${formatCalendarDate(rangeEnd)}` : formatCalendarDate(rangeStart);
+  const periodLabel = calendarView === "day" ? formatCalendarDate(rangeStart) : `${formatCalendarDate(rangeStart)} - ${formatCalendarDate(rangeEnd)}`;
   const scheduledCount = visibleAppointments.filter((appointment) => appointment.status === "scheduled").length;
 
   useEffect(() => {
@@ -243,6 +251,41 @@ export function CalendarSection({
       setSelectedAppointmentId(null);
     }
   }, [appointments, selectedAppointmentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedClientId) {
+      setClientProfile(null);
+      setClientProfileError("");
+      setIsClientProfileLoading(false);
+      return;
+    }
+
+    setClientProfile(null);
+    setClientProfileError("");
+    setIsClientProfileLoading(true);
+    fetchAdminClientProfile(selectedClientId)
+      .then((profile) => {
+        if (!cancelled) {
+          setClientProfile(profile);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setClientProfileError(error instanceof Error ? error.message : "Could not load client profile.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsClientProfileLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId]);
 
   async function openCompletionPreview(appointmentId: string) {
     setIsCompletionOpen(true);
@@ -265,9 +308,12 @@ export function CalendarSection({
     setPreviewError("");
   }
 
-  function selectQuickDate(nextView: "day" | "week", date: string) {
+  function selectQuickDate(nextView: "day" | "week" | "range", date: string) {
     setCalendarView(nextView);
     setCalendarAnchorDate(date);
+    if (nextView === "range") {
+      setCalendarRangeEndDate(addDaysToDateString(date, 13));
+    }
   }
 
   function renderAppointmentActions(item: AdminData["appointments"][number]) {
@@ -322,6 +368,9 @@ export function CalendarSection({
             <button className={calendarView === "week" ? "active" : ""} onClick={() => setCalendarView("week")} type="button">
               Week
             </button>
+            <button className={calendarView === "range" ? "active" : ""} onClick={() => setCalendarView("range")} type="button">
+              Range
+            </button>
           </div>
           <div className="calendar-shortcuts" aria-label="Calendar shortcuts">
             <button onClick={() => selectQuickDate("day", today)} type="button">
@@ -333,12 +382,21 @@ export function CalendarSection({
             <button onClick={() => selectQuickDate("week", today)} type="button">
               This week
             </button>
+            <button onClick={() => selectQuickDate("range", today)} type="button">
+              Next 14 days
+            </button>
           </div>
           <div className="calendar-filter-grid">
             <label>
-              <span>Date</span>
+              <span>{calendarView === "range" ? "From" : "Date"}</span>
               <input type="date" value={calendarAnchorDate} onChange={(event) => setCalendarAnchorDate(event.target.value)} />
             </label>
+            {calendarView === "range" ? (
+              <label>
+                <span>To</span>
+                <input min={calendarAnchorDate} type="date" value={calendarRangeEndDate} onChange={(event) => setCalendarRangeEndDate(event.target.value)} />
+              </label>
+            ) : null}
             <label>
               <span>Employee</span>
               <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
@@ -419,6 +477,7 @@ export function CalendarSection({
         <AppointmentDetailsDialog
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointmentId(null)}
+          onOpenClient={() => setSelectedClientId(selectedAppointment.clientId)}
           onComment={() => {
             setSelectedAppointmentId(null);
             setCommentingAppointmentId(selectedAppointment.id);
@@ -510,6 +569,13 @@ export function CalendarSection({
           products={products}
         />
       ) : null}
+      {selectedClientId ? (
+        <AdminModal title={clientProfile ? `Client: ${clientProfile.name}` : "Client profile"} onClose={() => setSelectedClientId(null)}>
+          {isClientProfileLoading ? <div className="modal-state">Loading client profile...</div> : null}
+          {clientProfileError ? <div className="admin-alert">{clientProfileError}</div> : null}
+          {clientProfile ? <CalendarClientProfile profile={clientProfile} /> : null}
+        </AdminModal>
+      ) : null}
     </div>
   );
 }
@@ -519,6 +585,7 @@ function AppointmentDetailsDialog({
   onClose,
   onComment,
   onComplete,
+  onOpenClient,
   onPaymentStatusChange,
   onReschedule,
   onStatusChange
@@ -527,6 +594,7 @@ function AppointmentDetailsDialog({
   onClose: () => void;
   onComment: () => void;
   onComplete: () => void;
+  onOpenClient: () => void;
   onPaymentStatusChange: (status: "pending" | "paid" | "refunded") => Promise<void>;
   onReschedule: () => void;
   onStatusChange: (status: "cancelled" | "no_show") => Promise<void>;
@@ -555,6 +623,9 @@ function AppointmentDetailsDialog({
           <div>
             <p className="admin-kicker">Appointment details</p>
             <h2>{appointment.client}</h2>
+            <button className="table-link-button appointment-client-link" onClick={onOpenClient} type="button">
+              Open client card
+            </button>
           </div>
           <button aria-label="Close appointment details" className="icon-only-button" onClick={onClose} title="Close" type="button">
             <X aria-hidden="true" size={16} />
@@ -719,6 +790,70 @@ function AppointmentDetailsDialog({
             </button>
           ) : null}
         </div>
+      </section>
+    </div>
+  );
+}
+
+function CalendarClientProfile({ profile }: { profile: AdminClientProfile }) {
+  return (
+    <div className="calendar-client-profile">
+      <InfoList
+        items={[
+          ["Phone", profile.phone],
+          ["Email", profile.email ?? "-"],
+          ["Visits", String(profile.visits)],
+          ["Total spent", adminMoney.format(profile.spent)]
+        ]}
+      />
+
+      <section className="profile-section client-alias-section">
+        <div className="profile-section-heading">
+          <h3>Registered names</h3>
+          <span>{profile.nameAliases.length} variants</span>
+        </div>
+        <div className="client-alias-list">
+          {profile.nameAliases.length > 0 ? profile.nameAliases.map((alias) => <span key={alias.id}>{alias.name}</span>) : <span>{profile.name}</span>}
+        </div>
+      </section>
+
+      <section className="profile-section">
+        <div className="profile-section-heading">
+          <h3>Latest notes</h3>
+          <span>{profile.notes.length} notes</span>
+        </div>
+        <div className="client-note-list compact">
+          {profile.notes.slice(0, 3).map((note) => (
+            <article key={note.id}>
+              <p>{note.text}</p>
+              <small>
+                {note.author} · {formatShortDate(note.createdAt)}
+              </small>
+            </article>
+          ))}
+          {profile.notes.length === 0 ? <div className="modal-state">No client notes yet.</div> : null}
+        </div>
+      </section>
+
+      <section className="profile-section">
+        <div className="profile-section-heading">
+          <h3>Appointment history</h3>
+          <span>{profile.appointments.length} records</span>
+        </div>
+        <DataTable
+          columns={["Date", "Service", "Employee", "Payment", "Status"]}
+          rows={
+            profile.appointments.length > 0
+              ? profile.appointments.map((appointment) => [
+                  `${formatShortDate(appointment.date)} · ${appointment.time}`,
+                  appointment.service || "-",
+                  appointment.employee,
+                  `${adminMoney.format(appointment.amount)} · ${appointment.paymentStatus}`,
+                  <StatusBadge status={appointment.status} />
+                ])
+              : [["No appointments", "-", "-", "-", "-"]]
+          }
+        />
       </section>
     </div>
   );

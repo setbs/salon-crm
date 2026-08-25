@@ -46,6 +46,20 @@ enum ConsumableUnit {
   GRAM
 }
 
+enum StoreOrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum StoreDeliveryMethod {
+  PICKUP
+  DELIVERY
+}
+
 model User {
   id           BigInt   @id @default(autoincrement())
   firstName    String   @map("first_name") @db.VarChar(100)
@@ -64,8 +78,42 @@ model User {
   reportExportLogs   ReportExportLog[] @relation("AdminReportExports")
   appointmentAuditLogs AppointmentAuditLog[] @relation("AppointmentAuditActor")
   paymentAuditLogs     PaymentAuditLog[]     @relation("PaymentAuditActor")
+  nameAliases          ClientNameAlias[]      @relation("ClientNameAliases")
+  clientNotes          ClientNote[]           @relation("ClientNotes")
+  authoredClientNotes  ClientNote[]           @relation("ClientNoteAuthor")
 
   @@map("users")
+}
+
+model ClientNameAlias {
+  id        BigInt   @id @default(autoincrement())
+  clientId  BigInt   @map("client_id")
+  firstName String   @map("first_name") @db.VarChar(100)
+  lastName  String   @map("last_name") @db.VarChar(100)
+  source    String?  @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client User @relation("ClientNameAliases", fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, firstName, lastName])
+  @@index([clientId])
+  @@map("client_name_aliases")
+}
+
+model ClientNote {
+  id          BigInt   @id @default(autoincrement())
+  clientId    BigInt   @map("client_id")
+  authorUserId BigInt?  @map("author_user_id")
+  text        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client User  @relation("ClientNotes", fields: [clientId], references: [id], onDelete: Cascade)
+  author User? @relation("ClientNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([authorUserId])
+  @@map("client_notes")
 }
 
 model Employee {
@@ -80,6 +128,7 @@ model Employee {
   services     EmployeeService[]
   appointments Appointment[]
   workingHours WorkingHour[]
+  scheduleOverrides EmployeeScheduleOverride[]
   portfolio    PortfolioPhoto[]
   timeOff      EmployeeTimeOff[]
   productSales ProductSale[]     @relation("ProductSaleEmployee")
@@ -194,6 +243,24 @@ model EmployeeTimeOff {
   @@map("employee_time_off")
 }
 
+model EmployeeScheduleOverride {
+  id         BigInt   @id @default(autoincrement())
+  employeeId BigInt   @map("employee_id")
+  workDate   DateTime @map("work_date")
+  startTime  String?  @map("start_time") @db.VarChar(5)
+  endTime    String?  @map("end_time") @db.VarChar(5)
+  isClosed   Boolean  @default(false) @map("is_closed")
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, workDate])
+  @@index([employeeId, workDate])
+  @@map("employee_schedule_overrides")
+}
+
 model Payment {
   id            BigInt        @id @default(autoincrement())
   appointmentId BigInt?       @unique @map("appointment_id")
@@ -287,6 +354,30 @@ model ProductBrand {
   @@map("product_brands")
 }
 
+model ProductComponent {
+  id          BigInt   @id @default(autoincrement())
+  name        String   @unique @db.VarChar(255)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  products ProductComponentItem[]
+
+  @@map("product_components")
+}
+
+model StoreReview {
+  id          BigInt   @id @default(autoincrement())
+  authorName  String   @map("author_name") @db.VarChar(100)
+  rating      Int
+  comment     String   @db.VarChar(1200)
+  isPublished Boolean  @default(true) @map("is_published")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([isPublished, createdAt])
+  @@map("store_reviews")
+}
+
 model Product {
   id                 BigInt          @id @default(autoincrement())
   categoryId         BigInt?         @map("category_id")
@@ -305,6 +396,7 @@ model Product {
   contentAmount      Decimal?        @map("content_amount") @db.Decimal(10, 2)
   contentUnit        ConsumableUnit? @map("content_unit")
   stockContentAmount Decimal?        @map("stock_content_amount") @db.Decimal(10, 2)
+  popularityBoost    Int             @default(0) @map("popularity_boost")
   isActive           Boolean         @default(true) @map("is_active")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
@@ -315,8 +407,61 @@ model Product {
   stockMovements         StockMovement[]
   serviceConsumables     ServiceConsumable[]
   serviceConsumptionLogs ServiceConsumptionLog[]
+  storeOrderItems       StoreOrderItem[]
+  components            ProductComponentItem[]
 
   @@map("products")
+}
+
+model ProductComponentItem {
+  productId   BigInt @map("product_id")
+  componentId BigInt @map("component_id")
+  sortOrder   Int    @default(0) @map("sort_order")
+
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  component ProductComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@id([productId, componentId])
+  @@index([componentId])
+  @@map("product_component_items")
+}
+
+model StoreOrder {
+  id             BigInt              @id @default(autoincrement())
+  status         StoreOrderStatus    @default(PENDING)
+  firstName      String              @map("first_name") @db.VarChar(100)
+  lastName       String              @map("last_name") @db.VarChar(100)
+  phone          String              @db.VarChar(30)
+  email          String?             @db.VarChar(255)
+  deliveryMethod StoreDeliveryMethod @map("delivery_method")
+  deliveryAddress String?            @map("delivery_address") @db.VarChar(500)
+  comment        String?             @db.VarChar(1000)
+  totalAmount    Decimal             @map("total_amount") @db.Decimal(10, 2)
+  stockDeductedAt DateTime?          @map("stock_deducted_at")
+  stockRestoredAt DateTime?          @map("stock_restored_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  items StoreOrderItem[]
+
+  @@index([status, createdAt])
+  @@map("store_orders")
+}
+
+model StoreOrderItem {
+  id           BigInt  @id @default(autoincrement())
+  orderId      BigInt  @map("order_id")
+  productId    BigInt  @map("product_id")
+  productName  String  @map("product_name") @db.VarChar(255)
+  unitPrice    Decimal @map("unit_price") @db.Decimal(10, 2)
+  quantity     Int
+
+  order   StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("store_order_items")
 }
 
 model ServiceConsumable {

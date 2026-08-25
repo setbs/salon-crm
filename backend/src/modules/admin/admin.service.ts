@@ -1,4 +1,4 @@
-import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, UserRole } from "@prisma/client";
+import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, StoreOrderStatus, UserRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -25,11 +25,14 @@ import {
 } from "./admin.repository.js";
 import type {
   createAppointmentSchema,
+  createClientNoteSchema,
   createEmployeeSchema,
+  createEmployeeScheduleOverrideSchema,
   createEmployeeTimeOffSchema,
   createPortfolioPhotoSchema,
   createProductBrandSchema,
   createProductCategorySchema,
+  createProductComponentSchema,
   createProductSchema,
   createServiceSchema,
   createServiceCategorySchema,
@@ -42,6 +45,7 @@ import type {
   updatePortfolioPhotoSchema,
   updateProductBrandSchema,
   updateProductCategorySchema,
+  updateProductComponentSchema,
   updateProductSchema,
   updateServiceCategorySchema,
   updateServiceSchema,
@@ -215,7 +219,15 @@ export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
       email: client.email,
       visits: client.clientAppointments.length,
       spent: appointmentSpend + productSpend,
-      comment: client.clientAppointments.find((appointment) => appointment.clientComment)?.clientComment ?? ""
+      comment: client.clientNotes[0]?.text ?? "",
+      nameAliases: client.nameAliases.map((alias) => ({
+        id: alias.id.toString(),
+        firstName: alias.firstName,
+        lastName: alias.lastName,
+        name: `${alias.firstName} ${alias.lastName}`,
+        source: alias.source,
+        createdAt: alias.createdAt.toISOString()
+      }))
     };
   });
 }
@@ -251,6 +263,11 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
           payment: true
         },
         orderBy: { saleDate: "desc" }
+      },
+      nameAliases: { orderBy: { createdAt: "desc" } },
+      clientNotes: {
+        include: { author: true },
+        orderBy: { createdAt: "desc" }
       }
     }
   });
@@ -271,7 +288,22 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
     email: client.email,
     visits: client.clientAppointments.length,
     spent: appointmentSpend + productSpend,
-    comment: client.clientAppointments.find((appointment) => appointment.clientComment)?.clientComment ?? "",
+    comment: client.clientNotes[0]?.text ?? "",
+    nameAliases: client.nameAliases.map((alias) => ({
+      id: alias.id.toString(),
+      firstName: alias.firstName,
+      lastName: alias.lastName,
+      name: `${alias.firstName} ${alias.lastName}`,
+      source: alias.source,
+      createdAt: alias.createdAt.toISOString()
+    })),
+    notes: client.clientNotes.map((note) => ({
+      id: note.id.toString(),
+      text: note.text,
+      author: note.author ? `${note.author.firstName} ${note.author.lastName}` : "system",
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt.toISOString()
+    })),
     appointments: client.clientAppointments.map((appointment) => ({
       id: appointment.id.toString(),
       date: appointment.startTime.toISOString(),
@@ -296,6 +328,20 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
       total: Number(sale.totalAmount)
     }))
   };
+}
+
+export async function createClientNote(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof createClientNoteSchema>) {
+  await assertClientAccess(actor, id);
+
+  const note = await prisma.clientNote.create({
+    data: {
+      clientId: id,
+      authorUserId: BigInt(actor.id),
+      text: input.text
+    }
+  });
+
+  return { id: note.id.toString() };
 }
 
 export async function getServices(_actor: CrmAuthenticatedUser) {
@@ -368,6 +414,14 @@ export async function getEmployees(actor: CrmAuthenticatedUser) {
       dayOfWeek: hour.dayOfWeek,
       startTime: hour.startTime,
       endTime: hour.endTime
+    })),
+    scheduleOverrides: employee.scheduleOverrides.map((override) => ({
+      id: override.id.toString(),
+      workDate: toDateKey(override.workDate),
+      startTime: override.startTime,
+      endTime: override.endTime,
+      isClosed: override.isClosed,
+      reason: override.reason
     })),
     timeOffItems: employee.timeOff.map((timeOff) => ({
       id: timeOff.id.toString(),
@@ -511,6 +565,66 @@ export async function updateEmployeeWorkingHours(
   });
 
   return { id: id.toString() };
+}
+
+export async function createEmployeeScheduleOverride(
+  actor: CrmAuthenticatedUser,
+  id: bigint,
+  input: z.infer<typeof createEmployeeScheduleOverrideSchema>
+) {
+  assertOwnEmployee(actor, id);
+
+  const workDates = buildDateRange(input.startDate, input.endDate);
+
+  if (workDates.length > 62) {
+    throw new HttpError(400, "Schedule override range cannot be longer than 62 days.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await ensureEmployeesExist(tx, [id]);
+
+    for (const workDate of workDates) {
+      await tx.employeeScheduleOverride.upsert({
+        where: {
+          employeeId_workDate: {
+            employeeId: id,
+            workDate
+          }
+        },
+        update: {
+          startTime: input.isClosed ? null : input.startTime,
+          endTime: input.isClosed ? null : input.endTime,
+          isClosed: input.isClosed,
+          reason: input.reason || null
+        },
+        create: {
+          employeeId: id,
+          workDate,
+          startTime: input.isClosed ? null : input.startTime,
+          endTime: input.isClosed ? null : input.endTime,
+          isClosed: input.isClosed,
+          reason: input.reason || null
+        }
+      });
+    }
+  });
+
+  return { id: id.toString(), count: workDates.length };
+}
+
+export async function deleteEmployeeScheduleOverride(actor: CrmAuthenticatedUser, employeeId: bigint, overrideId: bigint) {
+  assertOwnEmployee(actor, employeeId);
+
+  const result = await prisma.employeeScheduleOverride.deleteMany({
+    where: {
+      id: overrideId,
+      employeeId
+    }
+  });
+
+  if (result.count === 0) {
+    throw new HttpError(404, "Schedule override not found.");
+  }
 }
 
 export async function createEmployeeTimeOff(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof createEmployeeTimeOffSchema>) {
@@ -859,6 +973,12 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       contentAmount,
       contentUnit: content?.contentUnit ?? null,
       stockContentAmount,
+      components: product.components.map(({ component }) => ({
+        id: component.id.toString(),
+        name: component.name,
+        description: component.description
+      })),
+      popularityBoost: product.popularityBoost,
       stockPackageEquivalent: contentAmount && stockContentAmount !== null ? stockContentAmount / contentAmount : null,
       stockStatus: getProductStockStatus({
         stockQuantity: product.stockQuantity,
@@ -880,6 +1000,66 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       })
     };
   });
+}
+
+export async function getStoreOrders(actor: CrmAuthenticatedUser) {
+  if (actor.role !== "ADMIN") return [];
+  const orders = await prisma.storeOrder.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } });
+  return orders.map(formatStoreOrder);
+}
+
+export async function updateStoreOrderStatus(actor: CrmAuthenticatedUser, id: bigint, statusValue: string) {
+  assertAdmin(actor);
+  const target = toStoreOrderStatus(statusValue);
+
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT id FROM store_orders WHERE id = ${id} FOR UPDATE`;
+    const order = await transaction.storeOrder.findUnique({ where: { id }, include: { items: true } });
+    if (!order) throw new HttpError(404, "Store order not found.");
+    if (order.status === target) return formatStoreOrder(order);
+
+    const allowed: Record<StoreOrderStatus, StoreOrderStatus[]> = {
+      PENDING: [StoreOrderStatus.CONFIRMED, StoreOrderStatus.CANCELLED],
+      CONFIRMED: [StoreOrderStatus.PROCESSING, StoreOrderStatus.CANCELLED],
+      PROCESSING: [StoreOrderStatus.SHIPPED, StoreOrderStatus.CANCELLED],
+      SHIPPED: [StoreOrderStatus.COMPLETED],
+      COMPLETED: [],
+      CANCELLED: []
+    };
+    if (!allowed[order.status].includes(target)) throw new HttpError(409, `Cannot move order from ${order.status.toLowerCase()} to ${statusValue}.`);
+
+    let stockDeductedAt = order.stockDeductedAt;
+    let stockRestoredAt = order.stockRestoredAt;
+    if (target === StoreOrderStatus.CONFIRMED && !stockDeductedAt) {
+      for (const item of order.items) {
+        const product = await transaction.product.findUnique({ where: { id: item.productId }, select: { name: true, contentAmount: true, stockQuantity: true } });
+        if (!product || product.stockQuantity < item.quantity) throw new HttpError(409, `${item.productName} does not have enough stock.`);
+        const updated = await transaction.product.updateMany({ where: { id: item.productId, stockQuantity: { gte: item.quantity } }, data: { stockQuantity: { decrement: item.quantity }, ...(product.contentAmount ? { stockContentAmount: { decrement: product.contentAmount.mul(item.quantity) } } : {}) } });
+        if (updated.count !== 1) throw new HttpError(409, `${item.productName} does not have enough stock.`);
+        await insertStockMovement(transaction, { productId: item.productId, movementType: StockMovementType.SALE, quantity: -item.quantity, contentQuantity: product.contentAmount ? -Number(product.contentAmount) * item.quantity : null, contentUnit: null, reason: `Store order #${order.id}` });
+      }
+      stockDeductedAt = new Date();
+    }
+
+    if (target === StoreOrderStatus.CANCELLED && stockDeductedAt && !stockRestoredAt) {
+      for (const item of order.items) {
+        const product = await transaction.product.findUnique({ where: { id: item.productId }, select: { contentAmount: true } });
+        await transaction.product.update({ where: { id: item.productId }, data: { stockQuantity: { increment: item.quantity }, ...(product?.contentAmount ? { stockContentAmount: { increment: product.contentAmount.mul(item.quantity) } } : {}) } });
+        await insertStockMovement(transaction, { productId: item.productId, movementType: StockMovementType.RETURN, quantity: item.quantity, contentQuantity: product?.contentAmount ? Number(product.contentAmount) * item.quantity : null, contentUnit: null, reason: `Cancelled store order #${order.id}` });
+      }
+      stockRestoredAt = new Date();
+    }
+
+    return formatStoreOrder(await transaction.storeOrder.update({ where: { id }, data: { status: target, stockDeductedAt, stockRestoredAt }, include: { items: true } }));
+  });
+}
+
+function formatStoreOrder(order: { id: bigint; status: StoreOrderStatus; firstName: string; lastName: string; phone: string; email: string | null; deliveryMethod: string; deliveryAddress: string | null; comment: string | null; totalAmount: Prisma.Decimal; stockDeductedAt: Date | null; stockRestoredAt: Date | null; createdAt: Date; items: Array<{ id: bigint; productId: bigint; productName: string; unitPrice: Prisma.Decimal; quantity: number }> }) {
+  return { id: order.id.toString(), status: order.status.toLowerCase(), customer: { firstName: order.firstName, lastName: order.lastName, phone: order.phone, email: order.email }, deliveryMethod: order.deliveryMethod.toLowerCase(), deliveryAddress: order.deliveryAddress, comment: order.comment, totalAmount: Number(order.totalAmount), stockDeductedAt: order.stockDeductedAt?.toISOString() ?? null, stockRestoredAt: order.stockRestoredAt?.toISOString() ?? null, createdAt: order.createdAt.toISOString(), items: order.items.map((item) => ({ id: item.id.toString(), productId: item.productId.toString(), productName: item.productName, unitPrice: Number(item.unitPrice), quantity: item.quantity })) };
+}
+
+function toStoreOrderStatus(value: string) {
+  return value.toUpperCase() as StoreOrderStatus;
 }
 
 export async function getProductSales(actor: CrmAuthenticatedUser) {
@@ -1076,23 +1256,20 @@ export async function createAppointment(actor: CrmAuthenticatedUser, input: z.in
         throw new HttpError(400, "Select an existing client or fill in a new client.");
       }
 
-      const client = await transaction.user.create({
-        data: {
-          firstName: input.client.firstName,
-          lastName: input.client.lastName,
-          phone: input.client.phone,
-          email: input.client.email || null
-        }
-      });
+      const client = await findOrCreateClientByPhone(transaction, input.client, "admin_appointment");
       clientId = client.id;
     } else {
       const existingClient = await transaction.user.findUnique({
         where: { id: clientId },
-        select: { id: true }
+        select: { id: true, role: true }
       });
 
-      if (!existingClient) {
+      if (!existingClient || existingClient.role !== UserRole.CLIENT) {
         throw new HttpError(404, "Client not found.");
+      }
+
+      if (input.client) {
+        await rememberClientNameAlias(transaction, clientId, input.client.firstName, input.client.lastName, "admin_appointment");
       }
     }
 
@@ -1431,6 +1608,105 @@ export async function deleteProductBrand(actor: CrmAuthenticatedUser, id: bigint
   return { id: id.toString() };
 }
 
+export async function getProductComponents(actor: CrmAuthenticatedUser) {
+  assertAdmin(actor);
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: bigint; name: string; description: string | null; productCount: number }>
+  >`
+    SELECT
+      component.id,
+      component.name,
+      component.description,
+      COUNT(product.id)::int AS "productCount"
+    FROM product_components component
+    LEFT JOIN product_component_items item ON item.component_id = component.id
+    LEFT JOIN products product ON product.id = item.product_id AND product.is_active = true
+    GROUP BY component.id, component.name, component.description
+    ORDER BY component.name ASC
+  `;
+
+  return rows.map((component) => ({
+    id: component.id.toString(),
+    name: component.name,
+    description: component.description,
+    productCount: component.productCount
+  }));
+}
+
+export async function createProductComponent(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductComponentSchema>) {
+  assertAdmin(actor);
+
+  const [component] = await prisma.$queryRaw<{ id: bigint }[]>`
+    INSERT INTO product_components (name, description)
+    VALUES (${input.name}, ${input.description || null})
+    RETURNING id
+  `;
+
+  return { id: component.id.toString() };
+}
+
+export async function updateProductComponent(actor: CrmAuthenticatedUser, id: bigint, input: z.infer<typeof updateProductComponentSchema>) {
+  assertAdmin(actor);
+
+  const updates: Prisma.Sql[] = [];
+
+  if (input.name !== undefined) {
+    updates.push(Prisma.sql`name = ${input.name}`);
+  }
+
+  if (input.description !== undefined) {
+    updates.push(Prisma.sql`description = ${input.description || null}`);
+  }
+
+  if (updates.length === 0) {
+    return { id: id.toString() };
+  }
+
+  const [component] = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+    UPDATE product_components
+    SET ${Prisma.join([...updates, Prisma.sql`updated_at = NOW()`], ", ")}
+    WHERE id = ${id}
+    RETURNING id
+  `);
+
+  if (!component) {
+    throw new HttpError(404, "Product component not found.");
+  }
+
+  return { id: component.id.toString() };
+}
+
+export async function deleteProductComponent(actor: CrmAuthenticatedUser, id: bigint) {
+  assertAdmin(actor);
+
+  const [component] = await prisma.$queryRaw<Array<{ id: bigint; productCount: number }>>`
+    SELECT
+      component.id,
+      COUNT(product.id)::int AS "productCount"
+    FROM product_components component
+    LEFT JOIN product_component_items item ON item.component_id = component.id
+    LEFT JOIN products product ON product.id = item.product_id AND product.is_active = true
+    WHERE component.id = ${id}
+    GROUP BY component.id
+  `;
+
+  if (!component) {
+    throw new HttpError(404, "Product component not found.");
+  }
+
+  if (component.productCount > 0) {
+    throw new HttpError(409, "Product component is used by products. Remove it from products first.");
+  }
+
+  await prisma.$executeRaw`
+    DELETE FROM product_components
+    WHERE id = ${id}
+  `;
+
+  return { id: id.toString() };
+}
+
 async function resolveProductCategoryId(input: { categoryId?: string; category?: string }, required: boolean) {
   if (input.categoryId) {
     const [category] = await prisma.$queryRaw<{ id: bigint }[]>`
@@ -1492,11 +1768,50 @@ async function resolveProductBrand(input: { brandId?: string; brand?: string }) 
   return null;
 }
 
+async function replaceProductComponents(productId: bigint, componentIdValues: string[] = []) {
+  await prisma.$executeRaw`
+    DELETE FROM product_component_items
+    WHERE product_id = ${productId}
+  `;
+
+  const componentIds = await resolveProductComponentIds(componentIdValues);
+
+  if (componentIds.length === 0) {
+    return;
+  }
+
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO product_component_items (product_id, component_id, sort_order)
+    VALUES ${Prisma.join(componentIds.map((componentId, index) => Prisma.sql`(${productId}, ${componentId}, ${index})`))}
+  `);
+}
+
+async function resolveProductComponentIds(componentIdValues: string[] = []) {
+  const componentIds = Array.from(new Set(componentIdValues.map((value) => BigInt(value))));
+
+  if (componentIds.length === 0) {
+    return [];
+  }
+
+  const existingComponents = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+    SELECT id
+    FROM product_components
+    WHERE id IN (${Prisma.join(componentIds)})
+  `);
+
+  if (existingComponents.length !== componentIds.length) {
+    throw new HttpError(400, "One or more product components do not exist.");
+  }
+
+  return componentIds;
+}
+
 export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductSchema>) {
   assertAdmin(actor);
 
   const categoryId = await resolveProductCategoryId(input, true);
   const brand = await resolveProductBrand(input);
+  await resolveProductComponentIds(input.componentIds);
 
   const product = await prisma.product.create({
     data: {
@@ -1508,7 +1823,8 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
       purchasePrice: input.purchase,
       sellingPrice: input.sale,
       stockQuantity: input.stock,
-      minStockQuantity: input.min
+      minStockQuantity: input.min,
+      popularityBoost: input.popularityBoost ?? 0
     }
   });
 
@@ -1553,6 +1869,8 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
     reason: "Initial stock"
   });
 
+  await replaceProductComponents(product.id, input.componentIds);
+
   return { id: product.id.toString() };
 }
 
@@ -1573,7 +1891,8 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
       purchasePrice: input.purchase,
       sellingPrice: input.sale,
       stockQuantity: input.stock,
-      minStockQuantity: input.min
+      minStockQuantity: input.min,
+      popularityBoost: input.popularityBoost
     }
   });
 
@@ -1623,6 +1942,10 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
       SET ${Prisma.join(detailUpdates, ", ")}
       WHERE id = ${id}
     `);
+  }
+
+  if (input.componentIds !== undefined) {
+    await replaceProductComponents(id, input.componentIds);
   }
 
   return { id: product.id.toString() };
@@ -3555,16 +3878,28 @@ async function ensureSlotWithinEmployeeSchedule(employeeId: bigint, startTime: D
     throw new HttpError(409, "Appointments must fit within one working day.");
   }
 
-  const workingHour = await prisma.workingHour.findUnique({
+  const workDate = atLocalDate(toDateKey(startTime));
+  const scheduleOverride = await prisma.employeeScheduleOverride.findUnique({
     where: {
-      employeeId_dayOfWeek: {
+      employeeId_workDate: {
         employeeId,
-        dayOfWeek: startTime.getDay()
+        workDate
       }
     }
   });
+  const workingHour = scheduleOverride?.isClosed
+    ? null
+    : scheduleOverride ??
+      (await prisma.workingHour.findUnique({
+        where: {
+          employeeId_dayOfWeek: {
+            employeeId,
+            dayOfWeek: startTime.getDay()
+          }
+        }
+      }));
 
-  if (!workingHour) {
+  if (!workingHour?.startTime || !workingHour.endTime) {
     throw new HttpError(409, "The selected employee is not working at this time.");
   }
 
@@ -3669,6 +4004,26 @@ function employeeScope(actor: CrmAuthenticatedUser) {
   return BigInt(actor.employeeId);
 }
 
+async function assertClientAccess(actor: CrmAuthenticatedUser, clientId: bigint) {
+  const scopedEmployeeId = employeeScope(actor);
+  const client = await prisma.user.findFirst({
+    where: {
+      id: clientId,
+      role: UserRole.CLIENT,
+      ...(scopedEmployeeId
+        ? {
+            OR: [{ clientAppointments: { some: { employeeId: scopedEmployeeId } } }, { productSales: { some: { employeeId: scopedEmployeeId } } }]
+          }
+        : {})
+    },
+    select: { id: true }
+  });
+
+  if (!client) {
+    throw new HttpError(404, "Client not found.");
+  }
+}
+
 function assertOwnEmployee(actor: CrmAuthenticatedUser, employeeId: bigint) {
   if (actor.role === "ADMIN") {
     return;
@@ -3679,6 +4034,97 @@ function assertOwnEmployee(actor: CrmAuthenticatedUser, employeeId: bigint) {
   if (scopedEmployeeId !== employeeId) {
     throw new HttpError(403, "Employees can access only their own CRM workspace.");
   }
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+async function findClientByPhone(transaction: Prisma.TransactionClient, phone: string) {
+  const normalizedPhone = normalizePhone(phone);
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const [client] = await transaction.$queryRaw<Array<{ id: bigint }>>`
+    SELECT id
+    FROM users
+    WHERE role = ${UserRole.CLIENT}::"UserRole"
+      AND regexp_replace(phone, '\\D', '', 'g') = ${normalizedPhone}
+    ORDER BY created_at ASC
+    LIMIT 1
+  `;
+
+  return client ? transaction.user.findUnique({ where: { id: client.id } }) : null;
+}
+
+async function findOrCreateClientByPhone(
+  transaction: Prisma.TransactionClient,
+  input: { firstName: string; lastName: string; phone: string; email?: string },
+  source: string
+) {
+  const email = input.email?.trim() || null;
+  const existingClient = await findClientByPhone(transaction, input.phone);
+  const emailOwner = email ? await transaction.user.findUnique({ where: { email } }) : null;
+
+  if (emailOwner && emailOwner.role !== UserRole.CLIENT) {
+    throw new HttpError(409, "This email is already used by a CRM account.");
+  }
+
+  if (emailOwner && existingClient && emailOwner.id !== existingClient.id) {
+    throw new HttpError(409, "This email is already assigned to another client.");
+  }
+
+  if (emailOwner && !existingClient) {
+    throw new HttpError(409, "This email is already assigned to another client.");
+  }
+
+  const client = existingClient
+    ? await transaction.user.update({
+        where: { id: existingClient.id },
+        data: {
+          phone: input.phone,
+          email: existingClient.email ?? email
+        }
+      })
+    : await transaction.user.create({
+        data: {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+          email
+        }
+      });
+
+  await rememberClientNameAlias(transaction, client.id, input.firstName, input.lastName, source);
+
+  return client;
+}
+
+async function rememberClientNameAlias(
+  transaction: Prisma.TransactionClient,
+  clientId: bigint,
+  firstName: string,
+  lastName: string,
+  source: string
+) {
+  await transaction.clientNameAlias.upsert({
+    where: {
+      clientId_firstName_lastName: {
+        clientId,
+        firstName,
+        lastName
+      }
+    },
+    update: {},
+    create: {
+      clientId,
+      firstName,
+      lastName,
+      source
+    }
+  });
 }
 
 async function assertPaymentAccess(actor: CrmAuthenticatedUser, paymentId: bigint) {
@@ -3724,6 +4170,25 @@ function formatTimeOffSummary(timeOff: Array<{ startTime: Date; endTime: Date }>
 
 function formatDate(date: Date) {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+function toDateKey(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function buildDateRange(startDate: string, endDate: string) {
+  const dates: Date[] = [];
+
+  for (let current = atLocalDate(startDate); toDateKey(current) <= endDate; current.setDate(current.getDate() + 1)) {
+    dates.push(atLocalDate(toDateKey(current)));
+  }
+
+  return dates;
+}
+
+function atLocalDate(date: string) {
+  return new Date(`${date}T00:00:00`);
 }
 
 function isSameLocalDay(left: Date, right: Date) {
