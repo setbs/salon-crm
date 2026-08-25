@@ -120,12 +120,8 @@ export function listPopularPublicProducts(limit = 30) {
           store_order.created_at AS sold_at
         FROM store_order_items item
         JOIN store_orders store_order ON store_order.id = item.order_id
-        WHERE store_order.status IN (
-          'CONFIRMED'::"StoreOrderStatus",
-          'PROCESSING'::"StoreOrderStatus",
-          'SHIPPED'::"StoreOrderStatus",
-          'COMPLETED'::"StoreOrderStatus"
-        )
+        WHERE store_order.payment_status = 'PAID'::"StorePaymentStatus"
+          AND store_order.status <> 'CANCELLED'::"StoreOrderStatus"
       ) sold
       GROUP BY sold.product_id
     )

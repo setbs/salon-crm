@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { SalonApp } from "./App";
+import { CrmApp } from "./App";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <SalonApp />
+    <CrmApp />
   </React.StrictMode>
 );

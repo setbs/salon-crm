@@ -7,6 +7,7 @@ import { adminRouter } from "./modules/admin/admin.routes.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { bookingRouter } from "./modules/booking/booking.routes.js";
 import { catalogRouter } from "./modules/catalog/catalog.routes.js";
+import { monobankWebhookRouter } from "./modules/payments/monobank.routes.js";
 import { HttpError } from "./utils/http-error.js";
 
 export const app = express();
@@ -25,6 +26,7 @@ app.use(
     }
   })
 );
+app.use("/api/payments/monobank", express.raw({ type: "application/json" }), monobankWebhookRouter);
 app.use(express.json());
 app.use("/uploads", express.static(path.resolve(process.cwd(), "public/uploads")));
 

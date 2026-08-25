@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createStoreOrder, createStoreReview, getEmployees, getPopularProducts, getPortfolio, getProduct, getProducts, getServices, getStoreReviews } from "./catalog.service.js";
+import { createStoreOrder, createStoreReview, getEmployees, getPopularProducts, getPortfolio, getProduct, getProducts, getServices, getStoreOrderPaymentStatus, getStoreReviews, payStoreOrder } from "./catalog.service.js";
 import { parseIdList } from "../../utils/time.js";
 import { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 
@@ -72,6 +72,22 @@ catalogRouter.post("/public/store-reviews", async (request, response, next) => {
 catalogRouter.post("/public/orders", async (request, response, next) => {
   try {
     response.status(201).json({ data: await createStoreOrder(storeOrderSchema.parse(request.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.get("/public/orders/:id/payment-status", async (request, response, next) => {
+  try {
+    response.json({ data: await getStoreOrderPaymentStatus(request.params.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+catalogRouter.post("/public/orders/:id/pay", async (request, response, next) => {
+  try {
+    response.json({ data: await payStoreOrder(request.params.id) });
   } catch (error) {
     next(error);
   }

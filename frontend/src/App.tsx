@@ -310,6 +310,7 @@ function formatSuggestedDate(value: string) {
 }
 
 type AppMode = "home" | "admin" | "booking" | "shop";
+type SalonMode = "home" | "booking" | "shop";
 type AdminSection =
   | "dashboard"
   | "calendar"
@@ -356,6 +357,58 @@ function getVisibleAdminNav(user: AuthUser) {
   }
 
   return adminNav.filter((item) => employeeSections.includes(item.id));
+}
+
+export function SalonApp() {
+  const [mode, setMode] = useState<SalonMode>("home");
+
+  return (
+    <>
+      {mode === "home" ? (
+        <HomeView onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
+      ) : mode === "shop" ? (
+        <ShopView onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
+      ) : (
+        <BookingView onOpenHome={() => setMode("home")} />
+      )}
+    </>
+  );
+}
+
+export function CrmApp() {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(() => Boolean(getStoredAuthToken()));
+
+  useEffect(() => {
+    if (!getStoredAuthToken()) {
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    fetchCurrentUser()
+      .then(setAuthUser)
+      .catch(() => {
+        setStoredAuthToken(null);
+        setAuthUser(null);
+      })
+      .finally(() => setIsCheckingAuth(false));
+  }, []);
+
+  function logout() {
+    setStoredAuthToken(null);
+    setAuthUser(null);
+  }
+
+  return authUser ? (
+    <AdminPanel onLogout={logout} user={authUser} />
+  ) : (
+    <LoginView
+      isCheckingAuth={isCheckingAuth}
+      onSuccess={(user) => {
+        setAuthUser(user);
+      }}
+    />
+  );
 }
 
 export function App() {
@@ -528,7 +581,7 @@ function HomeView({
   onOpenBooking,
   onOpenShop
 }: {
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
   onOpenBooking: () => void;
   onOpenShop: () => void;
 }) {
@@ -597,9 +650,11 @@ function HomeView({
           <a href="#contact">Contact</a>
         </nav>
         <div className="home-nav-actions">
-          <button className="secondary-button" onClick={onOpenAdmin} type="button">
-            CRM
-          </button>
+          {onOpenAdmin ? (
+            <button className="secondary-button" onClick={onOpenAdmin} type="button">
+              CRM
+            </button>
+          ) : null}
           <button className="primary-button" onClick={onOpenBooking} type="button">
             Book appointment
           </button>
@@ -844,7 +899,7 @@ function ShopView({
   onOpenBooking,
   onOpenHome
 }: {
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
   onOpenBooking: () => void;
   onOpenHome: () => void;
 }) {
@@ -882,9 +937,11 @@ function ShopView({
           <a href="#shop-contact">Contact</a>
         </nav>
         <div className="home-nav-actions">
-          <button className="secondary-button" onClick={onOpenAdmin} type="button">
-            CRM
-          </button>
+          {onOpenAdmin ? (
+            <button className="secondary-button" onClick={onOpenAdmin} type="button">
+              CRM
+            </button>
+          ) : null}
           <button className="primary-button" onClick={onOpenBooking} type="button">
             Book appointment
           </button>
@@ -1052,7 +1109,7 @@ function LoginView({
   onSuccess
 }: {
   isCheckingAuth: boolean;
-  onOpenBooking: () => void;
+  onOpenBooking?: () => void;
   onSuccess: (user: AuthUser) => void;
 }) {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -1104,15 +1161,17 @@ function LoginView({
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <button className="booking-link light" onClick={onOpenBooking} type="button">
-          Go to online booking
-        </button>
+        {onOpenBooking ? (
+          <button className="booking-link light" onClick={onOpenBooking} type="button">
+            Go to online booking
+          </button>
+        ) : null}
       </section>
     </main>
   );
 }
 
-function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; onOpenBooking: () => void; user: AuthUser }) {
+function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; onOpenBooking?: () => void; user: AuthUser }) {
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [adminData, setAdminData] = useState<AdminData | null>(null);
   const [isLoadingAdmin, setIsLoadingAdmin] = useState(true);
@@ -1184,9 +1243,11 @@ function AdminPanel({ onLogout, onOpenBooking, user }: { onLogout: () => void; o
           })}
         </nav>
 
-        <button className="booking-link" onClick={onOpenBooking} type="button">
-          Open online booking
-        </button>
+        {onOpenBooking ? (
+          <button className="booking-link" onClick={onOpenBooking} type="button">
+            Open online booking
+          </button>
+        ) : null}
         <button className="booking-link" onClick={onLogout} type="button">
           <LogOut aria-hidden="true" size={16} />
           Sign out
@@ -2515,7 +2576,7 @@ const bookingSteps: Array<{ id: BookingStep; label: string }> = [
   { id: "contact", label: "Contact" }
 ];
 
-function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onOpenHome: () => void }) {
+function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin?: () => void; onOpenHome: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -2898,9 +2959,11 @@ function BookingView({ onOpenAdmin, onOpenHome }: { onOpenAdmin: () => void; onO
           <ArrowLeft aria-hidden="true" size={15} />
           Website
         </button>
-        <button className="mode-switch" onClick={onOpenAdmin} type="button">
-          Admin CRM
-        </button>
+        {onOpenAdmin ? (
+          <button className="mode-switch" onClick={onOpenAdmin} type="button">
+            Admin CRM
+          </button>
+        ) : null}
       </div>
       <section className="booking-wizard document-frame">
         <header className="wizard-header">

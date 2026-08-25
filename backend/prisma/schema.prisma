@@ -60,6 +60,13 @@ enum StoreDeliveryMethod {
   DELIVERY
 }
 
+enum StorePaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
 model User {
   id           BigInt   @id @default(autoincrement())
   firstName    String   @map("first_name") @db.VarChar(100)
@@ -429,6 +436,15 @@ model ProductComponentItem {
 model StoreOrder {
   id             BigInt              @id @default(autoincrement())
   status         StoreOrderStatus    @default(PENDING)
+  paymentStatus  StorePaymentStatus  @default(PENDING) @map("payment_status")
+  paymentProvider String?            @map("payment_provider") @db.VarChar(50)
+  monobankInvoiceId String?          @unique @map("monobank_invoice_id") @db.VarChar(100)
+  paymentPageUrl String?             @map("payment_page_url") @db.VarChar(1000)
+  paymentAmount  Decimal?            @map("payment_amount") @db.Decimal(10, 2)
+  paymentCurrency String             @default("UAH") @map("payment_currency") @db.VarChar(3)
+  paymentFailureReason String?       @map("payment_failure_reason") @db.VarChar(500)
+  paidAt         DateTime?           @map("paid_at")
+  paymentModifiedAt DateTime?        @map("payment_modified_at")
   firstName      String              @map("first_name") @db.VarChar(100)
   lastName       String              @map("last_name") @db.VarChar(100)
   phone          String              @db.VarChar(30)
@@ -445,6 +461,7 @@ model StoreOrder {
   items StoreOrderItem[]
 
   @@index([status, createdAt])
+  @@index([paymentStatus, createdAt])
   @@map("store_orders")
 }
 

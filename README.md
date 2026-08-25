@@ -38,6 +38,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - Product categories, brands, product photos, public product detail modals, and internal product purpose control.
 - Product editing and manual stock movements.
 - Store order management with search, status workflow, idempotent stock deduction on confirmation, and stock restoration on cancellation.
+- Storefront payments through Monobank hosted checkout with webhook-based payment confirmation.
 - Appointment completion workflow with consumable write-off preview.
 - Consumable analytics with week, month, and custom period views.
 - CSV export for business analytics, appointments, inventory, and consumables.
@@ -71,6 +72,7 @@ The project is built as a diploma and portfolio application with a practical bus
 - TypeScript
 - CSS
 - lucide-react icons
+- Separate Vite entry points for the public salon site and CRM admin panel.
 
 ### Backend
 
@@ -148,16 +150,42 @@ Local URLs:
 
 ```text
 Frontend: http://localhost:5173
+CRM dev page: http://localhost:5173/crm.html
 Backend:  http://localhost:4000
 Health:   http://localhost:4000/api/health
 ```
+
+The public salon website and CRM are split at the frontend entry-point level:
+
+```bash
+cd frontend
+npm run build:salon # outputs frontend/dist-salon
+npm run build:crm   # outputs frontend/dist-crm
+```
+
+Recommended deployment:
+
+```text
+salon.example.com      -> frontend/dist-salon
+crm.salon.example.com  -> frontend/dist-crm
+api.salon.example.com  -> backend
+```
+
+For a combined local production build, `npm run build --workspace frontend` still produces `frontend/dist` with both `index.html` and `crm.html`.
 
 To allow the independent `product-store` frontend to call the API, configure its origin in `salon-crm/.env`:
 
 ```text
 FRONTEND_ORIGIN=http://localhost:5173
 STOREFRONT_ORIGIN=http://localhost:5174
+FRONTEND_URL=http://localhost:5174
+BACKEND_PUBLIC_URL=https://your-public-backend-url.example
+MONOBANK_TOKEN=your_monobank_merchant_or_test_token
 ```
+
+For production, put both public salon and CRM origins into `FRONTEND_ORIGIN`, separated by commas, for example `https://salon.example.com,https://crm.salon.example.com`.
+
+`FRONTEND_URL` is used by Monobank as the redirect target after checkout. `BACKEND_PUBLIC_URL` must be a public HTTPS URL for Monobank webhooks; in local development use a tunnel if you need real webhook confirmation.
 
 Public read-only product endpoints are available without CRM authentication:
 
@@ -168,6 +196,9 @@ GET /api/public/popular-products
 GET /api/public/store-reviews
 POST /api/public/store-reviews
 POST /api/public/orders
+GET /api/public/orders/:id/payment-status
+POST /api/public/orders/:id/pay
+POST /api/payments/monobank/webhook
 ```
 
 ## Demo Credentials

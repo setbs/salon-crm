@@ -565,10 +565,17 @@ export type AdminReview = {
 };
 
 export type StoreOrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "completed" | "cancelled";
+export type StorePaymentStatus = "pending" | "paid" | "failed" | "refunded";
 
 export type AdminStoreOrder = {
   id: string;
   status: StoreOrderStatus;
+  paymentStatus: StorePaymentStatus;
+  paymentProvider: string | null;
+  monobankInvoiceId: string | null;
+  paymentUrl: string | null;
+  paymentError: string | null;
+  paidAt: string | null;
   customer: { firstName: string; lastName: string; phone: string; email: string | null };
   deliveryMethod: "pickup" | "delivery";
   deliveryAddress: string | null;

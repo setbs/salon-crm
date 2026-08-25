@@ -14,6 +14,7 @@ import {
   type PublicProductRow
 } from "./catalog.repository.js";
 import { HttpError } from "../../utils/http-error.js";
+import { createMonobankPaymentForOrder, getPublicStorePaymentStatus } from "../payments/monobank.service.js";
 import type { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 import type { z } from "zod";
 
@@ -99,7 +100,7 @@ export async function createStoreReview(input: z.infer<typeof storeReviewSchema>
 export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) {
   try {
     const order = await insertStoreOrder(input);
-    return { id: order.id.toString(), status: order.status.toLowerCase(), totalAmount: Number(order.totalAmount), createdAt: order.createdAt.toISOString() };
+    return createMonobankPaymentForOrder(order.id);
   } catch (error) {
     if (error instanceof StoreOrderIssue) {
       if (error.code === "INSUFFICIENT_STOCK") throw new HttpError(409, `${error.productName ?? "Product"} is not available in the requested quantity.`);
@@ -107,6 +108,14 @@ export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) 
     }
     throw error;
   }
+}
+
+export async function getStoreOrderPaymentStatus(idValue: string) {
+  return getPublicStorePaymentStatus(parsePublicOrderId(idValue));
+}
+
+export async function payStoreOrder(idValue: string) {
+  return createMonobankPaymentForOrder(parsePublicOrderId(idValue));
 }
 
 export async function getProduct(idValue: string) {
@@ -185,4 +194,12 @@ function getPublicProductBadge(product: PublicProductRow): "new" | null {
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
   return product.createdAt >= twoWeeksAgo ? "new" : null;
+}
+
+function parsePublicOrderId(idValue: string) {
+  if (!/^\d+$/.test(idValue)) {
+    throw new HttpError(400, "Invalid order id.");
+  }
+
+  return BigInt(idValue);
 }

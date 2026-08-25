@@ -23,6 +23,8 @@ pids
 
 # Build folders
 dist/
+dist-salon/
+dist-crm/
 build/
 coverage/
 
