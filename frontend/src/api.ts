@@ -778,6 +778,7 @@ type ApiResponse<T> = {
   data: T;
 };
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const authTokenKey = "salon-crm-token";
 
 export function getStoredAuthToken() {
@@ -1078,7 +1079,7 @@ function jsonRequest(method: "POST" | "PATCH", payload: unknown): RequestInit {
 }
 
 async function request<T>(input: RequestInfo, init: RequestInit = {}, withAuth = true): Promise<T> {
-  const response = await fetch(input, withAuth ? withAuthHeader(init) : init);
+  const response = await fetch(resolveApiUrl(input), withAuth ? withAuthHeader(init) : init);
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -1086,6 +1087,14 @@ async function request<T>(input: RequestInfo, init: RequestInit = {}, withAuth =
   }
 
   return data as T;
+}
+
+function resolveApiUrl(input: RequestInfo): RequestInfo {
+  if (typeof input !== "string" || !API_BASE_URL || !input.startsWith("/")) {
+    return input;
+  }
+
+  return `${API_BASE_URL}${input}`;
 }
 
 function getApiErrorMessage(data: unknown) {
