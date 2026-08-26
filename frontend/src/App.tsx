@@ -45,6 +45,7 @@ import {
   type CrmLanguage,
   type CrmTextKey
 } from "./crm-i18n";
+import headerLogo from "./images/logos/header-logo.png";
 import logoFull from "./images/logos/logo-full.png";
 import logoMain from "./images/logos/logo-main.png";
 import { adminMoney, formatPlainNumber, formatUnit, plainHryvnia } from "./utils/format";
@@ -108,6 +109,23 @@ function canSellProduct(product: { purpose?: ProductPurpose }) {
 
 function canUseProductInProcedure(product: { purpose?: ProductPurpose }) {
   return !product.purpose || product.purpose === "procedure" || product.purpose === "both";
+}
+
+function useFloatingPublicHeader() {
+  const [isFloating, setIsFloating] = useState(false);
+
+  useEffect(() => {
+    const updateHeaderState = () => {
+      setIsFloating(window.scrollY > 92);
+    };
+
+    updateHeaderState();
+    window.addEventListener("scroll", updateHeaderState, { passive: true });
+
+    return () => window.removeEventListener("scroll", updateHeaderState);
+  }, []);
+
+  return isFloating;
 }
 
 function formatNetMoney(value: number, status?: string) {
@@ -359,6 +377,67 @@ const adminNav: Array<{ id: AdminSection; labelKey: CrmTextKey; icon: typeof Lay
 ];
 
 const employeeSections: AdminSection[] = ["dashboard", "calendar", "clients", "employees", "portfolio", "payments", "reviews"];
+const salonModePath: Record<SalonMode, string> = {
+  home: "/",
+  booking: "/booking",
+  shop: "/cosmetics"
+};
+
+function getSalonModeFromPath(pathname: string): SalonMode {
+  if (pathname.startsWith("/booking")) {
+    return "booking";
+  }
+
+  if (pathname.startsWith("/cosmetics") || pathname.startsWith("/shop")) {
+    return "shop";
+  }
+
+  return "home";
+}
+
+function useSalonRouteMode() {
+  const [mode, setModeState] = useState<SalonMode>(() => getSalonModeFromPath(window.location.pathname));
+  const [hasInAppHistory, setHasInAppHistory] = useState(false);
+
+  useEffect(() => {
+    const currentMode = getSalonModeFromPath(window.location.pathname);
+    setModeState(currentMode);
+    window.history.replaceState({ salonMode: currentMode }, "", window.location.pathname + window.location.search + window.location.hash);
+
+    function handlePopState() {
+      setModeState(getSalonModeFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function navigate(nextMode: SalonMode, options: { replace?: boolean } = {}) {
+    const nextPath = salonModePath[nextMode];
+    setModeState(nextMode);
+
+    if (window.location.pathname !== nextPath) {
+      window.history[options.replace ? "replaceState" : "pushState"]({ salonMode: nextMode }, "", nextPath);
+
+      if (!options.replace) {
+        setHasInAppHistory(true);
+      }
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goBackOrHome() {
+    if (hasInAppHistory && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    navigate("home", { replace: window.location.pathname === salonModePath.booking });
+  }
+
+  return { mode, navigate, goBackOrHome };
+}
 const weekDays = [
   { value: 0, short: "Sun", label: "Sunday" },
   { value: 1, short: "Mon", label: "Monday" },
@@ -493,6 +572,14 @@ const publicText = {
     from: "from",
     timeSingular: "time",
     timePlural: "times",
+    addAnotherService: "Add another service",
+    reviewAndConfirm: "Review and confirm",
+    visitNotesQuestion: "Any notes or requests for your visit?",
+    visitNotesPlaceholder: "Notes for the salon",
+    payLaterTitle: "Book now, pay after the visit",
+    payLaterText: "Confirm your reservation now. Payment is handled at the salon after the service.",
+    salonLocationLine: "SL Color Studio · Brody, Stusa St. 2",
+    privacyNote: "Your details are processed only to manage this appointment.",
     contactDetails: "Your contact details",
     contactDetailsText: "We will use these details to identify your booking.",
     firstName: "First name",
@@ -640,6 +727,14 @@ const publicText = {
     from: "від",
     timeSingular: "термін",
     timePlural: "термінів",
+    addAnotherService: "Додати ще одну послугу",
+    reviewAndConfirm: "Перевірте та підтвердьте",
+    visitNotesQuestion: "Маєте побажання або уточнення до візиту?",
+    visitNotesPlaceholder: "Коментар для салону",
+    payLaterTitle: "Запишіться зараз, оплатіть після візиту",
+    payLaterText: "Підтвердьте бронювання зараз. Оплату можна здійснити в салоні після послуги.",
+    salonLocationLine: "SL Color Studio · Броди, вул. Стуса, 2",
+    privacyNote: "Ваші дані використовуються лише для обробки цього запису.",
     contactDetails: "Ваші контактні дані",
     contactDetailsText: "Ми використаємо ці дані, щоб ідентифікувати ваш запис.",
     firstName: "Імʼя",
@@ -679,7 +774,7 @@ function getVisibleAdminNav(user: AuthUser) {
 }
 
 export function SalonApp() {
-  const [mode, setMode] = useState<SalonMode>("home");
+  const { mode, navigate, goBackOrHome } = useSalonRouteMode();
   const [language, setLanguage] = useState<PublicLanguage>("uk");
   const toggleLanguage = () => setLanguage((current) => (current === "en" ? "uk" : "en"));
 
@@ -690,11 +785,11 @@ export function SalonApp() {
   return (
     <>
       {mode === "home" ? (
-        <HomeView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => setMode("booking")} onOpenShop={() => setMode("shop")} />
+        <HomeView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => navigate("booking")} onOpenShop={() => navigate("shop")} />
       ) : mode === "shop" ? (
-        <ShopView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => setMode("booking")} onOpenHome={() => setMode("home")} />
+        <ShopView language={language} onToggleLanguage={toggleLanguage} onOpenBooking={() => navigate("booking")} onOpenHome={() => navigate("home")} />
       ) : (
-        <BookingView language={language} onOpenHome={() => setMode("home")} />
+        <BookingView language={language} onBackToPrevious={goBackOrHome} onOpenHome={() => navigate("home")} />
       )}
     </>
   );
@@ -954,6 +1049,7 @@ function HomeView({
   const [portfolio, setPortfolio] = useState<PortfolioPhoto[]>([]);
   const [portfolioPage, setPortfolioPage] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isHeaderFloating = useFloatingPublicHeader();
 
   useEffect(() => {
     fetchServices()
@@ -1012,7 +1108,7 @@ function HomeView({
 
   return (
     <main className="home-shell">
-      <header className="home-nav">
+      <header className={`home-nav${isHeaderFloating ? " is-floating" : ""}${isMenuOpen ? " is-menu-open" : ""}`}>
         <button
           aria-expanded={isMenuOpen}
           aria-label={language === "uk" ? "Відкрити меню" : "Open menu"}
@@ -1023,7 +1119,8 @@ function HomeView({
           {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <button className="home-brand-button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} type="button">
-          <img className="home-nav-logo" src={logoFull} alt="SL Color Studio" />
+          <img className="home-nav-logo desktop-logo" src={headerLogo} alt="SL Color Studio" />
+          <img className="home-nav-logo mobile-logo" src={logoFull} alt="SL Color Studio" />
         </button>
         <nav className={isMenuOpen ? "is-open" : ""} aria-label="Public navigation">
           <a href="#about" onClick={() => setIsMenuOpen(false)}>{t("about")}</a>
@@ -1407,6 +1504,7 @@ function ShopView({
   const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isHeaderFloating = useFloatingPublicHeader();
 
   useEffect(() => {
     fetchProducts()
@@ -1427,7 +1525,7 @@ function ShopView({
 
   return (
     <main className="shop-shell">
-      <header className="home-nav shop-nav">
+      <header className={`home-nav shop-nav${isHeaderFloating ? " is-floating" : ""}${isMenuOpen ? " is-menu-open" : ""}`}>
         <button
           aria-expanded={isMenuOpen}
           aria-label={language === "uk" ? "Відкрити меню" : "Open menu"}
@@ -1438,7 +1536,8 @@ function ShopView({
           {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <button className="home-brand-button" onClick={onOpenHome} type="button">
-          <img className="home-nav-logo" src={logoFull} alt="SL Color Studio" />
+          <img className="home-nav-logo desktop-logo" src={headerLogo} alt="SL Color Studio" />
+          <img className="home-nav-logo mobile-logo" src={logoFull} alt="SL Color Studio" />
         </button>
         <nav className={isMenuOpen ? "is-open" : ""} aria-label="Shop navigation">
           <button onClick={() => { setIsMenuOpen(false); onOpenHome(); }} type="button">{t("salon")}</button>
@@ -3173,7 +3272,17 @@ const bookingSteps: Array<{ id: BookingStep; key: keyof typeof publicText.en }> 
   { id: "contact", key: "contact" }
 ];
 
-function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: PublicLanguage; onOpenAdmin?: () => void; onOpenHome: () => void }) {
+function BookingView({
+  language = "en",
+  onBackToPrevious,
+  onOpenAdmin,
+  onOpenHome
+}: {
+  language?: PublicLanguage;
+  onBackToPrevious?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenHome: () => void;
+}) {
   const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -3345,6 +3454,25 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
   const detailsStepDone = Boolean(client.firstName.trim() && client.lastName.trim() && client.phone.trim());
   const canSubmit = serviceStepDone && employeeStepDone && timeStepDone && detailsStepDone && status !== "loading" && status !== "saving";
   const activeStepIndex = bookingSteps.findIndex((step) => step.id === activeStep);
+  const dateChoices = useMemo(() => Array.from({ length: 7 }, (_, index) => addDaysToDateString(today, index)), []);
+  const stepTitle =
+    activeStep === "services"
+      ? t("selectServices")
+      : activeStep === "employee"
+        ? t("chooseEmployee")
+        : activeStep === "datetime"
+          ? t("chooseDateTime")
+          : t("reviewAndConfirm");
+  const stepSubtitle =
+    activeStep === "services"
+      ? t("selectServicesText")
+      : activeStep === "employee"
+        ? t("chooseEmployeeText")
+        : activeStep === "datetime"
+          ? selectedEmployee
+            ? `${selectedEmployee.firstName} ${selectedEmployee.lastName} ${t("selectedForVisit")}`
+            : t("chooseVisitTime")
+          : t("contactDetailsText");
 
   const total = selectedServices.reduce(
     (summary, service) => ({
@@ -3377,6 +3505,30 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
   function goToStep(step: BookingStep) {
     setError("");
     setActiveStep(step);
+  }
+
+  function goBackInBooking() {
+    if (activeStep === "contact") {
+      goToStep("datetime");
+      return;
+    }
+
+    if (activeStep === "datetime") {
+      goToStep(employees.length > 1 ? "employee" : "services");
+      return;
+    }
+
+    if (activeStep === "employee") {
+      goToStep("services");
+      return;
+    }
+
+    if (onBackToPrevious) {
+      onBackToPrevious();
+      return;
+    }
+
+    onOpenHome();
   }
 
   function continueFromServices() {
@@ -3494,45 +3646,43 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
   if (status === "success") {
     return (
       <main className="success-screen">
-        <section className="success-panel document-frame">
-          <div className="sl-logo compact" aria-hidden="true">
-            <span>S</span>
-            <span>L</span>
+        <section className="success-panel">
+          <img className="success-logo" src={logoMain} alt="SL Color Studio" />
+          <div className="success-heading">
+            <p className="eyebrow">SL Color Studio</p>
+            <h1>{t("appointmentConfirmed")}</h1>
           </div>
-          <div className="success-icon">
-            <Check aria-hidden="true" size={30} />
-          </div>
-          <p className="eyebrow">SL Color Studio</p>
-          <h1>{t("appointmentConfirmed")}</h1>
-          <p>
+          <p className="success-copy">
             {client.firstName}, {t("appointmentReserved")} {selectedSlot?.label} {t("onDate")} {formatSuggestedDate(selectedDate)}.
           </p>
-          <div className="success-highlight">
-            <span>{t("bookingReference")}</span>
-            <strong>{confirmation ? `#${confirmation.id}` : t("confirmed")}</strong>
-          </div>
-          <dl className="confirmation-list">
-            <div>
-              <dt>{t("services")}</dt>
-              <dd>{selectedServices.map((service) => service.name).join(", ")}</dd>
+          <section className="success-receipt">
+            <div className="success-highlight">
+              <span>{t("bookingReference")}</span>
+              <strong>{confirmation ? `#${confirmation.id}` : t("confirmed")}</strong>
             </div>
-            <div>
-              <dt>{t("employee")}</dt>
-              <dd>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("selectedEmployee")}</dd>
-            </div>
-            <div>
-              <dt>{t("dateAndTime")}</dt>
-              <dd>
-                {selectedDate}, {selectedSlot?.label}
-              </dd>
-            </div>
-            <div>
-              <dt>{t("total")}</dt>
-              <dd>
-                {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
-              </dd>
-            </div>
-          </dl>
+            <dl className="confirmation-list">
+              <div>
+                <dt>{t("services")}</dt>
+                <dd>{selectedServices.map((service) => service.name).join(", ")}</dd>
+              </div>
+              <div>
+                <dt>{t("employee")}</dt>
+                <dd>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("selectedEmployee")}</dd>
+              </div>
+              <div>
+                <dt>{t("dateAndTime")}</dt>
+                <dd>
+                  {selectedDate}, {selectedSlot?.label}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("total")}</dt>
+                <dd>
+                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
+                </dd>
+              </div>
+            </dl>
+          </section>
           <div className="success-next-steps">
             <strong>{t("nextStep")}</strong>
             <span>{t("successNote")}</span>
@@ -3551,62 +3701,35 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
   }
 
   return (
-    <main className="app-shell">
-      <div className="booking-switches">
-        <button className="mode-switch" onClick={onOpenHome} type="button">
-          <ArrowLeft aria-hidden="true" size={15} />
-          {t("website")}
-        </button>
-        {onOpenAdmin ? (
-          <button className="mode-switch" onClick={onOpenAdmin} type="button">
-            Admin CRM
+    <main className="app-shell booking-shell">
+      <section className="booking-wizard booksy-layout">
+        <header className="booking-flow-top">
+          <button className="booking-flow-icon" onClick={goBackInBooking} type="button" aria-label={t("back")}>
+            <ArrowLeft aria-hidden="true" size={24} />
           </button>
-        ) : null}
-      </div>
-      <section className="booking-wizard document-frame">
-        <header className="wizard-header">
-          <div className="wizard-brand">
-            <div className="sl-logo compact" aria-hidden="true">
-              <span>S</span>
-              <span>L</span>
-            </div>
-            <div>
-              <p className="eyebrow">SL Color Studio</p>
-              <h1>{t("bookYourAppointment")}</h1>
-              <p>{t("bookingIntro")}</p>
-            </div>
-          </div>
+          <img className="booking-flow-logo" src={logoMain} alt="SL Color Studio" />
+          <button className="booking-flow-icon" onClick={onBackToPrevious ?? onOpenHome} type="button" aria-label={t("backToWebsite")}>
+            <X aria-hidden="true" size={26} />
+          </button>
+        </header>
 
-          <div className="wizard-contact">
-            <span>
-              <Phone aria-hidden="true" size={16} />
-              +38 (050) 23 03 408
-            </span>
-            <span>
-              <MapPin aria-hidden="true" size={16} />
-              Brody, Stusa St. 2
-            </span>
-          </div>
-
-          <nav className="wizard-steps" aria-label="Booking progress">
+        <div className="booking-flow-heading">
+          <p className="eyebrow">SL Color Studio</p>
+          <h1>{stepTitle}</h1>
+          <p>{stepSubtitle}</p>
+          <nav className="booking-step-dots" aria-label="Booking progress">
             {bookingSteps.map((step, index) => (
               <span className={index < activeStepIndex ? "done" : index === activeStepIndex ? "active" : ""} key={step.id}>
                 {t(step.key)}
               </span>
             ))}
           </nav>
-        </header>
+        </div>
 
         {error ? <div className="alert wizard-alert">{error}</div> : null}
 
         {activeStep === "services" ? (
           <section className="wizard-panel">
-            <div className="wizard-panel-heading">
-              <p className="eyebrow">{t("step1")}</p>
-              <h2>{t("selectServices")}</h2>
-              <p>{t("selectServicesText")}</p>
-            </div>
-
             {status === "loading" ? <BookingEmptyState title={t("loadingServices")} detail={t("loadingServicesText")} /> : null}
 
             {status !== "loading" && services.length === 0 ? (
@@ -3661,7 +3784,7 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
               </div>
             ) : null}
 
-            <footer className="wizard-actions">
+            <footer className="booksy-bottom-bar">
               <div className="summary">
                 <span>{selectedServices.length > 0 ? `${selectedServices.length} ${t("selected")}` : t("noServicesSelected")}</span>
                 <strong>{selectedServices.length > 0 ? formatSelectedServicesPrice(selectedServices, total.price) : t("chooseServices")}</strong>
@@ -3681,13 +3804,7 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
         ) : null}
 
         {activeStep === "employee" ? (
-          <section className="wizard-panel compact-panel">
-            <div className="wizard-panel-heading">
-              <p className="eyebrow">{t("step2")}</p>
-              <h2>{t("chooseEmployee")}</h2>
-              <p>{t("chooseEmployeeText")}</p>
-            </div>
-
+          <section className="wizard-panel">
             {isLoadingEmployees ? <BookingEmptyState title={t("findingSpecialists")} detail={t("findingSpecialistsText")} /> : null}
 
             {!isLoadingEmployees && employees.length === 0 ? (
@@ -3721,153 +3838,162 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
                 ))}
               </div>
             ) : null}
-
-            <footer className="wizard-actions">
-              <button className="secondary-button icon-button" onClick={() => goToStep("services")} type="button">
-                <ArrowLeft aria-hidden="true" size={18} />
-                <span>{t("back")}</span>
-              </button>
-            </footer>
           </section>
         ) : null}
 
         {activeStep === "datetime" ? (
-          <section className="wizard-panel compact-panel">
-            <div className="wizard-panel-heading">
-              <p className="eyebrow">{t("step3")}</p>
-              <h2>{t("chooseDateTime")}</h2>
-              <p>
-                {selectedEmployee
-                  ? `${selectedEmployee.firstName} ${selectedEmployee.lastName} ${t("selectedForVisit")}`
-                  : t("chooseVisitTime")}
-              </p>
-            </div>
+          <section className="wizard-panel booksy-time-step">
+            <div className="booking-date-strip" aria-label={t("date")}>
+              {dateChoices.map((date) => {
+                const parsedDate = new Date(`${date}T00:00:00`);
+                const day = new Intl.DateTimeFormat(language === "uk" ? "uk-UA" : "en-GB", { day: "2-digit" }).format(parsedDate);
+                const weekday = new Intl.DateTimeFormat(language === "uk" ? "uk-UA" : "en-GB", { weekday: "short" }).format(parsedDate);
 
-            <div className="appointment-layout">
-              <aside className="appointment-summary">
-                <span>{t("visitSummary")}</span>
-                <strong>{selectedServices.map((service) => service.name).join(", ")}</strong>
-                <small>
-                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
-                </small>
-                <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("employeeNotSelected")}</small>
-              </aside>
-
-              <div className="datetime-panel">
-                <label>
-                  <span className="field-label">
-                    <CalendarDays aria-hidden="true" size={16} />
-                    {t("date")}
-                  </span>
-                  <input
-                    type="date"
-                    min={today}
-                    value={selectedDate}
-                    onChange={(event) => {
-                      setSelectedDate(event.target.value);
+                return (
+                  <button
+                    className={selectedDate === date ? "booking-date-chip selected" : "booking-date-chip"}
+                    key={date}
+                    onClick={() => {
+                      setSelectedDate(date);
                       setSelectedSlot(null);
                       setError("");
                     }}
-                    required
-                  />
-                </label>
-
-                <div className="field-label">
-                  <Clock aria-hidden="true" size={16} />
-                  {t("availableTime")}
-                </div>
-                <div className="slot-grid roomy">
-                  {isLoadingSlots ? <BookingEmptyState title={t("checkingTimes")} detail={t("checkingTimesText")} /> : null}
-                  {!isLoadingSlots
-                    ? slots.map((slot) => (
-                        <button
-                          className={selectedSlot?.startTime === slot.startTime ? "slot selected" : "slot"}
-                          key={slot.startTime}
-                          type="button"
-                          onClick={() => {
-                            setSelectedSlot(slot);
-                            setError("");
-                          }}
-                        >
-                          {slot.label}
-                        </button>
-                      ))
-                    : null}
-                  {selectedEmployeeId && !isLoadingSlots && slots.length === 0 ? (
-                    <BookingEmptyState title={t("noSlots")} detail={t("noSlotsText")} />
-                  ) : null}
-                </div>
-
-                {shouldShowAvailabilitySuggestions ? (
-                  <div className="nearest-suggestions-grid">
-                    <div className="nearest-slots">
-                      <div className="field-label">
-                        <CalendarDays aria-hidden="true" size={16} />
-                        {t("nearestDays")}
-                      </div>
-                      <div className="nearest-day-list">
-                        {isLoadingNearestSlots ? <p className="empty-state">{t("lookingDays")}</p> : null}
-                        {!isLoadingNearestSlots && nearestDays.length > 0
-                          ? nearestDays.map((suggestion) => (
-                              <button
-                                className={selectedDate === suggestion.date ? "nearest-day selected" : "nearest-day"}
-                                key={suggestion.date}
-                                onClick={() => {
-                                  setSelectedDate(suggestion.date);
-                                  setSelectedSlot(null);
-                                  setError("");
-                                }}
-                                type="button"
-                              >
-                                <strong>{formatSuggestedDate(suggestion.date)}</strong>
-                                <span>
-                                  {language === "uk" ? `${suggestion.slotCount} ${suggestion.slotCount === 1 ? t("timeSingular") : t("timePlural")}` : formatSlotCount(suggestion.slotCount)} · {t("from")} {suggestion.firstSlot.label}
-                                </span>
-                              </button>
-                            ))
-                          : null}
-                        {!isLoadingNearestSlots && nearestDays.length === 0 ? <p className="empty-state">{t("noDaysFound")}</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="nearest-slots">
-                      <div className="field-label">
-                        <CalendarDays aria-hidden="true" size={16} />
-                        {t("nearestTerms")}
-                      </div>
-                      <div className="nearest-slot-list">
-                        {isLoadingNearestSlots ? <p className="empty-state">{t("lookingTerms")}</p> : null}
-                        {!isLoadingNearestSlots && nearestSlots.length > 0
-                          ? nearestSlots.map((suggestion) => (
-                              <button
-                                className={selectedSlot?.startTime === suggestion.slot.startTime ? "nearest-slot selected" : "nearest-slot"}
-                                key={`${suggestion.date}-${suggestion.slot.startTime}`}
-                                onClick={() => {
-                                  setSelectedDate(suggestion.date);
-                                  setSelectedSlot(suggestion.slot);
-                                  setError("");
-                                }}
-                                type="button"
-                              >
-                                <strong>{formatSuggestedDate(suggestion.date)}</strong>
-                                <span>{suggestion.slot.label}</span>
-                              </button>
-                            ))
-                          : null}
-                        {!isLoadingNearestSlots && nearestSlots.length === 0 ? <p className="empty-state">{t("noTermsFound")}</p> : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-              </div>
+                    type="button"
+                  >
+                    <strong>{day}</strong>
+                    <span>{weekday}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            <footer className="wizard-actions">
-              <button className="secondary-button icon-button" onClick={() => goToStep(employees.length > 1 ? "employee" : "services")} type="button">
-                <ArrowLeft aria-hidden="true" size={18} />
-                <span>{t("back")}</span>
-              </button>
+            <label className="booksy-date-field">
+              <span className="field-label">
+                <CalendarDays aria-hidden="true" size={16} />
+                {t("date")}
+              </span>
+              <input
+                type="date"
+                min={today}
+                value={selectedDate}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setSelectedSlot(null);
+                  setError("");
+                }}
+                required
+              />
+            </label>
+
+            <div className="field-label">
+              <Clock aria-hidden="true" size={16} />
+              {t("availableTime")}
+            </div>
+            <div className="slot-grid booksy-time-grid">
+              {isLoadingSlots ? <BookingEmptyState title={t("checkingTimes")} detail={t("checkingTimesText")} /> : null}
+              {!isLoadingSlots
+                ? slots.map((slot) => (
+                    <button
+                      className={selectedSlot?.startTime === slot.startTime ? "slot selected" : "slot"}
+                      key={slot.startTime}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSlot(slot);
+                        setError("");
+                      }}
+                    >
+                      {slot.label}
+                    </button>
+                  ))
+                : null}
+              {selectedEmployeeId && !isLoadingSlots && slots.length === 0 ? (
+                <BookingEmptyState title={t("noSlots")} detail={t("noSlotsText")} />
+              ) : null}
+            </div>
+
+            {shouldShowAvailabilitySuggestions ? (
+              <div className="nearest-suggestions-grid">
+                <div className="nearest-slots">
+                  <div className="field-label">
+                    <CalendarDays aria-hidden="true" size={16} />
+                    {t("nearestDays")}
+                  </div>
+                  <div className="nearest-day-list">
+                    {isLoadingNearestSlots ? <p className="empty-state">{t("lookingDays")}</p> : null}
+                    {!isLoadingNearestSlots && nearestDays.length > 0
+                      ? nearestDays.map((suggestion) => (
+                          <button
+                            className={selectedDate === suggestion.date ? "nearest-day selected" : "nearest-day"}
+                            key={suggestion.date}
+                            onClick={() => {
+                              setSelectedDate(suggestion.date);
+                              setSelectedSlot(null);
+                              setError("");
+                            }}
+                            type="button"
+                          >
+                            <strong>{formatSuggestedDate(suggestion.date)}</strong>
+                            <span>
+                              {language === "uk" ? `${suggestion.slotCount} ${suggestion.slotCount === 1 ? t("timeSingular") : t("timePlural")}` : formatSlotCount(suggestion.slotCount)} · {t("from")} {suggestion.firstSlot.label}
+                            </span>
+                          </button>
+                        ))
+                      : null}
+                    {!isLoadingNearestSlots && nearestDays.length === 0 ? <p className="empty-state">{t("noDaysFound")}</p> : null}
+                  </div>
+                </div>
+
+                <div className="nearest-slots">
+                  <div className="field-label">
+                    <CalendarDays aria-hidden="true" size={16} />
+                    {t("nearestTerms")}
+                  </div>
+                  <div className="nearest-slot-list">
+                    {isLoadingNearestSlots ? <p className="empty-state">{t("lookingTerms")}</p> : null}
+                    {!isLoadingNearestSlots && nearestSlots.length > 0
+                      ? nearestSlots.map((suggestion) => (
+                          <button
+                            className={selectedSlot?.startTime === suggestion.slot.startTime ? "nearest-slot selected" : "nearest-slot"}
+                            key={`${suggestion.date}-${suggestion.slot.startTime}`}
+                            onClick={() => {
+                              setSelectedDate(suggestion.date);
+                              setSelectedSlot(suggestion.slot);
+                              setError("");
+                            }}
+                            type="button"
+                          >
+                            <strong>{formatSuggestedDate(suggestion.date)}</strong>
+                            <span>{suggestion.slot.label}</span>
+                          </button>
+                        ))
+                      : null}
+                    {!isLoadingNearestSlots && nearestSlots.length === 0 ? <p className="empty-state">{t("noTermsFound")}</p> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <section className="booksy-service-summary">
+              <div>
+                <strong>{selectedServices.map((service) => service.name).join(", ")}</strong>
+                <span>
+                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
+                </span>
+              </div>
+              <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("employeeNotSelected")}</small>
+            </section>
+
+            <button className="booking-add-service" onClick={() => goToStep("services")} type="button">
+              + {t("addAnotherService")}
+            </button>
+
+            <footer className="booksy-bottom-bar">
+              <div className="summary">
+                <span>
+                  {selectedServices.length} {t("selected")} · {total.duration} min
+                </span>
+                <strong>{formatSelectedServicesPrice(selectedServices, total.price)}</strong>
+              </div>
               <button className="primary-button icon-button" disabled={!selectedSlot} onClick={continueFromDateTime} type="button">
                 <span>{t("continue")}</span>
                 <ArrowRight aria-hidden="true" size={18} />
@@ -3878,15 +4004,36 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
 
         {activeStep === "contact" ? (
           <section className="wizard-panel contact-step">
-            <div className="contact-card">
-              <div className="wizard-panel-heading">
-                <p className="eyebrow">{t("finalStep")}</p>
-                <h2>{t("contactDetails")}</h2>
-                <p>{t("contactDetailsText")}</p>
-              </div>
+            <form onSubmit={handleSubmit} className="booking-form booksy-confirm-form" noValidate>
+              <section className="booksy-confirm-meta">
+                <strong>
+                  {formatSuggestedDate(selectedDate)} · {selectedSlot?.label}
+                </strong>
+                <span>{t("salonLocationLine")}</span>
+              </section>
 
-              <form onSubmit={handleSubmit} className="booking-form" noValidate>
-                <section className="form-section client-grid">
+              <section className="booksy-confirm-card">
+                {selectedServices.map((service) => (
+                  <div className="booksy-confirm-row" key={service.id}>
+                    <div>
+                      <strong>{service.name}</strong>
+                      <small>{selectedEmployee ? `${t("employee")}: ${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("employeeNotSelected")}</small>
+                    </div>
+                    <div>
+                      <strong>{formatServicePrice(service, language)}</strong>
+                      <small>{service.durationMinutes} min</small>
+                    </div>
+                  </div>
+                ))}
+                <div className="booksy-confirm-row total-row">
+                  <strong>{t("total")}</strong>
+                  <strong>{formatSelectedServicesPrice(selectedServices, total.price)}</strong>
+                </div>
+              </section>
+
+              <section className="booksy-contact-card">
+                <h2>{t("contactDetails")}</h2>
+                <div className="form-section client-grid">
                   <label>
                     <span>{t("firstName")}</span>
                     <input
@@ -3973,56 +4120,44 @@ function BookingView({ language = "en", onOpenAdmin, onOpenHome }: { language?: 
                       </small>
                     ) : null}
                   </label>
-                </section>
+                </div>
+              </section>
 
-                <label className="full-width">
-                  <span>{t("comment")}</span>
-                  <textarea
-                    aria-describedby={contactErrors.comment ? "booking-comment-error" : undefined}
-                    aria-invalid={Boolean(contactErrors.comment)}
-                    maxLength={1000}
-                    value={clientComment}
-                    onChange={(event) => {
-                      setClientComment(event.target.value);
-                      clearContactError("comment");
-                      setError("");
-                    }}
-                    rows={3}
-                  />
-                  {contactErrors.comment ? (
-                    <small className="field-error" id="booking-comment-error">
-                      {contactErrors.comment}
-                    </small>
-                  ) : null}
-                </label>
+              <label className="booksy-note-field">
+                <strong>{t("visitNotesQuestion")}</strong>
+                <textarea
+                  aria-describedby={contactErrors.comment ? "booking-comment-error" : undefined}
+                  aria-invalid={Boolean(contactErrors.comment)}
+                  maxLength={1000}
+                  placeholder={t("visitNotesPlaceholder")}
+                  value={clientComment}
+                  onChange={(event) => {
+                    setClientComment(event.target.value);
+                    clearContactError("comment");
+                    setError("");
+                  }}
+                  rows={4}
+                />
+                {contactErrors.comment ? (
+                  <small className="field-error" id="booking-comment-error">
+                    {contactErrors.comment}
+                  </small>
+                ) : null}
+              </label>
 
-                <section className="selection-panel">
-                  <div>
-                    <span>{t("appointment")}</span>
-                    <strong>
-                      {selectedDate}, {selectedSlot?.label}
-                    </strong>
-                  </div>
-                  <div>
-                    <span>{t("total")}</span>
-                    <strong>
-                      {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
-                    </strong>
-                  </div>
-                </section>
+              <section className="booksy-payment-note">
+                <strong>{t("payLaterTitle")}</strong>
+                <span>{t("payLaterText")}</span>
+              </section>
 
-                <footer className="wizard-actions">
-                  <button className="secondary-button icon-button" onClick={() => goToStep("datetime")} type="button">
-                    <ArrowLeft aria-hidden="true" size={18} />
-                    <span>{t("back")}</span>
-                  </button>
-                  <button className="primary-button icon-button" type="submit" disabled={!canSubmit}>
-                    <span>{status === "saving" ? t("booking") : t("confirmAppointment")}</span>
-                    <Check aria-hidden="true" size={18} />
-                  </button>
-                </footer>
-              </form>
-            </div>
+              <footer className="booksy-bottom-bar confirm-bar">
+                <small>{t("privacyNote")}</small>
+                <button className="primary-button icon-button" type="submit" disabled={!canSubmit}>
+                  <span>{status === "saving" ? t("booking") : t("confirmAppointment")}</span>
+                  <Check aria-hidden="true" size={18} />
+                </button>
+              </footer>
+            </form>
           </section>
         ) : null}
       </section>

@@ -4067,25 +4067,15 @@ async function findOrCreateClientByPhone(
   const email = input.email?.trim() || null;
   const existingClient = await findClientByPhone(transaction, input.phone);
   const emailOwner = email ? await transaction.user.findUnique({ where: { email } }) : null;
-
-  if (emailOwner && emailOwner.role !== UserRole.CLIENT) {
-    throw new HttpError(409, "This email is already used by a CRM account.");
-  }
-
-  if (emailOwner && existingClient && emailOwner.id !== existingClient.id) {
-    throw new HttpError(409, "This email is already assigned to another client.");
-  }
-
-  if (emailOwner && !existingClient) {
-    throw new HttpError(409, "This email is already assigned to another client.");
-  }
+  const emailBelongsToThisClient = Boolean(emailOwner && existingClient && emailOwner.id === existingClient.id);
+  const emailIsAvailable = Boolean(email && (!emailOwner || emailBelongsToThisClient));
 
   const client = existingClient
     ? await transaction.user.update({
         where: { id: existingClient.id },
         data: {
           phone: input.phone,
-          email: existingClient.email ?? email
+          email: existingClient.email ?? (emailIsAvailable ? email : null)
         }
       })
     : await transaction.user.create({
@@ -4093,7 +4083,7 @@ async function findOrCreateClientByPhone(
           firstName: input.firstName,
           lastName: input.lastName,
           phone: input.phone,
-          email
+          email: emailIsAvailable ? email : null
         }
       });
 
