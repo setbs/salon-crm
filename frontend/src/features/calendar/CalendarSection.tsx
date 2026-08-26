@@ -582,24 +582,26 @@ export function CalendarSection({
   );
 }
 
-function AppointmentDetailsDialog({
+export function AppointmentDetailsDialog({
   appointment,
   onClose,
   onComment,
   onComplete,
   onOpenClient,
   onPaymentStatusChange,
+  readOnly = false,
   onReschedule,
   onStatusChange
 }: {
   appointment: AdminData["appointments"][number];
   onClose: () => void;
-  onComment: () => void;
-  onComplete: () => void;
-  onOpenClient: () => void;
-  onPaymentStatusChange: (status: "pending" | "paid" | "refunded") => Promise<void>;
-  onReschedule: () => void;
-  onStatusChange: (status: "cancelled" | "no_show") => Promise<void>;
+  onComment?: () => void;
+  onComplete?: () => void;
+  onOpenClient?: () => void;
+  onPaymentStatusChange?: (status: "pending" | "paid" | "refunded") => Promise<void>;
+  readOnly?: boolean;
+  onReschedule?: () => void;
+  onStatusChange?: (status: "cancelled" | "no_show") => Promise<void>;
 }) {
   const t = useCrmT();
   const isScheduled = appointment.status === "scheduled";
@@ -626,9 +628,11 @@ function AppointmentDetailsDialog({
           <div>
             <p className="admin-kicker">{t("appointmentDetails")}</p>
             <h2>{appointment.client}</h2>
-            <button className="table-link-button appointment-client-link" onClick={onOpenClient} type="button">
-              {t("openClientCard")}
-            </button>
+            {onOpenClient ? (
+              <button className="table-link-button appointment-client-link" onClick={onOpenClient} type="button">
+                {t("openClientCard")}
+              </button>
+            ) : null}
           </div>
           <button aria-label={t("appointmentDetails")} className="icon-only-button" onClick={onClose} title={t("close")} type="button">
             <X aria-hidden="true" size={16} />
@@ -645,31 +649,33 @@ function AppointmentDetailsDialog({
             <StatusBadge status={appointment.status} />
           </section>
 
-          <div className="appointment-status-panel">
-            <div>
-              <span>{t("visitStatus")}</span>
-              <StatusBadge status={appointment.status} />
-            </div>
-            <div>
-              <span>{t("paymentStatusLabel")}</span>
-              <div className="status-button-row" aria-label={t("paymentStatusLabel")}>
-                {([
-                  ["pending", t("pending")],
-                  ["paid", t("paid")],
-                  ["refunded", t("refunded")]
-                ] as const).map(([status, label]) => (
-                  <button
-                    className={appointment.paymentStatus === status ? "active" : ""}
-                    key={status}
-                    onClick={() => void onPaymentStatusChange(status)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
+          {readOnly ? null : (
+            <div className="appointment-status-panel">
+              <div>
+                <span>{t("visitStatus")}</span>
+                <StatusBadge status={appointment.status} />
+              </div>
+              <div>
+                <span>{t("paymentStatusLabel")}</span>
+                <div className="status-button-row" aria-label={t("paymentStatusLabel")}>
+                  {([
+                    ["pending", t("pending")],
+                    ["paid", t("paid")],
+                    ["refunded", t("refunded")]
+                  ] as const).map(([status, label]) => (
+                    <button
+                      className={appointment.paymentStatus === status ? "active" : ""}
+                      key={status}
+                      onClick={() => void onPaymentStatusChange?.(status)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="appointment-detail-grid">
             <InfoList
@@ -773,25 +779,27 @@ function AppointmentDetailsDialog({
           <button className="secondary-button compact-button" onClick={onClose} type="button">
             {t("close")}
           </button>
-          <button className="secondary-button compact-button" onClick={onComment} type="button">
-            {t("comment")}
-          </button>
-          {isScheduled ? (
+          {!readOnly && onComment ? (
+            <button className="secondary-button compact-button" onClick={onComment} type="button">
+              {t("comment")}
+            </button>
+          ) : null}
+          {!readOnly && isScheduled ? (
             <>
               <button className="secondary-button compact-button" onClick={onReschedule} type="button">
                 {t("reschedule")}
               </button>
-              <button className="secondary-button compact-button" onClick={() => void onStatusChange("no_show")} type="button">
+              <button className="secondary-button compact-button" onClick={() => void onStatusChange?.("no_show")} type="button">
                 {t("noShowShort")}
               </button>
-              <button className="secondary-button compact-button" onClick={() => void onStatusChange("cancelled")} type="button">
+              <button className="secondary-button compact-button" onClick={() => void onStatusChange?.("cancelled")} type="button">
                 {t("cancel")}
               </button>
               <button className="primary-button compact-button" onClick={onComplete} type="button">
                 {t("complete")}
               </button>
             </>
-          ) : appointment.status === "completed" ? (
+          ) : !readOnly && appointment.status === "completed" ? (
             <button className="primary-button compact-button" onClick={onComplete} type="button">
               {t("editCompletion")}
             </button>

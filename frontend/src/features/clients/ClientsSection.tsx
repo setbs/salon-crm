@@ -4,6 +4,7 @@ import { createAdminClientNote, fetchAdminClientProfile, type AdminClientProfile
 import { AdminModal, DataTable, InfoList, InlineActions, Panel, StatusBadge } from "../../components/admin-ui";
 import { useCrmT } from "../../crm-i18n";
 import { adminMoney } from "../../utils/format";
+import { AppointmentDetailsDialog } from "../calendar/CalendarSection";
 
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -15,9 +16,11 @@ function formatShortDate(value: string) {
 }
 
 export function ClientsSection({
+  appointments,
   clients,
   runAction
 }: {
+  appointments: AdminData["appointments"];
   clients: AdminData["clients"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
@@ -27,10 +30,12 @@ export function ClientsSection({
   const [clientProfile, setClientProfile] = useState<AdminClientProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const selectedAppointment = appointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null;
   const normalizedSearch = search.trim().toLowerCase();
   const filteredClients = normalizedSearch
     ? clients.filter((client) =>
-        [client.name, client.phone, client.email ?? "", ...client.nameAliases.map((alias) => alias.name)].some((value) =>
+        [client.name, client.phone, client.email ?? "", ...client.nameAliases.map((alias) => alias.name), ...client.emailAliases.map((alias) => alias.email)].some((value) =>
           value.toLowerCase().includes(normalizedSearch)
         )
       )
@@ -115,6 +120,7 @@ export function ClientsSection({
           {clientProfile ? (
             <ClientProfileDialog
               profile={clientProfile}
+              onOpenAppointment={(appointmentId) => setSelectedAppointmentId(appointmentId)}
               onCreateNote={(text) =>
                 runAction(async () => {
                   await createAdminClientNote(clientProfile.id, { text });
@@ -125,11 +131,26 @@ export function ClientsSection({
           ) : null}
         </AdminModal>
       ) : null}
+      {selectedAppointment ? (
+        <AppointmentDetailsDialog
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointmentId(null)}
+          readOnly
+        />
+      ) : null}
     </div>
   );
 }
 
-function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: string) => Promise<void>; profile: AdminClientProfile }) {
+function ClientProfileDialog({
+  onCreateNote,
+  onOpenAppointment,
+  profile
+}: {
+  onCreateNote: (text: string) => Promise<void>;
+  onOpenAppointment: (appointmentId: string) => void;
+  profile: AdminClientProfile;
+}) {
   const t = useCrmT();
   const [noteText, setNoteText] = useState("");
 
@@ -150,7 +171,8 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
         items={[
           [t("phone"), profile.phone],
           [t("email"), profile.email ?? "-"],
-          [t("latestNote"), profile.comment || t("noClientNotesYet")]
+          [t("visits"), String(profile.visits)],
+          [t("totalSpent"), adminMoney.format(profile.spent)]
         ]}
       />
 
@@ -172,20 +194,23 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
         </div>
       </section>
 
-      <div className="profile-summary-grid">
-        <div>
-          <span>{t("visits")}</span>
-          <strong>{profile.visits}</strong>
+      <section className="profile-section client-alias-section">
+        <div className="profile-section-heading">
+          <h3>{t("registeredEmails")}</h3>
+          <span>{profile.emailAliases.length} {t("variants")}</span>
         </div>
-        <div>
-          <span>{t("totalSpent")}</span>
-          <strong>{adminMoney.format(profile.spent)}</strong>
+        <div className="client-alias-list">
+          {profile.emailAliases.length > 0 ? (
+            profile.emailAliases.map((alias) => (
+              <span key={alias.id} title={alias.source ?? undefined}>
+                {alias.email}
+              </span>
+            ))
+          ) : (
+            <span>{profile.email ?? "-"}</span>
+          )}
         </div>
-        <div>
-          <span>{t("purchases")}</span>
-          <strong>{profile.sales.length}</strong>
-        </div>
-      </div>
+      </section>
 
       <section className="profile-section client-notes-section">
         <div className="profile-section-heading">
@@ -230,8 +255,12 @@ function ClientProfileDialog({ onCreateNote, profile }: { onCreateNote: (text: s
           rows={
             profile.appointments.length > 0
               ? profile.appointments.map((appointment) => [
-                  `${formatShortDate(appointment.date)} · ${appointment.time}`,
-                  appointment.service || "-",
+                  <button className="table-link-button" onClick={() => onOpenAppointment(appointment.id)} type="button">
+                    {formatShortDate(appointment.date)} · {appointment.time}
+                  </button>,
+                  <button className="table-link-button align-left" onClick={() => onOpenAppointment(appointment.id)} type="button">
+                    {appointment.service || "-"}
+                  </button>,
                   appointment.employee,
                   `${adminMoney.format(appointment.amount)} · ${appointment.paymentStatus}`,
                   appointment.rating ? `${appointment.rating}/5` : "-",

@@ -99,6 +99,7 @@ export function createAppointmentWithClient(input: {
         });
 
     await rememberClientNameAlias(transaction, client.id, input.client.firstName, input.client.lastName, "public_booking");
+    await rememberClientEmailAlias(transaction, client.id, email, "public_booking");
 
     return transaction.appointment.create({
       data: {
@@ -165,6 +166,29 @@ async function rememberClientNameAlias(
       clientId,
       firstName,
       lastName,
+      source
+    }
+  });
+}
+
+async function rememberClientEmailAlias(transaction: Prisma.TransactionClient, clientId: bigint, email: string | null, source: string) {
+  const normalizedEmail = email?.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return;
+  }
+
+  await transaction.clientEmailAlias.upsert({
+    where: {
+      clientId_email: {
+        clientId,
+        email: normalizedEmail
+      }
+    },
+    update: {},
+    create: {
+      clientId,
+      email: normalizedEmail,
       source
     }
   });

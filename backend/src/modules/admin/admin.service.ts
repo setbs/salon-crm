@@ -227,6 +227,12 @@ export async function getClients(actor: CrmAuthenticatedUser, search?: string) {
         name: `${alias.firstName} ${alias.lastName}`,
         source: alias.source,
         createdAt: alias.createdAt.toISOString()
+      })),
+      emailAliases: client.emailAliases.map((alias) => ({
+        id: alias.id.toString(),
+        email: alias.email,
+        source: alias.source,
+        createdAt: alias.createdAt.toISOString()
       }))
     };
   });
@@ -265,6 +271,7 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
         orderBy: { saleDate: "desc" }
       },
       nameAliases: { orderBy: { createdAt: "desc" } },
+      emailAliases: { orderBy: { createdAt: "desc" } },
       clientNotes: {
         include: { author: true },
         orderBy: { createdAt: "desc" }
@@ -294,6 +301,12 @@ export async function getClientProfile(actor: CrmAuthenticatedUser, id: bigint) 
       firstName: alias.firstName,
       lastName: alias.lastName,
       name: `${alias.firstName} ${alias.lastName}`,
+      source: alias.source,
+      createdAt: alias.createdAt.toISOString()
+    })),
+    emailAliases: client.emailAliases.map((alias) => ({
+      id: alias.id.toString(),
+      email: alias.email,
       source: alias.source,
       createdAt: alias.createdAt.toISOString()
     })),
@@ -4088,6 +4101,7 @@ async function findOrCreateClientByPhone(
       });
 
   await rememberClientNameAlias(transaction, client.id, input.firstName, input.lastName, source);
+  await rememberClientEmailAlias(transaction, client.id, email, source);
 
   return client;
 }
@@ -4112,6 +4126,29 @@ async function rememberClientNameAlias(
       clientId,
       firstName,
       lastName,
+      source
+    }
+  });
+}
+
+async function rememberClientEmailAlias(transaction: Prisma.TransactionClient, clientId: bigint, email: string | null, source: string) {
+  const normalizedEmail = email?.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return;
+  }
+
+  await transaction.clientEmailAlias.upsert({
+    where: {
+      clientId_email: {
+        clientId,
+        email: normalizedEmail
+      }
+    },
+    update: {},
+    create: {
+      clientId,
+      email: normalizedEmail,
       source
     }
   });

@@ -89,7 +89,8 @@ export function listClients(search?: string, employeeId?: bigint) {
               { phone: { contains: search, mode: "insensitive" } },
               { email: { contains: search, mode: "insensitive" } },
               { nameAliases: { some: { firstName: { contains: search, mode: "insensitive" } } } },
-              { nameAliases: { some: { lastName: { contains: search, mode: "insensitive" } } } }
+              { nameAliases: { some: { lastName: { contains: search, mode: "insensitive" } } } },
+              { emailAliases: { some: { email: { contains: search, mode: "insensitive" } } } }
             ]
           }
         : {})
@@ -98,6 +99,7 @@ export function listClients(search?: string, employeeId?: bigint) {
       clientAppointments: { include: { payment: true } },
       productSales: { include: { payment: true } },
       nameAliases: { orderBy: { createdAt: "desc" } },
+      emailAliases: { orderBy: { createdAt: "desc" } },
       clientNotes: { orderBy: { createdAt: "desc" }, take: 1 }
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }]

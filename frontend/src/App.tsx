@@ -1469,21 +1469,46 @@ function groupShopProducts(products: PublicProduct[]) {
         id: categoryId,
         name: categoryName,
         description: product.category?.description ?? null,
-        imageUrl: product.category?.imageUrl ?? null,
+        imageUrl: product.category?.imageUrl ?? product.imageUrl,
         products: [product]
       });
     }
   }
 
-  return [...groups.values()];
+  return [...groups.values()].sort((left, right) => left.name.localeCompare(right.name, "uk"));
 }
 
 function formatProductVolume(product: PublicProduct) {
   if (!product.contentAmount || !product.contentUnit) {
-    return "home care";
+    return "";
   }
 
   return `${formatPlainNumber(product.contentAmount)} ${formatUnit(product.contentUnit)}`;
+}
+
+function formatShopProductTitle(product: PublicProduct) {
+  return product.name
+    .replace(/\s*[,·|-]?\s*\d+(?:[.,]\d+)?\s*(мл|ml|г|g|гр|l|л)\.?$/i, "")
+    .trim();
+}
+
+function formatShopProductCount(count: number, language: PublicLanguage) {
+  if (language !== "uk") {
+    return `${count} ${count === 1 ? "item" : "items"}`;
+  }
+
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+
+  if (lastDigit === 1 && lastTwoDigits !== 11) {
+    return `${count} товар`;
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14)) {
+    return `${count} товари`;
+  }
+
+  return `${count} товарів`;
 }
 
 function ShopView({
@@ -1502,6 +1527,7 @@ function ShopView({
   const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isHeaderFloating = useFloatingPublicHeader();
@@ -1522,6 +1548,13 @@ function ShopView({
     return products.length > 0 ? products : shopProductFallback;
   }, [products]);
   const categories = useMemo(() => groupShopProducts(visibleProducts), [visibleProducts]);
+  const filteredProducts = useMemo(() => {
+    if (selectedCategoryId === "all") {
+      return visibleProducts;
+    }
+
+    return visibleProducts.filter((product) => (product.category?.id ?? "uncategorized") === selectedCategoryId);
+  }, [selectedCategoryId, visibleProducts]);
 
   return (
     <main className="shop-shell">
@@ -1600,58 +1633,74 @@ function ShopView({
         {status === "loading" ? <div className="empty-state">{t("loadingCosmetics")}</div> : null}
         {status === "error" ? <div className="admin-alert">{t("productsError")}</div> : null}
 
-        <div className="shop-category-list">
+        <div className="shop-category-tile-grid" aria-label={t("productCatalog")}>
+          <button
+            className={selectedCategoryId === "all" ? "shop-category-tile is-active" : "shop-category-tile"}
+            onClick={() => setSelectedCategoryId("all")}
+            type="button"
+          >
+            <img alt="" src={homeImages.products} />
+            <span>{t("productCatalog")}</span>
+            <strong>{formatShopProductCount(visibleProducts.length, language)}</strong>
+          </button>
           {categories.map((category) => (
-            <article className="shop-category-card" key={category.id}>
-              <div className="shop-category-media">
-                <img alt="" src={category.imageUrl ?? homeImages.products} />
-                <span>{t("professionalCare")}</span>
-              </div>
-              <div className="shop-category-body">
-                <div className="shop-category-heading">
-                  <div>
-                    <h3>{category.name}</h3>
-                    {category.description ? <p>{category.description}</p> : null}
-                  </div>
-                  <span>{category.products.length} {t("items")}</span>
-                </div>
-
-                <div className="shop-product-list">
-                  {category.products.map((product) => (
-                    <button className="shop-product-row" key={product.id} onClick={() => setSelectedProduct(product)} type="button">
-                      <div className="shop-product-image">
-                        {product.imageUrl ? (
-                          <img
-                            alt={product.name}
-                            src={product.imageUrl}
-                            onError={(event) => {
-                              event.currentTarget.style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <span>{product.brand?.slice(0, 2) || "SL"}</span>
-                        )}
-                      </div>
-                      <div className="shop-product-copy">
-                        <strong>{product.name}</strong>
-                        <small>{product.description || product.brand || t("salonCare")}</small>
-                      </div>
-                      <div className="shop-product-meta">
-                        <span>{product.brand || "SL Color Studio"}</span>
-                        <span>{formatProductVolume(product)}</span>
-                        <strong>{formatHryvnia(product.price)}</strong>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <button className="shop-category-action" onClick={onOpenBooking} type="button">
-                  {t("requestRecommendation")} <ArrowRight aria-hidden="true" size={16} />
-                </button>
-              </div>
-            </article>
+            <button
+              className={selectedCategoryId === category.id ? "shop-category-tile is-active" : "shop-category-tile"}
+              key={category.id}
+              onClick={() => setSelectedCategoryId(category.id)}
+              type="button"
+            >
+              <img alt="" src={category.imageUrl ?? homeImages.products} />
+              <span>{category.name}</span>
+              <strong>{formatShopProductCount(category.products.length, language)}</strong>
+            </button>
           ))}
         </div>
+
+        <section className="shop-storefront-panel">
+          <div className="shop-storefront-heading">
+            <div>
+              <p className="eyebrow">{selectedCategoryId === "all" ? t("professionalCare") : categories.find((category) => category.id === selectedCategoryId)?.name ?? t("professionalCare")}</p>
+              <h3>{selectedCategoryId === "all" ? t("productCatalog") : categories.find((category) => category.id === selectedCategoryId)?.name}</h3>
+            </div>
+            <span>{formatShopProductCount(filteredProducts.length, language)}</span>
+          </div>
+
+          <div className="shop-product-grid">
+            {filteredProducts.map((product) => {
+              const imageUrl = product.imageUrl ?? product.category?.imageUrl ?? null;
+              const volume = formatProductVolume(product);
+
+              return (
+                <article className="shop-product-card" key={product.id}>
+                  <button className="shop-product-card-image" onClick={() => setSelectedProduct(product)} type="button">
+                    {volume ? <span className="shop-volume-badge">{volume}</span> : null}
+                    {imageUrl ? (
+                      <img
+                        alt={product.name}
+                        loading="lazy"
+                        src={imageUrl}
+                        onError={(event) => {
+                          event.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <i>{product.brand?.slice(0, 2) || "SL"}</i>
+                    )}
+                  </button>
+                  <small>{product.category?.name ?? t("professionalCare")}</small>
+                  <button className="shop-product-title" onClick={() => setSelectedProduct(product)} type="button">
+                    {formatShopProductTitle(product)}
+                  </button>
+                  <strong>{formatHryvnia(product.price)}</strong>
+                  <button className="shop-product-cta" onClick={() => setSelectedProduct(product)} type="button">
+                    {language === "uk" ? "Детальніше" : "Details"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </section>
 
       <section className="home-section home-contact" id="shop-contact">
@@ -1979,7 +2028,7 @@ function AdminContent({
   }
 
   if (section === "clients") {
-    return <ClientsSection clients={data.clients} runAction={runAction} />;
+    return <ClientsSection appointments={data.appointments} clients={data.clients} runAction={runAction} />;
   }
 
   if (section === "services") {

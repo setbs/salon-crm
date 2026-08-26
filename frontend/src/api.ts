@@ -328,6 +328,12 @@ export type AdminClient = {
     source: string | null;
     createdAt: string;
   }>;
+  emailAliases: Array<{
+    id: string;
+    email: string;
+    source: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type AdminClientProfile = AdminClient & {
