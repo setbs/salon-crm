@@ -787,6 +787,20 @@ type ApiResponse<T> = {
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const authTokenKey = "salon-crm-token";
 
+export function resolveMediaUrl(url?: string | null) {
+  if (!url) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
 export function getStoredAuthToken() {
   return localStorage.getItem(authTokenKey);
 }

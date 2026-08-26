@@ -68,6 +68,7 @@ import {
   fetchServices,
   getStoredAuthToken,
   loginCrm,
+  resolveMediaUrl,
   setStoredAuthToken,
   updateAdminEmployee,
   updateAdminEmployeeWorkingHours,
@@ -1095,7 +1096,7 @@ function HomeView({
   }, [language, services]);
   const visiblePortfolio =
     portfolio.length > 0
-      ? portfolio.map((item) => ({ title: item.title, image: item.imageUrl, caption: item.employee }))
+      ? portfolio.map((item) => ({ title: item.title, image: resolveMediaUrl(item.imageUrl), caption: item.employee }))
       : homePortfolioFallback.map((item) => ({ ...item, caption: item.title }));
   const portfolioPageSize = 3;
   const portfolioPageCount = Math.max(1, Math.ceil(visiblePortfolio.length / portfolioPageSize));
@@ -1650,7 +1651,7 @@ function ShopView({
               onClick={() => setSelectedCategoryId(category.id)}
               type="button"
             >
-              <img alt="" src={category.imageUrl ?? homeImages.products} />
+              <img alt="" src={resolveMediaUrl(category.imageUrl) || homeImages.products} />
               <span>{category.name}</span>
               <strong>{formatShopProductCount(category.products.length, language)}</strong>
             </button>
@@ -1668,7 +1669,7 @@ function ShopView({
 
           <div className="shop-product-grid">
             {filteredProducts.map((product) => {
-              const imageUrl = product.imageUrl ?? product.category?.imageUrl ?? null;
+              const imageUrl = resolveMediaUrl(product.imageUrl ?? product.category?.imageUrl ?? null);
               const volume = formatProductVolume(product);
 
               return (
@@ -1740,6 +1741,7 @@ function ProductDetailDialog({
   product: PublicProduct;
 }) {
   const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
+  const imageUrl = resolveMediaUrl(product.imageUrl);
 
   return (
     <div className="admin-modal-backdrop" role="presentation">
@@ -1755,7 +1757,7 @@ function ProductDetailDialog({
         </div>
         <div className="product-detail-layout">
           <div className="product-detail-image">
-            {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <span>{product.brand?.slice(0, 2) || "SL"}</span>}
+            {imageUrl ? <img alt={product.name} src={imageUrl} /> : <span>{product.brand?.slice(0, 2) || "SL"}</span>}
           </div>
           <div className="product-detail-copy">
             <p>{product.description || (language === "uk" ? "Професійний салонний догляд, підібраний для домашньої рутини." : "Professional salon care selected for home routine support.")}</p>
@@ -2658,7 +2660,7 @@ function PortfolioSection({
           {portfolio.length > 0 ? portfolio.map((item) => (
             <article className="portfolio-card" key={item.id}>
               <div className="portfolio-preview">
-                <img alt={item.title} src={item.imageUrl} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+                <img alt={item.title} src={resolveMediaUrl(item.imageUrl)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
               </div>
               <strong>{item.title}</strong>
               <span>{item.master}</span>
@@ -2803,7 +2805,7 @@ function PortfolioPhotoForm({
       </label>
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt={t("portfolioPreview")} src={form.imageUrl} />
+          <img alt={t("portfolioPreview")} src={resolveMediaUrl(form.imageUrl)} />
         </div>
       ) : null}
       <div className="form-actions">

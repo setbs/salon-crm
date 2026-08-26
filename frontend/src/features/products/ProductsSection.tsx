@@ -15,6 +15,7 @@ import {
   updateAdminProductCategory,
   updateAdminProductComponent,
   uploadAdminProductImage,
+  resolveMediaUrl,
   type AdminData,
   type MeasurementUnit,
   type ProductBrandInput,
@@ -139,7 +140,7 @@ export function ProductsSection({
               rows={
                 categories.length > 0
                   ? categories.map((category) => [
-                      <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={category.imageUrl} /> : <Package aria-hidden="true" size={16} />}</span>,
+                      <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={resolveMediaUrl(category.imageUrl)} /> : <Package aria-hidden="true" size={16} />}</span>,
                       category.name,
                       String(category.productCount),
                       <InlineActions
@@ -675,7 +676,7 @@ function ProductCategoryForm({
       {uploadError ? <p className="form-note">{uploadError}</p> : null}
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt={t("productCategoryPreview")} src={form.imageUrl} />
+          <img alt={t("productCategoryPreview")} src={resolveMediaUrl(form.imageUrl)} />
         </div>
       ) : null}
       <div className="form-actions">
@@ -874,7 +875,7 @@ function ProductForm({
       {uploadError ? <p className="form-note">{uploadError}</p> : null}
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt={t("productPreview")} src={form.imageUrl} />
+          <img alt={t("productPreview")} src={resolveMediaUrl(form.imageUrl)} />
         </div>
       ) : null}
       <label>
@@ -1186,7 +1187,7 @@ function ProductInventoryModal({
       <div className="product-inventory-detail">
         <section className="product-inventory-hero">
           <div className="product-inventory-image">
-            {product.imageUrl ? <img alt={product.name} src={product.imageUrl} /> : <Package aria-hidden="true" size={30} />}
+            {product.imageUrl ? <img alt={product.name} src={resolveMediaUrl(product.imageUrl)} /> : <Package aria-hidden="true" size={30} />}
           </div>
           <div className="product-inventory-title">
             <p className="admin-kicker">{product.brand || t("noBrand")}</p>
