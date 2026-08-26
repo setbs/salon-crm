@@ -102,7 +102,7 @@ export function ProductsSection({
         product.sku ?? "",
         product.description ?? "",
         product.components.map((component) => `${component.name} ${component.description ?? ""}`).join(" "),
-        formatProductPurpose(product.purpose)
+        formatProductPurpose(product.purpose, t)
       ].some((value) =>
         value.toLowerCase().includes(normalizedProductSearch)
       );
@@ -303,7 +303,7 @@ export function ProductsSection({
                   return [
                     item.category,
                     item.brand || "-",
-                    formatProductPurpose(item.purpose),
+                    formatProductPurpose(item.purpose, t),
                     <button className="table-link-button" onClick={() => setSelectedProductId(item.id)} type="button">
                       {item.name}
                     </button>,
@@ -820,7 +820,7 @@ function ProductForm({
       )}
       <label>
         <span>{t("productQuote")}</span>
-        <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A short elegant line for the client product card" rows={3} />
+        <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder={t("productQuotePlaceholder")} rows={3} />
       </label>
       <fieldset className="component-picker">
         <legend>{t("keyComponents")}</legend>
@@ -1063,8 +1063,8 @@ function StockMovementForm({
         <span>{t("reason")}</span>
         <textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} rows={3} />
       </label>
-      {form.movementType === "adjustment" ? <small className="form-note">Adjustment can be positive or negative.</small> : null}
-      {!canUseContent ? <small className="form-note">Configure package content on the product to use ml/g movements.</small> : null}
+      {form.movementType === "adjustment" ? <small className="form-note">{t("adjustmentHint")}</small> : null}
+      {!canUseContent ? <small className="form-note">{t("configurePackageContentHint")}</small> : null}
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
           {t("cancel")}
@@ -1205,7 +1205,7 @@ function ProductInventoryModal({
               </div>
               <div>
                 <span>{t("purpose")}</span>
-                <strong>{formatProductPurpose(product.purpose)}</strong>
+                <strong>{formatProductPurpose(product.purpose, t)}</strong>
               </div>
               <div>
                 <span>{t("sku")}</span>
@@ -1331,7 +1331,7 @@ function QuickProductMovementForm({
         movementType: action === "restock" ? "purchase" : "adjustment",
         amountMode,
         amount: signedAmount,
-        reason: reason || defaultStockReason(action)
+        reason: reason || defaultStockReason(action, t)
       });
       setAmount("1");
       setReason("");
@@ -1374,10 +1374,10 @@ function QuickProductMovementForm({
       </div>
       <label>
         <span>{t("reason")}</span>
-        <textarea placeholder={defaultStockReason(action)} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
+        <textarea placeholder={defaultStockReason(action, t)} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
-      {action === "correct" ? <small className="form-note">Use a positive number to add stock or a negative number to reduce it.</small> : null}
-      {!canUseContent ? <small className="form-note">Package content is not configured, so only package movements are available.</small> : null}
+      {action === "correct" ? <small className="form-note">{t("stockCorrectionHint")}</small> : null}
+      {!canUseContent ? <small className="form-note">{t("packageMovementsOnlyHint")}</small> : null}
       <button className="primary-button admin-submit" disabled={!Number(amount)} type="submit">
         {t("save")}
       </button>
@@ -1440,16 +1440,16 @@ function buildInventorySummary(products: AdminData["products"]) {
   );
 }
 
-function formatProductPurpose(purpose: ProductPurpose | undefined) {
+function formatProductPurpose(purpose: ProductPurpose | undefined, t: ReturnType<typeof useCrmT>) {
   if (purpose === "sale") {
-    return "For sale";
+    return t("forSale");
   }
 
   if (purpose === "procedure") {
-    return "For procedures";
+    return t("forProcedures");
   }
 
-  return "Both";
+  return t("both");
 }
 
 function formatProductOption(product: AdminData["products"][number]) {
@@ -1481,16 +1481,16 @@ function formatProductMargin(product: AdminData["products"][number]) {
   return adminMoney.format(product.sale - product.purchase);
 }
 
-function defaultStockReason(action: "restock" | "write_off" | "correct") {
+function defaultStockReason(action: "restock" | "write_off" | "correct", t: ReturnType<typeof useCrmT>) {
   if (action === "write_off") {
-    return "Manual write-off";
+    return t("manualWriteOff");
   }
 
   if (action === "correct") {
-    return "Stock correction";
+    return t("stockCorrection");
   }
 
-  return "Stock replenishment";
+  return t("stockReplenishment");
 }
 
 function formatStockMovementAmount(movement: AdminData["products"][number]["movements"][number]) {

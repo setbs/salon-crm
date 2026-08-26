@@ -40,6 +40,7 @@ import {
   crmLabel,
   readStoredCrmLanguage,
   storeCrmLanguage,
+  useCrmLanguage,
   useCrmT,
   type CrmLanguage,
   type CrmTextKey
@@ -2086,6 +2087,7 @@ function EmployeeForm({
   services: AdminData["services"];
 }) {
   const t = useCrmT();
+  const language = useCrmLanguage();
   const serviceGroups = buildAppointmentServiceGroups(services);
   const [collapsedServiceGroups, setCollapsedServiceGroups] = useState<string[]>([]);
   const [form, setForm] = useState({
@@ -2186,7 +2188,7 @@ function EmployeeForm({
                     <span className={isOpen ? "service-group-arrow open" : "service-group-arrow"}>
                       <ArrowRight aria-hidden="true" size={16} />
                     </span>
-                    <strong>{group.name}</strong>
+                    <strong>{group.id === "uncategorized" ? t("uncategorized") : group.name}</strong>
                     <span>{selectedCount > 0 ? `${selectedCount}/${group.services.length} ${t("selected")}` : `${group.services.length} ${t("services")}`}</span>
                   </button>
                   {isOpen ? (
@@ -2197,7 +2199,7 @@ function EmployeeForm({
                           <span>
                             <strong>{service.name}</strong>
                             <small>
-                              {service.duration} min · {formatServicePrice(service)} · {service.active ? "active" : "disabled"}
+                              {service.duration} {t("minutesShort")} · {formatServicePrice(service, language)} · {service.active ? t("active") : t("disabled")}
                             </small>
                           </span>
                         </label>
@@ -2241,6 +2243,7 @@ function EmployeeScheduleForm({
   onDeleteTimeOff: (timeOffId: string) => Promise<void>;
   onSubmit: (payload: EmployeeWorkingHoursInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [days, setDays] = useState(() =>
     weekDays.reduce<Record<number, { enabled: boolean; startTime: string; endTime: string }>>((acc, day) => {
       const hour = employee.workingHours.find((item) => item.dayOfWeek === day.value);
@@ -2327,7 +2330,7 @@ function EmployeeScheduleForm({
               </label>
               <div className="form-section">
                 <label>
-                  <span>Start</span>
+                  <span>{t("start")}</span>
                   <input
                     disabled={!days[day.value].enabled}
                     onChange={(event) => updateDay(day.value, { startTime: event.target.value })}
@@ -2336,7 +2339,7 @@ function EmployeeScheduleForm({
                   />
                 </label>
                 <label>
-                  <span>End</span>
+                  <span>{t("end")}</span>
                   <input
                     disabled={!days[day.value].enabled}
                     onChange={(event) => updateDay(day.value, { endTime: event.target.value })}
@@ -2350,10 +2353,10 @@ function EmployeeScheduleForm({
         </div>
         <div className="form-actions">
           <button className="secondary-button compact-button" onClick={onCancel} type="button">
-            Close
+            {t("close")}
           </button>
           <button className="primary-button admin-submit" type="submit">
-            Save weekly schedule
+            {t("saveWeeklySchedule")}
           </button>
         </div>
       </form>
@@ -2362,18 +2365,18 @@ function EmployeeScheduleForm({
 
       <section className="schedule-timeoff">
         <div>
-          <p className="admin-kicker">Custom period schedule</p>
+          <p className="admin-kicker">{t("customPeriodSchedule")}</p>
           <DataTable
-            columns={["Date", "Hours", "Reason", "Actions"]}
+            columns={[t("date"), t("hoursColumn"), t("reason"), t("actions")]}
             rows={
               employee.scheduleOverrides.length > 0
                 ? employee.scheduleOverrides.map((item) => [
                     formatDateOnly(item.workDate),
-                    item.isClosed ? "closed" : `${item.startTime}-${item.endTime}`,
+                    item.isClosed ? t("closed") : `${item.startTime}-${item.endTime}`,
                     item.reason || "-",
-                    <InlineActions labels={["Delete"]} onAction={() => void onDeleteScheduleOverride(item.id)} />
+                    <InlineActions labels={[t("delete")]} onAction={() => void onDeleteScheduleOverride(item.id)} />
                   ])
-                : [["No custom schedule days", "-", "-", "-"]]
+                : [[t("noCustomScheduleDays"), "-", "-", "-"]]
             }
           />
         </div>
@@ -2381,7 +2384,7 @@ function EmployeeScheduleForm({
         <form className="admin-form" onSubmit={submitScheduleOverride}>
           <div className="form-section">
             <label>
-              <span>From date</span>
+              <span>{t("fromDate")}</span>
               <input
                 onChange={(event) => setOverrideForm({ ...overrideForm, startDate: event.target.value })}
                 type="date"
@@ -2389,7 +2392,7 @@ function EmployeeScheduleForm({
               />
             </label>
             <label>
-              <span>To date</span>
+              <span>{t("toDate")}</span>
               <input
                 min={overrideForm.startDate}
                 onChange={(event) => setOverrideForm({ ...overrideForm, endDate: event.target.value })}
@@ -2400,27 +2403,27 @@ function EmployeeScheduleForm({
           </div>
           <label className="checkbox-line">
             <input checked={overrideForm.isClosed} onChange={(event) => setOverrideForm({ ...overrideForm, isClosed: event.target.checked })} type="checkbox" />
-            <span>Close this period</span>
+            <span>{t("closeThisPeriod")}</span>
           </label>
           {!overrideForm.isClosed ? (
             <div className="form-section">
               <label>
-                <span>Start</span>
+                <span>{t("start")}</span>
                 <input onChange={(event) => setOverrideForm({ ...overrideForm, startTime: event.target.value })} type="time" value={overrideForm.startTime} />
               </label>
               <label>
-                <span>End</span>
+                <span>{t("end")}</span>
                 <input onChange={(event) => setOverrideForm({ ...overrideForm, endTime: event.target.value })} type="time" value={overrideForm.endTime} />
               </label>
             </div>
           ) : null}
           <label>
-            <span>Reason</span>
+            <span>{t("reason")}</span>
             <input value={overrideForm.reason} onChange={(event) => setOverrideForm({ ...overrideForm, reason: event.target.value })} />
           </label>
-          <small className="form-note neutral-note">Overrides replace the weekly schedule for selected dates. Maximum range is 62 days.</small>
+          <small className="form-note neutral-note">{t("overridesHelp")}</small>
           <button className="secondary-button compact-button" type="submit">
-            Apply period schedule
+            {t("applyPeriodSchedule")}
           </button>
         </form>
       </section>
@@ -2429,17 +2432,17 @@ function EmployeeScheduleForm({
 
       <section className="schedule-timeoff">
         <div>
-          <p className="admin-kicker">Time off</p>
+          <p className="admin-kicker">{t("timeOff")}</p>
           <DataTable
-            columns={["Period", "Reason", "Actions"]}
+            columns={[t("periodColumn"), t("reason"), t("actions")]}
             rows={
               employee.timeOffItems.length > 0
                 ? employee.timeOffItems.map((item) => [
                     `${formatShortDate(item.startTime)} - ${formatShortDate(item.endTime)}`,
                     item.reason || "-",
-                    <InlineActions labels={["Delete"]} onAction={() => void onDeleteTimeOff(item.id)} />
+                    <InlineActions labels={[t("delete")]} onAction={() => void onDeleteTimeOff(item.id)} />
                   ])
-                : [["No blocked periods", "-", "-"]]
+                : [[t("noBlockedPeriods"), "-", "-"]]
             }
           />
         </div>
@@ -2447,7 +2450,7 @@ function EmployeeScheduleForm({
         <form className="admin-form" onSubmit={submitTimeOff}>
           <div className="form-section">
             <label>
-              <span>Start date</span>
+              <span>{t("startDate")}</span>
               <input
                 onChange={(event) => setTimeOffForm({ ...timeOffForm, startDate: event.target.value })}
                 type="date"
@@ -2455,7 +2458,7 @@ function EmployeeScheduleForm({
               />
             </label>
             <label>
-              <span>Start time</span>
+              <span>{t("startTime")}</span>
               <input
                 onChange={(event) => setTimeOffForm({ ...timeOffForm, startTime: event.target.value })}
                 type="time"
@@ -2465,20 +2468,20 @@ function EmployeeScheduleForm({
           </div>
           <div className="form-section">
             <label>
-              <span>End date</span>
+              <span>{t("endDate")}</span>
               <input onChange={(event) => setTimeOffForm({ ...timeOffForm, endDate: event.target.value })} type="date" value={timeOffForm.endDate} />
             </label>
             <label>
-              <span>End time</span>
+              <span>{t("endTime")}</span>
               <input onChange={(event) => setTimeOffForm({ ...timeOffForm, endTime: event.target.value })} type="time" value={timeOffForm.endTime} />
             </label>
           </div>
           <label>
-            <span>Reason</span>
+            <span>{t("reason")}</span>
             <input value={timeOffForm.reason} onChange={(event) => setTimeOffForm({ ...timeOffForm, reason: event.target.value })} />
           </label>
           <button className="secondary-button compact-button" type="submit">
-            Add time off
+            {t("addTimeOff")}
           </button>
         </form>
       </section>
@@ -2495,13 +2498,14 @@ function PortfolioSection({
   portfolio: AdminData["portfolio"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [isCreatingPhoto, setIsCreatingPhoto] = useState(false);
   const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
   const editingPhoto = portfolio.find((photo) => photo.id === editingPhotoId) ?? null;
 
   return (
     <div className="admin-grid">
-      <Panel title="Portfolio" action="Add photo" onAction={() => setIsCreatingPhoto(true)} wide>
+      <Panel title={t("portfolio")} action={t("addPhoto")} onAction={() => setIsCreatingPhoto(true)} wide>
         <div className="portfolio-grid">
           {portfolio.length > 0 ? portfolio.map((item) => (
             <article className="portfolio-card" key={item.id}>
@@ -2510,16 +2514,16 @@ function PortfolioSection({
               </div>
               <strong>{item.title}</strong>
               <span>{item.master}</span>
-              <span>{item.visible ? "visible" : "hidden"}</span>
+              <span>{item.visible ? t("visible") : t("hidden")}</span>
               <InlineActions
-                labels={[item.visible ? "Hide" : "Show", "Edit", "Delete"]}
+                labels={[item.visible ? t("hide") : t("show"), t("edit"), t("delete")]}
                 onAction={(label) => {
-                  if (label === "Edit") {
+                  if (label === t("edit")) {
                     setEditingPhotoId(item.id);
                     return;
                   }
 
-                  if (label === "Delete") {
+                  if (label === t("delete")) {
                     void runAction(() => deleteAdminPortfolioPhoto(item.id));
                     return;
                   }
@@ -2528,11 +2532,11 @@ function PortfolioSection({
                 }}
               />
             </article>
-          )) : <div className="empty-state">No portfolio photos yet.</div>}
+          )) : <div className="empty-state">{t("noPortfolioPhotosYet")}</div>}
         </div>
       </Panel>
       {isCreatingPhoto ? (
-        <AdminModal title="New portfolio photo" onClose={() => setIsCreatingPhoto(false)}>
+        <AdminModal title={t("newPortfolioPhoto")} onClose={() => setIsCreatingPhoto(false)}>
           <PortfolioPhotoForm
             employees={employees}
             onCancel={() => setIsCreatingPhoto(false)}
@@ -2546,7 +2550,7 @@ function PortfolioSection({
         </AdminModal>
       ) : null}
       {editingPhoto ? (
-        <AdminModal title={`Edit portfolio photo`} onClose={() => setEditingPhotoId(null)}>
+        <AdminModal title={t("editPortfolioPhoto")} onClose={() => setEditingPhotoId(null)}>
           <PortfolioPhotoForm
             employees={employees}
             key={editingPhoto.id}
@@ -2576,6 +2580,7 @@ function PortfolioPhotoForm({
   onSubmit: (payload: PortfolioInput) => Promise<void>;
   photo?: AdminData["portfolio"][number];
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({
     employeeId: photo?.employeeId ?? employees[0]?.id ?? "",
     imageUrl: photo?.imageUrl ?? "",
@@ -2597,7 +2602,7 @@ function PortfolioPhotoForm({
       const result = await uploadAdminPortfolioImage(file);
       setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Could not upload image.");
+      setUploadError(error instanceof Error ? error.message : t("couldNotUploadImage"));
     } finally {
       setIsUploading(false);
     }
@@ -2617,7 +2622,7 @@ function PortfolioPhotoForm({
   return (
     <form className="admin-form" onSubmit={submit}>
       <label>
-        <span>Employee</span>
+        <span>{t("employee")}</span>
         <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} required>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
@@ -2627,7 +2632,7 @@ function PortfolioPhotoForm({
         </select>
       </label>
       <label>
-        <span>Upload from device</span>
+        <span>{t("uploadFromDevice")}</span>
         <input
           accept="image/jpeg,image/png,image/webp,image/gif"
           disabled={isUploading}
@@ -2637,28 +2642,28 @@ function PortfolioPhotoForm({
       </label>
       {uploadError ? <p className="form-note">{uploadError}</p> : null}
       <label>
-        <span>{isUploading ? "Uploading photo..." : "Photo URL"}</span>
+        <span>{isUploading ? t("uploadingPhoto") : t("photoUrl")}</span>
         <input disabled={isUploading} value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} required />
       </label>
       <label>
-        <span>Description</span>
+        <span>{t("description")}</span>
         <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       </label>
       <label className="checkbox-line">
         <input checked={form.visible} onChange={(event) => setForm({ ...form, visible: event.target.checked })} type="checkbox" />
-        <span>Visible on public website</span>
+        <span>{t("visibleOnPublicWebsite")}</span>
       </label>
       {form.imageUrl ? (
         <div className="portfolio-form-preview">
-          <img alt="Portfolio preview" src={form.imageUrl} />
+          <img alt={t("portfolioPreview")} src={form.imageUrl} />
         </div>
       ) : null}
       <div className="form-actions">
         <button className="secondary-button compact-button" onClick={onCancel} type="button">
-          Cancel
+          {t("cancel")}
         </button>
         <button className="primary-button admin-submit" disabled={!form.employeeId || isUploading} type="submit">
-          {isUploading ? "Uploading..." : "Save photo"}
+          {isUploading ? t("uploading") : t("savePhoto")}
         </button>
       </div>
     </form>
@@ -2678,6 +2683,7 @@ function SalesSection({
   employees: AdminData["employees"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const saleProducts = products.filter(canSellProduct);
   const [isSaleFormOpen, setIsSaleFormOpen] = useState(false);
   const [refundSale, setRefundSale] = useState<AdminData["sales"][number] | null>(null);
@@ -2685,9 +2691,9 @@ function SalesSection({
   return (
     <>
       <div className="admin-grid">
-        <Panel title="Product sales" action="Create sale" onAction={() => setIsSaleFormOpen(true)} wide>
+        <Panel title={t("productSales")} action={t("createSale")} onAction={() => setIsSaleFormOpen(true)} wide>
           <DataTable
-            columns={["Product", "Quantity", "Client", "Payment", "Net amount", "Actions"]}
+            columns={[t("product"), t("quantity"), t("client"), t("payment"), t("netAmount"), t("actions")]}
             rows={sales.map((item) => [
               item.product,
               item.qty,
@@ -2697,14 +2703,14 @@ function SalesSection({
                 <small>{item.paymentMethod}</small>
               </span>,
               <span className={item.netTotal < 0 ? "net-amount negative" : item.netTotal > 0 ? "net-amount positive" : "net-amount"}>{formatNetMoney(item.netTotal, item.paymentStatus)}</span>,
-              item.paymentId && item.paymentStatus !== "refunded" ? <InlineActions labels={["Refund"]} onAction={() => setRefundSale(item)} /> : "-"
+              item.paymentId && item.paymentStatus !== "refunded" ? <InlineActions labels={[t("refund")]} onAction={() => setRefundSale(item)} /> : "-"
             ])}
           />
         </Panel>
       </div>
 
       {isSaleFormOpen ? (
-        <AdminModal className="sale-form-modal" onClose={() => setIsSaleFormOpen(false)} title="Create product sale">
+        <AdminModal className="sale-form-modal" onClose={() => setIsSaleFormOpen(false)} title={t("createProductSale")}>
           <SaleForm
             clients={clients}
             employees={employees}
@@ -2742,19 +2748,20 @@ function PaymentsSection({
   payments: AdminData["payments"];
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [selectedPayment, setSelectedPayment] = useState<AdminData["payments"][number] | null>(null);
 
   return (
     <>
       <div className="admin-grid">
-        <Panel title="Payments" action="Add payment">
+        <Panel title={t("payments")} action={t("addPayment")}>
           <DataTable
-            columns={["Source", "Client", "Method", "Status", "Net amount", "Actions"]}
+            columns={[t("source"), t("client"), t("paymentMethod"), t("status"), t("netAmount"), t("actions")]}
             rows={payments.map((item) => {
               const actionLabels = [
-                "Details",
-                ...(item.status === "paid" ? [] : ["paid"]),
-                ...(item.status !== "refunded" && item.source !== "Products" ? ["refunded"] : [])
+                t("details"),
+                ...(item.status === "paid" ? [] : [t("paid")]),
+                ...(item.status !== "refunded" && item.source !== "Products" ? [t("refunded")] : [])
               ];
 
               return [
@@ -2766,24 +2773,29 @@ function PaymentsSection({
                 <InlineActions
                   labels={actionLabels}
                   onAction={(label) => {
-                    if (label === "Details") {
+                    if (label === t("details")) {
                       setSelectedPayment(item);
                       return;
                     }
 
-                    void runAction(() => updateAdminPayment(item.id, { status: label, method: item.method }));
+                    void runAction(() =>
+                      updateAdminPayment(item.id, {
+                        status: label === t("refunded") ? "refunded" : "paid",
+                        method: item.method
+                      })
+                    );
                   }}
                 />
               ];
             })}
           />
         </Panel>
-        <Panel title="Supported methods">
+        <Panel title={t("supportedMethods")}>
           <div className="feature-list">
-            <span>cash</span>
-            <span>card</span>
-            <span>blik</span>
-            <span>transfer</span>
+            <span>{t("cash")}</span>
+            <span>{t("card")}</span>
+            <span>BLIK</span>
+            <span>{t("transfer")}</span>
           </div>
         </Panel>
       </div>
@@ -2802,6 +2814,7 @@ function RefundSaleModal({
   onSubmit: (payload: { reason: string; returnToStock: boolean }) => Promise<void>;
   sale: AdminData["sales"][number];
 }) {
+  const t = useCrmT();
   const [reason, setReason] = useState("");
   const [returnToStock, setReturnToStock] = useState(true);
 
@@ -2811,37 +2824,37 @@ function RefundSaleModal({
   }
 
   return (
-    <AdminModal className="sale-refund-modal" onClose={onClose} title="Refund product sale">
+    <AdminModal className="sale-refund-modal" onClose={onClose} title={t("refundProductSale")}>
       <div className="payment-summary-strip">
         <div>
-          <span>Sale</span>
+          <span>{t("sale")}</span>
           <strong>{sale.product}</strong>
         </div>
         <div>
-          <span>Client</span>
+          <span>{t("client")}</span>
           <strong>{sale.client}</strong>
         </div>
         <div>
-          <span>Amount</span>
+          <span>{t("amount")}</span>
           <strong>{adminMoney.format(sale.total)}</strong>
         </div>
       </div>
       <form className="admin-form" onSubmit={submit}>
         <label className="checkbox-line">
           <input checked={returnToStock} onChange={(event) => setReturnToStock(event.target.checked)} type="checkbox" />
-          <span>Return sold products to stock</span>
+          <span>{t("returnSoldProductsToStock")}</span>
         </label>
         <label>
-          <span>Refund reason</span>
-          <textarea maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Optional, but useful for audit" rows={4} value={reason} />
+          <span>{t("refundReason")}</span>
+          <textarea maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder={t("optionalUsefulForAudit")} rows={4} value={reason} />
         </label>
-        <p className="form-note neutral-note">{returnToStock ? "Stock will be increased once. Repeating the same stock return will be blocked." : "Only money will be refunded. Product stock will stay unchanged."}</p>
+        <p className="form-note neutral-note">{returnToStock ? t("stockWillBeIncreased") : t("onlyMoneyRefunded")}</p>
         <div className="modal-actions">
           <button className="secondary-button compact-button" onClick={onClose} type="button">
-            Cancel
+            {t("cancel")}
           </button>
           <button className="primary-button admin-submit" type="submit">
-            Refund sale
+            {t("refundSale")}
           </button>
         </div>
       </form>
@@ -2850,34 +2863,36 @@ function RefundSaleModal({
 }
 
 function PaymentAuditModal({ onClose, payment }: { onClose: () => void; payment: AdminData["payments"][number] }) {
+  const t = useCrmT();
+
   return (
-    <AdminModal className="payment-audit-modal" onClose={onClose} title="Payment details">
+    <AdminModal className="payment-audit-modal" onClose={onClose} title={t("paymentDetails")}>
       <div className="payment-summary-strip">
         <div>
-          <span>Source</span>
+          <span>{t("source")}</span>
           <strong>{payment.source}</strong>
         </div>
         <div>
-          <span>Status</span>
+          <span>{t("status")}</span>
           <strong>
             <StatusBadge status={payment.status} />
           </strong>
         </div>
         <div>
-          <span>Net amount</span>
+          <span>{t("netAmount")}</span>
           <strong className={payment.netAmount < 0 ? "net-amount negative" : payment.netAmount > 0 ? "net-amount positive" : "net-amount"}>{formatNetMoney(payment.netAmount, payment.status)}</strong>
         </div>
       </div>
       <InfoList
         items={[
-          ["Client", payment.client],
-          ["Method", payment.method],
-          ["Original amount", adminMoney.format(payment.amount)],
-          ["Paid/refunded at", payment.paidAt ? formatStockMovementDateTime(payment.paidAt) : "-"]
+          [t("client"), payment.client],
+          [t("paymentMethod"), payment.method],
+          [t("originalAmount"), adminMoney.format(payment.amount)],
+          [t("paidRefundedAt"), payment.paidAt ? formatStockMovementDateTime(payment.paidAt) : "-"]
         ]}
       />
       <section className="appointment-audit-card">
-        <h3>Audit trail</h3>
+        <h3>{t("auditTrail")}</h3>
         <div className="appointment-audit-list">
           {payment.auditLogs.length > 0 ? (
             payment.auditLogs.map((log) => (
@@ -2893,7 +2908,7 @@ function PaymentAuditModal({ onClose, payment }: { onClose: () => void; payment:
               </article>
             ))
           ) : (
-            <div className="modal-state">No audit events yet.</div>
+            <div className="modal-state">{t("noAuditEventsYet")}</div>
           )}
         </div>
       </section>
@@ -2996,6 +3011,7 @@ function SaleForm({
   onCancel?: () => void;
   onSubmit: (payload: SaleInput) => Promise<void>;
 }) {
+  const t = useCrmT();
   const [form, setForm] = useState({ productId: products[0]?.id ?? "", quantity: "1", clientId: "", employeeId: "", paymentMethod: "cash" });
 
   useEffect(() => {
@@ -3022,24 +3038,24 @@ function SaleForm({
   const formContent = (
     <form className="admin-form" onSubmit={submit}>
         <label>
-          <span>Product</span>
+          <span>{t("product")}</span>
           <select value={form.productId} onChange={(event) => setForm({ ...form, productId: event.target.value })} required>
-            {products.length === 0 ? <option value="">No products for sale</option> : null}
+            {products.length === 0 ? <option value="">{t("noProductsForSale")}</option> : null}
             {products.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name} · stock {product.stock}
+                {product.name} · {t("stock")} {product.stock}
               </option>
             ))}
           </select>
         </label>
         <label>
-          <span>Quantity</span>
+          <span>{t("quantity")}</span>
           <input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required />
         </label>
         <label>
-          <span>Client</span>
+          <span>{t("client")}</span>
           <select value={form.clientId} onChange={(event) => setForm({ ...form, clientId: event.target.value })}>
-            <option value="">no client</option>
+            <option value="">{t("noClient")}</option>
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
@@ -3048,9 +3064,9 @@ function SaleForm({
           </select>
         </label>
         <label>
-          <span>Employee</span>
+          <span>{t("employee")}</span>
           <select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })}>
-            <option value="">not specified</option>
+            <option value="">{t("notSpecified")}</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {employee.name}
@@ -3059,28 +3075,28 @@ function SaleForm({
           </select>
         </label>
         <label>
-          <span>Payment method</span>
+          <span>{t("paymentMethod")}</span>
           <select value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value })}>
-            <option value="cash">cash</option>
-            <option value="card">card</option>
-            <option value="blik">blik</option>
-            <option value="transfer">transfer</option>
+            <option value="cash">{t("cash")}</option>
+            <option value="card">{t("card")}</option>
+            <option value="blik">BLIK</option>
+            <option value="transfer">{t("transfer")}</option>
           </select>
         </label>
       <div className="form-actions">
         {onCancel ? (
           <button className="secondary-button compact-button" onClick={onCancel} type="button">
-            Cancel
+            {t("cancel")}
           </button>
         ) : null}
         <button className="primary-button admin-submit" disabled={!form.productId} type="submit">
-          Create sale
+          {t("createSale")}
         </button>
       </div>
     </form>
   );
 
-  return onCancel ? formContent : <Panel title="New sale">{formContent}</Panel>;
+  return onCancel ? formContent : <Panel title={t("newSale")}>{formContent}</Panel>;
 }
 
 function SettingsForm({

@@ -57,17 +57,17 @@ function roundDisplayMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function formatServicePrice(value: DisplayPrice) {
+function formatServicePrice(value: DisplayPrice, t: ReturnType<typeof useCrmT>) {
   if (value.priceFrom !== null && value.priceFrom !== undefined && value.priceTo !== null && value.priceTo !== undefined) {
     return `${plainHryvnia.format(value.priceFrom)} - ${plainHryvnia.format(value.priceTo)} ₴`;
   }
 
   if (value.priceFrom !== null && value.priceFrom !== undefined) {
-    return `from ${formatHryvnia(value.priceFrom)}`;
+    return `${t("priceFrom")} ${formatHryvnia(value.priceFrom)}`;
   }
 
   if (value.priceTo !== null && value.priceTo !== undefined) {
-    return `up to ${formatHryvnia(value.priceTo)}`;
+    return `${t("priceTo")} ${formatHryvnia(value.priceTo)}`;
   }
 
   return formatHryvnia(value.price);
@@ -128,12 +128,12 @@ function formatShortDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatPreviewStock(item: AppointmentConsumablePreview["items"][number]) {
+function formatPreviewStock(item: AppointmentConsumablePreview["items"][number], t: ReturnType<typeof useCrmT>) {
   if (item.stockAfter === null) {
-    return "not tracked";
+    return t("notTracked");
   }
 
-  const packagePart = item.packageEquivalentAfter !== null ? `${formatPlainNumber(item.packageEquivalentAfter)} packs · ` : "";
+  const packagePart = item.packageEquivalentAfter !== null ? `${formatPlainNumber(item.packageEquivalentAfter)} ${t("packages")} · ` : "";
   return `${packagePart}${formatPlainNumber(item.stockAfter)} ${formatUnit(item.unit)}`;
 }
 
@@ -696,7 +696,7 @@ function AppointmentDetailsDialog({
                       <strong>{service.name}</strong>
                       <span>{service.duration} {t("minutesShort")}</span>
                     </div>
-                    <small>{formatServicePrice(service)}</small>
+                    <small>{formatServicePrice(service, t)}</small>
                   </article>
                 ))}
               </div>
@@ -1082,7 +1082,7 @@ function CompletionPreviewDialog({
                         </div>
                         <div>
                           <small>{t("stockAfter")}</small>
-                          <strong>{formatPreviewStock(item)}</strong>
+                          <strong>{formatPreviewStock(item, t)}</strong>
                         </div>
                         {"extraId" in item ? (
                           <button
@@ -1302,7 +1302,7 @@ function AppointmentCreateForm({
                           <span>
                             <strong>{service.name}</strong>
                             <small>
-                              {service.duration} {t("minutesShort")} · {formatServicePrice(service)}
+                              {service.duration} {t("minutesShort")} · {formatServicePrice(service, t)}
                             </small>
                           </span>
                         </label>

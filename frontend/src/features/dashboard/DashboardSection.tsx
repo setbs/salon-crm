@@ -101,6 +101,12 @@ const dashboardCopy = {
     noCompletedServices: "No completed services",
     avgNetProfit: "Avg net profit",
     stockNotTracked: "stock not tracked"
+    ,
+    noComparison: "no comparison",
+    vsPrevious: "vs previous",
+    noDailyData: "No daily data for this period.",
+    netRevenue: "Net revenue",
+    netProfit: "Net profit"
   },
   uk: {
     requestFailed: "Запит не виконано.",
@@ -196,7 +202,12 @@ const dashboardCopy = {
     noEmployeePerformance: "Даних по працівниках ще немає",
     noCompletedServices: "Завершених послуг немає",
     avgNetProfit: "Сер. чистий прибуток",
-    stockNotTracked: "склад не відстежується"
+    stockNotTracked: "склад не відстежується",
+    noComparison: "немає порівняння",
+    vsPrevious: "до попереднього періоду",
+    noDailyData: "За цей період немає денних даних.",
+    netRevenue: "Чиста виручка",
+    netProfit: "Чистий прибуток"
   }
 } satisfies Record<CrmLanguage, Record<string, string>>;
 
@@ -374,10 +385,10 @@ export function DashboardSection({
         </div>
 
         <div className="analytics-comparison-grid">
-          <ComparisonCard label={copy.visits} metric={visibleBusinessAnalytics.comparison.completedVisits} />
-          <ComparisonCard label={copy.netServiceRevenue} metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
-          <ComparisonCard label={copy.netServiceProfit} metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
-          <ComparisonCard label={copy.netProductProfit} metric={visibleBusinessAnalytics.comparison.productProfit} money />
+          <ComparisonCard copy={copy} label={copy.visits} metric={visibleBusinessAnalytics.comparison.completedVisits} />
+          <ComparisonCard copy={copy} label={copy.netServiceRevenue} metric={visibleBusinessAnalytics.comparison.serviceRevenue} money />
+          <ComparisonCard copy={copy} label={copy.netServiceProfit} metric={visibleBusinessAnalytics.comparison.serviceProfit} money />
+          <ComparisonCard copy={copy} label={copy.netProductProfit} metric={visibleBusinessAnalytics.comparison.productProfit} money />
         </div>
 
         <div className="analytics-visual-grid">
@@ -386,7 +397,7 @@ export function DashboardSection({
               <h3>{copy.revenueProfitByDay}</h3>
               <span>{visibleBusinessAnalytics.periodLabel}</span>
             </div>
-            <DailyTrendChart items={visibleBusinessAnalytics.dailyTrend} />
+            <DailyTrendChart copy={copy} items={visibleBusinessAnalytics.dailyTrend} />
           </section>
           <section className="analytics-chart-card">
             <div className="chart-heading">
@@ -757,10 +768,12 @@ function formatAmountWithUnit(amount: number | null, unit: "ml" | "gram" | null)
 }
 
 function ComparisonCard({
+  copy,
   label,
   metric,
   money
 }: {
+  copy: DashboardCopy;
   label: string;
   metric: { current: number | null; previous: number | null; changePercent: number | null };
   money?: boolean;
@@ -771,19 +784,19 @@ function ComparisonCard({
   return (
     <article className={`comparison-card ${direction}`}>
       <span>{label}</span>
-      <strong>{metric.current === null ? "not tracked" : money ? formatHryvnia(metric.current) : formatPlainNumber(metric.current)}</strong>
-      <small>{change === null ? "no comparison" : `${change > 0 ? "+" : ""}${formatPlainNumber(change)}% vs previous`}</small>
+      <strong>{metric.current === null ? copy.notTracked : money ? formatHryvnia(metric.current) : formatPlainNumber(metric.current)}</strong>
+      <small>{change === null ? copy.noComparison : `${change > 0 ? "+" : ""}${formatPlainNumber(change)}% ${copy.vsPrevious}`}</small>
     </article>
   );
 }
 
-function DailyTrendChart({ items }: { items: AdminData["businessAnalytics"]["dailyTrend"] }) {
+function DailyTrendChart({ copy, items }: { copy: DashboardCopy; items: AdminData["businessAnalytics"]["dailyTrend"] }) {
   const visibleItems = items.filter((item) => item.revenueTo !== 0 || item.profitTo !== null);
   const chartItems = visibleItems.length > 0 ? visibleItems : items.slice(-7);
   const maxValue = Math.max(1, ...chartItems.map((item) => Math.max(Math.abs(item.revenueTo), Math.abs(item.profitTo ?? 0))));
 
   if (chartItems.length === 0) {
-    return <div className="modal-state">No daily data for this period.</div>;
+    return <div className="modal-state">{copy.noDailyData}</div>;
   }
 
   return (
@@ -794,20 +807,20 @@ function DailyTrendChart({ items }: { items: AdminData["businessAnalytics"]["dai
             <span
               className={item.revenueTo < 0 ? "revenue negative" : "revenue"}
               style={{ height: `${Math.max(4, (Math.abs(item.revenueTo) / maxValue) * 100)}%` }}
-              title={`Net revenue ${formatHryvnia(item.revenueTo)}`}
+              title={`${copy.netRevenue} ${formatHryvnia(item.revenueTo)}`}
             />
             <span
               className={(item.profitTo ?? 0) < 0 ? "profit negative" : "profit"}
               style={{ height: `${Math.max(4, (Math.abs(item.profitTo ?? 0) / maxValue) * 100)}%` }}
-              title={`Net profit ${item.profitTo === null ? "not tracked" : formatHryvnia(item.profitTo)}`}
+              title={`${copy.netProfit} ${item.profitTo === null ? copy.notTracked : formatHryvnia(item.profitTo)}`}
             />
           </div>
           <small>{formatChartDate(item.date)}</small>
         </div>
       ))}
       <div className="chart-legend">
-        <span className="revenue">Net revenue</span>
-        <span className="profit">Net profit</span>
+        <span className="revenue">{copy.netRevenue}</span>
+        <span className="profit">{copy.netProfit}</span>
       </div>
     </div>
   );

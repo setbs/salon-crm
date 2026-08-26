@@ -449,6 +449,7 @@ export const crmText = {
     portfolioPreview: "Portfolio preview",
     savePhoto: "Save photo",
     productSales: "Product sales",
+    addPayment: "Add payment",
     createSale: "Create sale",
     createProductSale: "Create product sale",
     netAmount: "Net amount",
@@ -469,7 +470,15 @@ export const crmText = {
     auditTrail: "Audit trail",
     noAuditEventsYet: "No audit events yet.",
     newSale: "New sale",
-    noProductsForSale: "No products for sale"
+    noProductsForSale: "No products for sale",
+    noClient: "no client",
+    notSpecified: "not specified",
+    productQuotePlaceholder: "A short elegant line for the client product card",
+    adjustmentHint: "Adjustment can be positive or negative.",
+    configurePackageContentHint: "Configure package content on the product to use ml/g movements.",
+    stockCorrectionHint: "Use a positive number to add stock or a negative number to reduce it.",
+    packageMovementsOnlyHint: "Package content is not configured, so only package movements are available.",
+    closeModal: "Close modal"
   },
   uk: {
     dashboard: "Панель",
@@ -911,6 +920,7 @@ export const crmText = {
     portfolioPreview: "Превʼю портфоліо",
     savePhoto: "Зберегти фото",
     productSales: "Продажі товарів",
+    addPayment: "Додати оплату",
     createSale: "Створити продаж",
     createProductSale: "Створити продаж товару",
     netAmount: "Чиста сума",
@@ -931,7 +941,15 @@ export const crmText = {
     auditTrail: "Журнал аудиту",
     noAuditEventsYet: "Подій аудиту ще немає.",
     newSale: "Новий продаж",
-    noProductsForSale: "Товарів для продажу немає"
+    noProductsForSale: "Товарів для продажу немає",
+    noClient: "без клієнта",
+    notSpecified: "не вказано",
+    productQuotePlaceholder: "Коротка елегантна фраза для клієнтської картки товару",
+    adjustmentHint: "Корекція може бути додатною або відʼємною.",
+    configurePackageContentHint: "Налаштуйте обʼєм упаковки товару, щоб використовувати рухи в мл/г.",
+    stockCorrectionHint: "Використайте додатне число для поповнення складу або відʼємне для зменшення.",
+    packageMovementsOnlyHint: "Обʼєм упаковки не налаштовано, тому доступні лише рухи упаковками.",
+    closeModal: "Закрити модальне вікно"
   }
 } satisfies Record<CrmLanguage, Record<string, string>>;
 

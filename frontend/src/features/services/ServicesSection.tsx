@@ -30,18 +30,18 @@ function formatHryvnia(value: number) {
   return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)} ₴`;
 }
 
-function formatServicePrice(value: DisplayPrice) {
+function formatServicePrice(value: DisplayPrice, t: ReturnType<typeof useCrmT>) {
   const plainHryvnia = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
   if (value.priceFrom !== null && value.priceFrom !== undefined && value.priceTo !== null && value.priceTo !== undefined) {
     return `${plainHryvnia.format(value.priceFrom)} - ${plainHryvnia.format(value.priceTo)} ₴`;
   }
 
   if (value.priceFrom !== null && value.priceFrom !== undefined) {
-    return `from ${formatHryvnia(value.priceFrom)}`;
+    return `${t("priceFrom")} ${formatHryvnia(value.priceFrom)}`;
   }
 
   if (value.priceTo !== null && value.priceTo !== undefined) {
-    return `up to ${formatHryvnia(value.priceTo)}`;
+    return `${t("priceTo")} ${formatHryvnia(value.priceTo)}`;
   }
 
   return formatHryvnia(value.price);
@@ -249,7 +249,7 @@ export function ServicesSection({
                           item.name,
                           item.description || "-",
                           item.employees.length > 0 ? item.employees.map((employee) => employee.name).join(", ") : t("notAssigned"),
-                          formatServicePrice(item),
+                          formatServicePrice(item, t),
                           `${item.duration} ${t("minutesShort")}`,
                           formatConsumables(item.consumables, t("notSet")),
                           item.appointmentCount > 0 ? `${item.appointmentCount} ${t("appointments")}` : t("noAppointmentsSmall"),

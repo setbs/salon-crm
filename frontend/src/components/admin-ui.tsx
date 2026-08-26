@@ -23,12 +23,14 @@ export function AdminModal({
   onClose: () => void;
   title: string;
 }) {
+  const t = useCrmT();
+
   return (
     <div className="admin-modal-backdrop" role="presentation">
       <section aria-modal="true" className={className ? `admin-modal ${className}` : "admin-modal"} role="dialog">
         <div className="panel-header">
           <h2>{title}</h2>
-          <button aria-label="Close modal" className="icon-only-button" onClick={onClose} title="Close" type="button">
+          <button aria-label={t("closeModal")} className="icon-only-button" onClick={onClose} title={t("close")} type="button">
             <X aria-hidden="true" size={16} />
           </button>
         </div>
