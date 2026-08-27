@@ -203,7 +203,7 @@ async function createMonobankInvoice(input: {
   items: Array<{ name: string; quantity: number; unitPrice: Prisma.Decimal }>;
 }) {
   const redirectUrl = buildFrontendUrl(`/order/payment-result?orderId=${encodeURIComponent(input.orderId)}`);
-  const webHookUrl = env.BACKEND_PUBLIC_URL ? `${env.BACKEND_PUBLIC_URL.replace(/\/$/, "")}/api/payments/monobank/webhook` : undefined;
+  const webHookUrl = buildWebhookUrl();
   const payload = {
     amount: moneyToMinorUnits(input.totalAmount),
     ccy: UAH_CCY,
@@ -240,11 +240,55 @@ async function createMonobankInvoice(input: {
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message = body && typeof body === "object" && "errorDescription" in body ? String(body.errorDescription) : `Monobank invoice failed (${response.status}).`;
+    const message = getMonobankErrorMessage(body, response.status);
     throw new Error(message);
   }
 
   return monobankCreateInvoiceSchema.parse(body);
+}
+
+function buildWebhookUrl() {
+  const backendUrl = env.BACKEND_PUBLIC_URL.trim().replace(/\/$/, "");
+
+  if (!backendUrl || !backendUrl.toLowerCase().startsWith("https://")) {
+    return undefined;
+  }
+
+  return `${backendUrl}/api/payments/monobank/webhook`;
+}
+
+function getMonobankErrorMessage(body: unknown, status: number) {
+  const details = getMonobankErrorDetails(body);
+  return details ? `Monobank invoice failed (${status}): ${details}` : `Monobank invoice failed (${status}).`;
+}
+
+function getMonobankErrorDetails(body: unknown) {
+  if (!body || typeof body !== "object") {
+    return null;
+  }
+
+  const record = body as Record<string, unknown>;
+  const candidates = ["errorDescription", "message", "error", "errText", "failureReason", "description"];
+
+  for (const key of candidates) {
+    const value = record[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  const errCode = record.errCode;
+
+  if (typeof errCode === "string" || typeof errCode === "number") {
+    return `errCode ${errCode}`;
+  }
+
+  try {
+    return JSON.stringify(body).slice(0, 400);
+  } catch {
+    return null;
+  }
 }
 
 async function verifyMonobankSignature(rawBody: Buffer, xSignBase64: string, refreshKey = false) {

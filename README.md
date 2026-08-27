@@ -186,6 +186,7 @@ MONOBANK_TOKEN=your_monobank_merchant_or_test_token
 For production, put both public salon and CRM origins into `FRONTEND_ORIGIN`, separated by commas, for example `https://salon.example.com,https://crm.salon.example.com`.
 
 `FRONTEND_URL` is used by Monobank as the redirect target after checkout. `BACKEND_PUBLIC_URL` must be a public HTTPS URL for Monobank webhooks; in local development use a tunnel if you need real webhook confirmation.
+If `BACKEND_PUBLIC_URL` is empty or not HTTPS, the backend will create Monobank invoices without `webHookUrl`. This is useful for local testing because Monobank cannot call `http://localhost`.
 
 For Railway, configure payment secrets through Railway Variables, not repository files:
 
