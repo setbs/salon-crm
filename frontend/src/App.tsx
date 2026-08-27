@@ -926,12 +926,6 @@ const salonSocialLinks = [
   { href: salonPhoneHref, label: "Phone", icon: <Phone size={15} /> }
 ];
 
-const homePortfolioFallback = [
-  { title: "Soft blonde color", image: homeImages.color },
-  { title: "Clean manicure finish", image: homeImages.manicure },
-  { title: "Hair care consultation", image: homeImages.care }
-];
-
 type HomePriceCategory = {
   id: string;
   name: string;
@@ -943,27 +937,6 @@ type HomePriceCategory = {
     priceLabel: string;
   }>;
 };
-
-const homePriceFallback: HomePriceCategory[] = [
-  {
-    id: "fallback-hair",
-    name: "Hair care",
-    services: [
-      { id: "fallback-cut", name: "Women's haircut", priceLabel: "500 - 800 ₴" },
-      { id: "fallback-color", name: "Hair coloring", priceLabel: "1,800 - 4,500 ₴" },
-      { id: "fallback-care", name: "Hair reconstruction", priceLabel: "1,200 - 2,500 ₴" }
-    ]
-  },
-  {
-    id: "fallback-nails",
-    name: "Nail care",
-    services: [
-      { id: "fallback-manicure", name: "Classic manicure", priceLabel: "400 - 600 ₴" },
-      { id: "fallback-polish", name: "Gel polish", priceLabel: "650 ₴" },
-      { id: "fallback-care-nails", name: "Nail care consultation", priceLabel: "300 - 350 ₴" }
-    ]
-  }
-];
 
 const shopProductFallback: PublicProduct[] = [
   {
@@ -1063,10 +1036,6 @@ function HomeView({
   }, []);
 
   const priceCategories = useMemo<HomePriceCategory[]>(() => {
-    if (services.length === 0) {
-      return homePriceFallback;
-    }
-
     const groups = new Map<string, HomePriceCategory>();
 
     for (const service of services) {
@@ -1094,10 +1063,9 @@ function HomeView({
 
     return [...groups.values()];
   }, [language, services]);
-  const visiblePortfolio =
-    portfolio.length > 0
-      ? portfolio.map((item) => ({ title: item.title, image: resolveMediaUrl(item.imageUrl), caption: item.employee }))
-      : homePortfolioFallback.map((item) => ({ ...item, caption: item.title }));
+  const visiblePortfolio = portfolio.map((item) => ({ title: item.title, image: resolveMediaUrl(item.imageUrl), caption: item.employee }));
+  const hasPriceList = priceCategories.length > 0;
+  const hasPortfolio = visiblePortfolio.length > 0;
   const portfolioPageSize = 3;
   const portfolioPageCount = Math.max(1, Math.ceil(visiblePortfolio.length / portfolioPageSize));
   const safePortfolioPage = Math.min(portfolioPage, portfolioPageCount - 1);
@@ -1125,8 +1093,8 @@ function HomeView({
         </button>
         <nav className={isMenuOpen ? "is-open" : ""} aria-label="Public navigation">
           <a href="#about" onClick={() => setIsMenuOpen(false)}>{t("about")}</a>
-          <a href="#portfolio" onClick={() => setIsMenuOpen(false)}>{t("portfolio")}</a>
-          <a className="nav-feature-link" href="#price-list" onClick={() => setIsMenuOpen(false)}>{t("priceList")}</a>
+          {hasPortfolio ? <a href="#portfolio" onClick={() => setIsMenuOpen(false)}>{t("portfolio")}</a> : null}
+          {hasPriceList ? <a className="nav-feature-link" href="#price-list" onClick={() => setIsMenuOpen(false)}>{t("priceList")}</a> : null}
           <button className="nav-feature-link" onClick={() => { setIsMenuOpen(false); onOpenShop(); }} type="button">{t("cosmetics")}</button>
           <a href="#salon-footer" onClick={() => setIsMenuOpen(false)}>{t("contact")}</a>
           <button className="mobile-nav-action" onClick={() => { setIsMenuOpen(false); onOpenBooking(); }} type="button">{t("bookAppointment")}</button>
@@ -1171,7 +1139,7 @@ function HomeView({
             <button className="secondary-button" onClick={onOpenShop} type="button">
               {t("professionalCosmetics")}
             </button>
-            <a href="#price-list">{t("viewPriceList")}</a>
+            {hasPriceList ? <a href="#price-list">{t("viewPriceList")}</a> : null}
           </div>
         </div>
         {/* <aside className="home-hero-card" aria-label="Salon visit highlights">
@@ -1241,97 +1209,108 @@ function HomeView({
         </div>
       </section>
 
-      <section className="home-section" id="portfolio">
-        <div className="home-section-heading">
-          <p className="eyebrow">{t("portfolio")}</p>
-          <h2>{t("selectedWork")}</h2>
-          <p>{t("portfolioText")}</p>
-        </div>
-        <div className="home-portfolio-grid">
-          {pagedPortfolio.map((item) => (
-            <figure key={item.title}>
-              <img alt={item.title} src={item.image} onError={(event) => { event.currentTarget.src = homeImages.care; }} />
-              <figcaption>{item.title}{item.caption && item.caption !== item.title ? ` · ${item.caption}` : ""}</figcaption>
-            </figure>
-          ))}
-        </div>
-        {portfolioPageCount > 1 ? (
-          <div className="home-portfolio-pagination" aria-label={language === "uk" ? "Пагінація портфоліо" : "Portfolio pagination"}>
-            <button
-              aria-label={language === "uk" ? "Попередні роботи" : "Previous portfolio items"}
-              disabled={safePortfolioPage === 0}
-              onClick={() => setPortfolioPage((page) => Math.max(0, page - 1))}
-              type="button"
-            >
-              <ArrowLeft size={18} />
-            </button>
-            <div>
-              {Array.from({ length: portfolioPageCount }, (_, index) => (
-                <button
-                  aria-label={`${language === "uk" ? "Сторінка" : "Page"} ${index + 1}`}
-                  className={index === safePortfolioPage ? "active" : ""}
-                  key={index}
-                  onClick={() => setPortfolioPage(index)}
-                  type="button"
-                />
-              ))}
-            </div>
-            <button
-              aria-label={language === "uk" ? "Наступні роботи" : "Next portfolio items"}
-              disabled={safePortfolioPage >= portfolioPageCount - 1}
-              onClick={() => setPortfolioPage((page) => Math.min(portfolioPageCount - 1, page + 1))}
-              type="button"
-            >
-              <ArrowRight size={18} />
-            </button>
+      {hasPortfolio ? (
+        <section className="home-section" id="portfolio">
+          <div className="home-section-heading">
+            <p className="eyebrow">{t("portfolio")}</p>
+            <h2>{t("selectedWork")}</h2>
+            <p>{t("portfolioText")}</p>
           </div>
-        ) : null}
-      </section>
-
-      <section className="home-price-section" id="price-list">
-        <div className="home-price-watermark" aria-hidden="true">
-          {t("priceList")}
-        </div>
-        <header className="home-price-heading">
-          <p className="eyebrow">{t("services")}</p>
-          <h2>{t("priceList").toUpperCase()}</h2>
-        </header>
-
-        <div className="home-price-list">
-          {priceCategories.map((category) => (
-            <article className="price-category" key={category.id}>
-              <div className="price-category-heading">
-                <h3>{category.name}</h3>
-                <span aria-hidden="true" />
+          <div className="home-portfolio-grid">
+            {pagedPortfolio.map((item) => (
+              <figure key={item.title}>
+                <img alt={item.title} src={item.image} onError={(event) => { event.currentTarget.src = homeImages.care; }} />
+                <figcaption>{item.title}{item.caption && item.caption !== item.title ? ` · ${item.caption}` : ""}</figcaption>
+              </figure>
+            ))}
+          </div>
+          {portfolioPageCount > 1 ? (
+            <div className="home-portfolio-pagination" aria-label={language === "uk" ? "Пагінація портфоліо" : "Portfolio pagination"}>
+              <button
+                aria-label={language === "uk" ? "Попередні роботи" : "Previous portfolio items"}
+                disabled={safePortfolioPage === 0}
+                onClick={() => setPortfolioPage((page) => Math.max(0, page - 1))}
+                type="button"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div>
+                {Array.from({ length: portfolioPageCount }, (_, index) => (
+                  <button
+                    aria-label={`${language === "uk" ? "Сторінка" : "Page"} ${index + 1}`}
+                    className={index === safePortfolioPage ? "active" : ""}
+                    key={index}
+                    onClick={() => setPortfolioPage(index)}
+                    type="button"
+                  />
+                ))}
               </div>
-              <div className="price-category-frame">
-                <div className="price-category-items">
-                  {category.services.map((service) => (
-                    <div className="price-row" key={service.id}>
-                      <span className="price-service">
-                        <strong>{service.name}</strong>
-                        {service.description ? <small>{service.description}</small> : null}
-                      </span>
-                      <span className="price-value">
-                        {service.priceLabel}
-                        {service.durationLabel ? <small>{service.durationLabel}</small> : null}
-                      </span>
-                    </div>
-                  ))}
+              <button
+                aria-label={language === "uk" ? "Наступні роботи" : "Next portfolio items"}
+                disabled={safePortfolioPage >= portfolioPageCount - 1}
+                onClick={() => setPortfolioPage((page) => Math.min(portfolioPageCount - 1, page + 1))}
+                type="button"
+              >
+                <ArrowRight size={18} />
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {hasPriceList ? (
+        <section className="home-price-section" id="price-list">
+          <div className="home-price-watermark" aria-hidden="true">
+            {t("priceList")}
+          </div>
+          <header className="home-price-heading">
+            <p className="eyebrow">{t("services")}</p>
+            <h2>{t("priceList").toUpperCase()}</h2>
+          </header>
+
+          <div className="home-price-list">
+            {priceCategories.map((category) => (
+              <article className="price-category" key={category.id}>
+                <div className="price-category-heading">
+                  <h3>{category.name}</h3>
+                  <span aria-hidden="true" />
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
+                <div className="price-category-frame">
+                  <div className="price-category-items">
+                    {category.services.map((service) => (
+                      <div className="price-row" key={service.id}>
+                        <span className="price-service">
+                          <strong>{service.name}</strong>
+                          {service.description ? <small>{service.description}</small> : null}
+                        </span>
+                        <span className="price-value">
+                          {service.priceLabel}
+                          {service.durationLabel ? <small>{service.durationLabel}</small> : null}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
 
-        <div className="home-price-signature">
-          <img className="home-price-logo signature-logo" src={logoMain} alt="SL Color Studio" />
-        </div>
-        <button className="primary-button home-centered-action" onClick={onOpenBooking} type="button">
-          {t("bookAppointment")}
-        </button>
-      </section>
-      <SalonFooter language={language} onOpenBooking={onOpenBooking} onOpenShop={onOpenShop} onToggleLanguage={onToggleLanguage} />
+          <div className="home-price-signature">
+            <img className="home-price-logo signature-logo" src={logoMain} alt="SL Color Studio" />
+          </div>
+          <button className="primary-button home-centered-action" onClick={onOpenBooking} type="button">
+            {t("bookAppointment")}
+          </button>
+        </section>
+      ) : null}
+      <SalonFooter
+        language={language}
+        onOpenBooking={onOpenBooking}
+        onOpenShop={onOpenShop}
+        onToggleLanguage={onToggleLanguage}
+        showPortfolio={hasPortfolio}
+        showPriceList={hasPriceList}
+      />
     </main>
   );
 }
@@ -1348,12 +1327,16 @@ function SalonFooter({
   language,
   onOpenBooking,
   onOpenShop,
-  onToggleLanguage
+  onToggleLanguage,
+  showPortfolio = true,
+  showPriceList = true
 }: {
   language: PublicLanguage;
   onOpenBooking: () => void;
   onOpenShop: () => void;
   onToggleLanguage?: () => void;
+  showPortfolio?: boolean;
+  showPriceList?: boolean;
 }) {
   const t = (key: keyof typeof publicText.en) => publicLabel(language, key);
   const salonAddress = language === "uk" ? salonAddressUk : salonAddressEn;
@@ -1422,8 +1405,8 @@ function SalonFooter({
         <div>
           <h2>{language === "uk" ? "Навігація" : "Navigation"}</h2>
           <a href="#about">{t("about")}</a>
-          <a href="#portfolio">{t("portfolio")}</a>
-          <a href="#price-list">{t("priceList")}</a>
+          {showPortfolio ? <a href="#portfolio">{t("portfolio")}</a> : null}
+          {showPriceList ? <a href="#price-list">{t("priceList")}</a> : null}
           <a href="#salon-footer">{t("contact")}</a>
         </div>
         <div>

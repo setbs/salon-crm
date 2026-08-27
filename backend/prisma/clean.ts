@@ -1,8 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, UserRole } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const PRESERVED_DATA = ["users", "employees"];
+const PRESERVED_DATA = ["admin users"];
 
 async function main() {
   if (process.env.ALLOW_DB_CLEAN !== "true") {
@@ -40,6 +40,7 @@ async function main() {
       await transaction.employeeTimeOff.deleteMany(),
       await transaction.employeeScheduleOverride.deleteMany(),
       await transaction.employeeService.deleteMany(),
+      await transaction.employee.deleteMany(),
 
       await transaction.product.deleteMany(),
       await transaction.productComponent.deleteMany(),
@@ -51,7 +52,15 @@ async function main() {
 
       await transaction.storeReview.deleteMany(),
       await transaction.businessHour.deleteMany(),
-      await transaction.salonSetting.deleteMany()
+      await transaction.salonSetting.deleteMany(),
+
+      await transaction.user.deleteMany({
+        where: {
+          role: {
+            not: UserRole.ADMIN
+          }
+        }
+      })
     ],
     { timeout: 30_000 }
   );
@@ -60,6 +69,7 @@ async function main() {
 
   console.log(`Database cleaned successfully. Deleted ${deletedRows} rows.`);
   console.log(`Admin/auth data preserved: ${PRESERVED_DATA.join(", ")}.`);
+  console.log("Employee and client users removed.");
 }
 
 main()
