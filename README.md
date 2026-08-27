@@ -178,14 +178,14 @@ To allow the independent `product-store` frontend to call the API, configure its
 ```text
 FRONTEND_ORIGIN=http://localhost:5173
 STOREFRONT_ORIGIN=http://localhost:5174
-FRONTEND_URL=http://localhost:5174
+FRONTEND_URL=http://localhost:5173
 BACKEND_PUBLIC_URL=https://your-public-backend-url.example
 MONOBANK_TOKEN=your_monobank_merchant_or_test_token
 ```
 
 For production, put both public salon and CRM origins into `FRONTEND_ORIGIN`, separated by commas, for example `https://salon.example.com,https://crm.salon.example.com`.
 
-`FRONTEND_URL` is used by Monobank as the redirect target after checkout. `BACKEND_PUBLIC_URL` must be a public HTTPS URL for Monobank webhooks; in local development use a tunnel if you need real webhook confirmation.
+`STOREFRONT_ORIGIN` is used by Monobank as the redirect target after checkout and should point to the product-store frontend. `FRONTEND_URL` can point to the salon frontend. `BACKEND_PUBLIC_URL` must be a public HTTPS URL for Monobank webhooks; in local development use a tunnel if you need real webhook confirmation.
 If `BACKEND_PUBLIC_URL` is empty or not HTTPS, the backend will create Monobank invoices without `webHookUrl`. This is useful for local testing because Monobank cannot call `http://localhost`.
 
 For Railway, configure payment secrets through Railway Variables, not repository files:
@@ -194,7 +194,7 @@ For Railway, configure payment secrets through Railway Variables, not repository
 Backend service:
 MONOBANK_TOKEN=<your token>
 BACKEND_PUBLIC_URL=https://your-backend.up.railway.app
-FRONTEND_URL=https://your-product-store.up.railway.app
+FRONTEND_URL=https://your-salon-frontend.up.railway.app
 STOREFRONT_ORIGIN=https://your-product-store.up.railway.app
 FRONTEND_ORIGIN=https://your-salon-frontend.up.railway.app,https://your-crm-frontend.up.railway.app
 

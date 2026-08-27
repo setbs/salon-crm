@@ -248,7 +248,7 @@ async function createMonobankInvoice(input: {
 }
 
 function buildWebhookUrl() {
-  const backendUrl = env.BACKEND_PUBLIC_URL.trim().replace(/\/$/, "");
+  const backendUrl = normalizePublicUrl(env.BACKEND_PUBLIC_URL);
 
   if (!backendUrl || !backendUrl.toLowerCase().startsWith("https://")) {
     return undefined;
@@ -324,7 +324,31 @@ function moneyToMinorUnits(value: Prisma.Decimal) {
 }
 
 function buildFrontendUrl(path: string) {
-  return `${env.FRONTEND_URL.replace(/\/$/, "")}${path}`;
+  const frontendUrl = normalizePublicUrl(env.STOREFRONT_ORIGIN) || normalizePublicUrl(env.FRONTEND_URL);
+
+  if (!frontendUrl) {
+    throw new Error("Storefront redirect URL is not configured. Set STOREFRONT_ORIGIN.");
+  }
+
+  return `${frontendUrl}${path}`;
+}
+
+function normalizePublicUrl(value: string) {
+  const url = value.split(",")[0]?.trim().replace(/\/$/, "") ?? "";
+
+  if (!url) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  if (/^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?/i.test(url)) {
+    return `http://${url}`;
+  }
+
+  return `https://${url}`;
 }
 
 function parseWebhookOrderId(reference: string | null | undefined) {
