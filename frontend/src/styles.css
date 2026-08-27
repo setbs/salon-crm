@@ -941,10 +941,13 @@ p {
 }
 
 .salon-footer {
+  position: relative;
+  isolation: isolate;
   display: grid;
   gap: 32px;
   background: #222823;
   color: #e9e1d7;
+  overflow: hidden;
   padding: 44px min(6vw, 72px) 26px;
 }
 
@@ -6038,6 +6041,7 @@ textarea {
   }
 
   .home-atmosphere {
+    overflow: hidden;
     width: 100%;
     margin: 0;
     border: 0;
@@ -6049,11 +6053,14 @@ textarea {
     grid-template-rows: none;
     gap: 10px;
     min-height: 0;
+    overflow: hidden;
   }
 
   .home-atmosphere-collage img {
     aspect-ratio: 1 / 1.05;
+    height: clamp(86px, 24vw, 118px);
     min-height: 0;
+    object-fit: cover;
   }
 
   .home-atmosphere-collage img:first-child {
@@ -6113,18 +6120,25 @@ textarea {
   }
 
   .home-atmosphere {
-    width: calc(100% - 36px);
-    padding: 34px 0;
+    overflow: hidden;
+    width: 100%;
+    padding: 30px 18px;
   }
 
   .home-atmosphere-collage {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: none;
+    gap: 8px;
     min-height: 0;
+    overflow: hidden;
   }
 
   .home-atmosphere-collage img {
-    min-height: 220px;
+    aspect-ratio: 1 / 1;
+    height: clamp(76px, 24vw, 108px);
+    min-height: 0;
+    max-height: none;
+    object-fit: cover;
   }
 
   .home-atmosphere-collage img:first-child {
@@ -6134,6 +6148,10 @@ textarea {
   .home-atmosphere-collage img:nth-child(2),
   .home-atmosphere-collage img:nth-child(3) {
     transform: none;
+  }
+
+  .home-atmosphere-collage img:nth-child(3) {
+    grid-column: auto;
   }
 
   .home-band,
@@ -6303,7 +6321,7 @@ textarea {
 
   .salon-footer {
     gap: 26px;
-    background: #222823;
+    background: #222823 !important;
     padding: 34px 18px calc(28px + env(safe-area-inset-bottom));
     text-align: center;
   }
