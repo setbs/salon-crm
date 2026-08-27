@@ -187,6 +187,22 @@ For production, put both public salon and CRM origins into `FRONTEND_ORIGIN`, se
 
 `FRONTEND_URL` is used by Monobank as the redirect target after checkout. `BACKEND_PUBLIC_URL` must be a public HTTPS URL for Monobank webhooks; in local development use a tunnel if you need real webhook confirmation.
 
+For Railway, configure payment secrets through Railway Variables, not repository files:
+
+```text
+Backend service:
+MONOBANK_TOKEN=<your token>
+BACKEND_PUBLIC_URL=https://your-backend.up.railway.app
+FRONTEND_URL=https://your-product-store.up.railway.app
+STOREFRONT_ORIGIN=https://your-product-store.up.railway.app
+FRONTEND_ORIGIN=https://your-salon-frontend.up.railway.app,https://your-crm-frontend.up.railway.app
+
+Product-store service:
+VITE_API_URL=https://your-backend.up.railway.app
+```
+
+Do not commit a real Monobank token. If the token is exposed, rotate it in Monobank and update Railway Variables.
+
 Public read-only product endpoints are available without CRM authentication:
 
 ```text
