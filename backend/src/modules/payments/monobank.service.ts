@@ -69,6 +69,7 @@ export async function createMonobankPaymentForOrder(orderId: bigint) {
       customerEmail: order.email,
       totalAmount: order.totalAmount,
       items: order.items.map((item) => ({
+        code: item.productId.toString(),
         name: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice
@@ -200,7 +201,7 @@ async function createMonobankInvoice(input: {
   orderId: string;
   customerEmail: string | null;
   totalAmount: Prisma.Decimal;
-  items: Array<{ name: string; quantity: number; unitPrice: Prisma.Decimal }>;
+  items: Array<{ code: string; name: string; quantity: number; unitPrice: Prisma.Decimal }>;
 }) {
   const redirectUrl = buildFrontendUrl(`/order/payment-result?orderId=${encodeURIComponent(input.orderId)}`);
   const webHookUrl = buildWebhookUrl();
@@ -218,6 +219,7 @@ async function createMonobankInvoice(input: {
         const unitPrice = moneyToMinorUnits(item.unitPrice);
 
         return {
+          code: item.code,
           name: item.name.slice(0, 128),
           qty: item.quantity,
           sum: unitPrice,
