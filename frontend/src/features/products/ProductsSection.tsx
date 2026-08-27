@@ -447,7 +447,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {isCreatingProduct ? (
-        <AdminModal title={t("newProduct")} onClose={() => setIsCreatingProduct(false)}>
+        <AdminModal className="product-editor-modal" title={t("newProduct")} onClose={() => setIsCreatingProduct(false)}>
           <ProductForm
             brands={brands}
             categories={categories}
@@ -463,7 +463,7 @@ export function ProductsSection({
         </AdminModal>
       ) : null}
       {editingProduct ? (
-        <AdminModal title={`${t("editProduct")}: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
+        <AdminModal className="product-editor-modal" title={`${t("editProduct")}: ${editingProduct.name}`} onClose={() => setEditingProductId(null)}>
           <ProductForm
             brands={brands}
             categories={categories}
@@ -773,143 +773,184 @@ function ProductForm({
     });
   }
 
-  return (
-    <form className="admin-form" onSubmit={submit}>
-      {categories.length > 0 ? (
-        <label>
-          <span>{t("category")}</span>
-          <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} required>
-            <option value="">{t("selectCategory")}</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <label>
-          <span>{t("category")}</span>
-          <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
-        </label>
-      )}
-      <label>
-        <span>{t("product")}</span>
-        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-      </label>
-      <label>
-        <span>{t("description")}</span>
-        <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={6} />
-      </label>
-      {brands.length > 0 ? (
-        <label>
-          <span>{t("brand")}</span>
-          <select value={form.brandId} onChange={(event) => setForm({ ...form, brandId: event.target.value })} required>
-            <option value="">{t("selectBrand")}</option>
-            {brands.map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <label>
-          <span>{t("brand")}</span>
-          <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
-        </label>
-      )}
-      <label>
-        <span>{t("productQuote")}</span>
-        <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder={t("productQuotePlaceholder")} rows={3} />
-      </label>
-      <fieldset className="component-picker">
-        <legend>{t("keyComponents")}</legend>
-        {components.length > 0 ? (
-          <div className="component-picker-grid">
-            {components.map((component) => {
-              const checked = form.componentIds.includes(component.id);
+  const selectedCategory = categories.find((category) => category.id === form.categoryId);
+  const selectedBrand = brands.find((brand) => brand.id === form.brandId);
+  const previewCategory = selectedCategory?.name ?? (form.category.trim() || t("uncategorized"));
+  const previewBrand = selectedBrand?.name ?? (form.brand.trim() || t("noBrand"));
+  const previewName = form.name.trim() || t("product");
+  const previewDescription = form.description.trim() || t("description");
+  const previewQuote = form.quote.trim();
+  const saleValue = Number(form.sale);
+  const contentAmountValue = Number(form.contentAmount);
+  const previewPrice = adminMoney.format(Number.isFinite(saleValue) ? saleValue : 0);
+  const previewVolume =
+    form.contentAmount && Number.isFinite(contentAmountValue)
+      ? `${formatPlainNumber(contentAmountValue)} ${formatUnit(form.contentUnit)}`
+      : t("notSet");
+  const previewImageUrl = resolveMediaUrl(form.imageUrl);
 
-              return (
-                <label className="checkbox-line component-option" key={component.id}>
-                  <input
-                    checked={checked}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        componentIds: event.target.checked
-                          ? [...current.componentIds, component.id]
-                          : current.componentIds.filter((componentId) => componentId !== component.id)
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>{component.name}</strong>
-                    {component.description ? <small>{component.description}</small> : null}
-                  </span>
-                </label>
-              );
-            })}
+  return (
+    <form className="admin-form product-visual-form" onSubmit={submit}>
+      <section className="product-visual-editor" aria-label={t("productPreview")}>
+        <div className="product-visual-card">
+          <div className="product-visual-image">
+            <span className="shop-volume-badge">{previewVolume}</span>
+            {previewImageUrl ? <img alt={previewName} src={previewImageUrl} /> : <Package aria-hidden="true" size={46} />}
+            <label className="product-visual-upload">
+              <input accept="image/jpeg,image/png,image/webp,image/gif" disabled={isUploading} onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)} type="file" />
+              <span>{isUploading ? t("uploading") : t("productPhoto")}</span>
+            </label>
           </div>
-        ) : (
-          <p className="form-note">{t("componentHint")}</p>
-        )}
-      </fieldset>
-      <label>
-        <span>{t("sku")}</span>
-        <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
-      </label>
-      <label>
-        <span>{t("purpose")}</span>
-        <select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}>
-          <option value="sale">{t("forSale")}</option>
-          <option value="procedure">{t("forProcedures")}</option>
-          <option value="both">{t("both")}</option>
-        </select>
-      </label>
-      <label>
-        <span>{t("productPhoto")}</span>
-        <input accept="image/jpeg,image/png,image/webp,image/gif" disabled={isUploading} onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)} type="file" />
-      </label>
-      {uploadError ? <p className="form-note">{uploadError}</p> : null}
-      {form.imageUrl ? (
-        <div className="portfolio-form-preview">
-          <img alt={t("productPreview")} src={resolveMediaUrl(form.imageUrl)} />
+          {uploadError ? <p className="form-note">{uploadError}</p> : null}
+          <div className="product-visual-meta">
+            <small>{previewCategory}</small>
+            <strong>{previewName}</strong>
+            <p>{previewDescription}</p>
+            {previewQuote ? <blockquote>“{previewQuote}”</blockquote> : null}
+            <b>{previewPrice}</b>
+          </div>
         </div>
-      ) : null}
-      <label>
-        <span>{t("purchasePrice")}</span>
-        <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
-      </label>
-      <label>
-        <span>{t("salePrice")}</span>
-        <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
-      </label>
-      <label>
-        <span>{t("stock")}</span>
-        <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
-      </label>
-      <label>
-        <span>{t("minimumStock")}</span>
-        <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
-      </label>
-      <label>
-        <span>{t("popularityBoost")}</span>
-        <input type="number" min="0" max="1000" step="1" value={form.popularityBoost} onChange={(event) => setForm({ ...form, popularityBoost: event.target.value })} />
-        <small className="form-hint">{t("popularityBoostHint")}</small>
-      </label>
-      <label>
-        <span>{t("packageContent")}</span>
-        <input type="number" min="0.01" step="0.01" value={form.contentAmount} onChange={(event) => setForm({ ...form, contentAmount: event.target.value })} placeholder="60" />
-      </label>
-      <label>
-        <span>{t("contentUnit")}</span>
-        <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
-          <option value="ml">ml</option>
-          <option value="gram">g</option>
-        </select>
-      </label>
+
+        <div className="product-visual-fields">
+          {categories.length > 0 ? (
+            <label>
+              <span>{t("category")}</span>
+              <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} required>
+                <option value="">{t("selectCategory")}</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              <span>{t("category")}</span>
+              <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
+            </label>
+          )}
+          {brands.length > 0 ? (
+            <label>
+              <span>{t("brand")}</span>
+              <select value={form.brandId} onChange={(event) => setForm({ ...form, brandId: event.target.value })} required>
+                <option value="">{t("selectBrand")}</option>
+                {brands.map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              <span>{t("brand")}</span>
+              <input value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
+            </label>
+          )}
+          <label>
+            <span>{t("product")}</span>
+            <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+          </label>
+          <label>
+            <span>{t("description")}</span>
+            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={7} />
+          </label>
+          <label>
+            <span>{t("productQuote")}</span>
+            <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder={t("productQuotePlaceholder")} rows={3} />
+          </label>
+          <div className="product-form-inline">
+            <label>
+              <span>{t("packageContent")}</span>
+              <input type="number" min="0.01" step="0.01" value={form.contentAmount} onChange={(event) => setForm({ ...form, contentAmount: event.target.value })} placeholder="250" />
+            </label>
+            <label>
+              <span>{t("contentUnit")}</span>
+              <select value={form.contentUnit} onChange={(event) => setForm({ ...form, contentUnit: event.target.value as MeasurementUnit })}>
+                <option value="ml">ml</option>
+                <option value="gram">g</option>
+              </select>
+            </label>
+            <label>
+              <span>{t("salePrice")}</span>
+              <input type="number" min="0" value={form.sale} onChange={(event) => setForm({ ...form, sale: event.target.value })} required />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <aside className="product-technical-editor">
+        <div className="product-technical-header">
+          <p className="admin-kicker">{t("productsInventory")}</p>
+          <strong>{previewBrand}</strong>
+        </div>
+        <label>
+          <span>{t("sku")}</span>
+          <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} />
+        </label>
+        <label>
+          <span>{t("purpose")}</span>
+          <select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}>
+            <option value="sale">{t("forSale")}</option>
+            <option value="procedure">{t("forProcedures")}</option>
+            <option value="both">{t("both")}</option>
+          </select>
+        </label>
+        <div className="product-form-inline">
+          <label>
+            <span>{t("purchasePrice")}</span>
+            <input type="number" min="0" value={form.purchase} onChange={(event) => setForm({ ...form, purchase: event.target.value })} />
+          </label>
+          <label>
+            <span>{t("stock")}</span>
+            <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required />
+          </label>
+          <label>
+            <span>{t("minimumStock")}</span>
+            <input type="number" min="0" value={form.min} onChange={(event) => setForm({ ...form, min: event.target.value })} required />
+          </label>
+        </div>
+        <label>
+          <span>{t("popularityBoost")}</span>
+          <input type="number" min="0" max="1000" step="1" value={form.popularityBoost} onChange={(event) => setForm({ ...form, popularityBoost: event.target.value })} />
+          <small className="form-hint">{t("popularityBoostHint")}</small>
+        </label>
+        <fieldset className="component-picker">
+          <legend>{t("keyComponents")}</legend>
+          {components.length > 0 ? (
+            <div className="component-picker-grid">
+              {components.map((component) => {
+                const checked = form.componentIds.includes(component.id);
+
+                return (
+                  <label className="checkbox-line component-option" key={component.id}>
+                    <input
+                      checked={checked}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          componentIds: event.target.checked
+                            ? [...current.componentIds, component.id]
+                            : current.componentIds.filter((componentId) => componentId !== component.id)
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{component.name}</strong>
+                      {component.description ? <small>{component.description}</small> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="form-note">{t("componentHint")}</p>
+          )}
+        </fieldset>
+      </aside>
+
       <div className="form-actions">
         {onCancel ? (
           <button className="secondary-button compact-button" onClick={onCancel} type="button">

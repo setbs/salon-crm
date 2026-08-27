@@ -2545,7 +2545,10 @@ async function insertStockMovement(
     reason: string | null;
   }
 ) {
-  const [movement] = await client.$queryRaw<Array<{ id: bigint }>>`
+  const contentUnitValue = input.contentUnit ? Prisma.sql`${input.contentUnit}::"ConsumableUnit"` : Prisma.sql`NULL`;
+  const contentQuantityValue = input.contentQuantity === null ? Prisma.sql`NULL` : Prisma.sql`${input.contentQuantity}`;
+
+  const [movement] = await client.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
     INSERT INTO stock_movements (
       product_id,
       movement_type,
@@ -2558,12 +2561,12 @@ async function insertStockMovement(
       ${input.productId},
       ${input.movementType}::"StockMovementType",
       ${input.quantity},
-      ${input.contentQuantity},
-      ${input.contentUnit}::"ConsumableUnit",
+      ${contentQuantityValue},
+      ${contentUnitValue},
       ${input.reason}
     )
     RETURNING id
-  `;
+  `);
 
   return movement;
 }
