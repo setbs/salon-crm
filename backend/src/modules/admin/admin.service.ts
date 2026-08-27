@@ -1,7 +1,8 @@
 import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, StoreOrderStatus, UserRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../utils/http-error.js";
 import { assertAdmin } from "../auth/auth.middleware.js";
@@ -97,12 +98,9 @@ type AppointmentDisplayExtras = {
   financials: AppointmentFinancialSummary;
   auditLogs: AppointmentAuditEntry[];
 };
-const portfolioUploadTypes = new Map([
-  ["image/jpeg", "jpg"],
-  ["image/png", "png"],
-  ["image/webp", "webp"],
-  ["image/gif", "gif"]
-]);
+const allowedUploadTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const uploadImageMaxSize = 2200;
+const uploadWebpQuality = 82;
 const portfolioUploadDir = path.resolve(process.cwd(), "public/uploads/portfolio");
 const productUploadDir = path.resolve(process.cwd(), "public/uploads/products");
 
@@ -759,20 +757,11 @@ export async function uploadPortfolioImage(
     buffer: Buffer;
   }
 ) {
-  const contentType = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  const extension = portfolioUploadTypes.get(contentType);
-
-  if (!extension) {
-    throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
-  }
-
-  if (input.buffer.length === 0) {
-    throw new HttpError(400, "Upload file is empty.");
-  }
-
-  await mkdir(portfolioUploadDir, { recursive: true });
-  const fileName = `${Date.now()}-${randomUUID()}.${extension}`;
-  await writeFile(path.join(portfolioUploadDir, fileName), input.buffer, { flag: "wx" });
+  const fileName = await saveUploadedWebpImage({
+    buffer: input.buffer,
+    contentType: input.contentType,
+    directory: portfolioUploadDir
+  });
 
   return {
     imageUrl: `/uploads/portfolio/${fileName}`
@@ -788,24 +777,60 @@ export async function uploadProductImage(
 ) {
   assertAdmin(actor);
 
-  const contentType = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  const extension = portfolioUploadTypes.get(contentType);
-
-  if (!extension) {
-    throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
-  }
-
-  if (input.buffer.length === 0) {
-    throw new HttpError(400, "Upload file is empty.");
-  }
-
-  await mkdir(productUploadDir, { recursive: true });
-  const fileName = `${Date.now()}-${randomUUID()}.${extension}`;
-  await writeFile(path.join(productUploadDir, fileName), input.buffer, { flag: "wx" });
+  const fileName = await saveUploadedWebpImage({
+    buffer: input.buffer,
+    contentType: input.contentType,
+    directory: productUploadDir
+  });
 
   return {
     imageUrl: `/uploads/products/${fileName}`
   };
+}
+
+async function saveUploadedWebpImage({
+  buffer,
+  contentType,
+  directory
+}: {
+  buffer: Buffer;
+  contentType: string;
+  directory: string;
+}) {
+  const normalizedContentType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+
+  if (!allowedUploadTypes.has(normalizedContentType)) {
+    throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
+  }
+
+  if (buffer.length === 0) {
+    throw new HttpError(400, "Upload file is empty.");
+  }
+
+  await mkdir(directory, { recursive: true });
+
+  const fileName = `${Date.now()}-${randomUUID()}.webp`;
+  const filePath = path.join(directory, fileName);
+
+  try {
+    await sharp(buffer, { animated: false })
+      .rotate()
+      .resize({
+        width: uploadImageMaxSize,
+        height: uploadImageMaxSize,
+        fit: "inside",
+        withoutEnlargement: true
+      })
+      .webp({
+        quality: uploadWebpQuality,
+        effort: 5
+      })
+      .toFile(filePath);
+  } catch {
+    throw new HttpError(400, "Uploaded file is not a valid image.");
+  }
+
+  return fileName;
 }
 
 export async function getProductCategories(actor: CrmAuthenticatedUser) {
