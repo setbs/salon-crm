@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, Edit3, EyeOff, FileText, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CircleHelp, Edit3, Eye, EyeOff, FileText, MessageSquare, Plus, Power, PowerOff, RotateCcw, Trash2, UserX, X } from "lucide-react";
 import { useCrmT } from "../crm-i18n";
 
 export function MetricCard({ label, value, note }: { label: string; value: string; note: string }) {
@@ -139,21 +139,33 @@ export function InfoList({ items }: { items: Array<[string, string]> }) {
 }
 
 export function InlineActions({ labels, onAction }: { labels: string[]; onAction?: (label: string) => void }) {
+  const t = useCrmT();
+  const icons = new Map([
+    [t("disable"), PowerOff],
+    [t("enable"), Power],
+    [t("edit"), Edit3],
+    [t("delete"), Trash2],
+    [t("details"), FileText],
+    [t("detailsAction"), FileText],
+    [t("view"), Eye],
+    [t("schedule"), CalendarDays],
+    [t("hide"), EyeOff],
+    [t("show"), Eye],
+    [t("refund"), RotateCcw],
+    [t("refunded"), RotateCcw],
+    [t("paid"), Check],
+    [t("complete"), Check],
+    [t("reschedule"), CalendarClock],
+    [t("comment"), MessageSquare],
+    [t("noShow"), UserX],
+    [t("cancel"), X],
+    [t("editCompletion"), Edit3]
+  ]);
+
   return (
     <div className="inline-actions">
       {labels.map((label) => {
-        const Icon =
-          label === "Details"
-            ? FileText
-            : label === "Refund" || label === "refunded"
-              ? RotateCcw
-            : label === "Complete" || label === "paid"
-              ? Check
-              : label === "Delete" || label === "Cancel"
-                ? Trash2
-                : label === "Hide" || label === "No-show"
-                  ? EyeOff
-                  : Edit3;
+        const Icon = icons.get(label) ?? CircleHelp;
 
         return (
           <button aria-label={label} key={label} onClick={() => onAction?.(label)} title={label} type="button">
