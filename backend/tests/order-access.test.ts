@@ -1,6 +1,6 @@
 import { after, before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 import type { PrismaClient } from "@prisma/client";
 
@@ -51,7 +51,7 @@ describe("Public order ownership", { skip: !databaseUrl, concurrency: false }, (
     base = `http://127.0.0.1:${address.port}/api`;
     for (let i = 0; i < 2; i++) {
       const response = await fetch(base + "/public/orders", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomBytes(32).toString("hex") },
         body: JSON.stringify({ customer: { firstName: "Order", lastName: "Owner", phone: "0000000022" },
           deliveryMethod: "pickup", items: [{ productId: String(productId), quantity: 1 }] })
       });

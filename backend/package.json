@@ -8,9 +8,10 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "node --test --import tsx \"tests/**/*.test.ts\"",
+    "test": "node --test --test-concurrency=1 --import tsx \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "db:clean": "tsx prisma/clean.ts",
+    "payments:maintain": "tsx src/scripts/payment-maintenance.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:seed": "prisma db seed"

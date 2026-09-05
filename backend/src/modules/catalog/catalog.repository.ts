@@ -1,6 +1,8 @@
 import { prisma } from "../../config/prisma.js";
 import type { Prisma } from "@prisma/client";
 import { Prisma as PrismaRuntime } from "@prisma/client";
+import { HttpError } from "../../utils/http-error.js";
+import { reserveOrder, orderWithItems, lockOrder } from "./order-lifecycle.js";
 
 export function listActiveServices() {
   return prisma.$queryRaw<ActiveServiceRow[]>`
@@ -183,9 +185,18 @@ export function insertStoreReview(input: { authorName: string; rating: number; c
   return prisma.storeReview.create({ data: input });
 }
 
-export async function insertStoreOrder(input: StoreOrderInput, accessTokenHash: string) {
+export async function insertStoreOrder(input: StoreOrderInput, accessTokenHash: string,
+  identity: { keyHash: string; requestHash: string; encryptedAccessToken: string }) {
   return prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${identity.keyHash}, 0))::text`;
+    const existing = await transaction.storeOrder.findUnique({ where: { idempotencyKeyHash: identity.keyHash }, include: orderWithItems });
+    if (existing) {
+      if (existing.requestHash !== identity.requestHash) throw new HttpError(409, "Idempotency-Key was used with a different request.");
+      return { order: existing, isNew: false };
+    }
     const productIds = input.items.map((item) => BigInt(item.productId));
+    if (new Set(productIds.map(String)).size !== productIds.length) throw new HttpError(400, "Products must be unique.");
+    await transaction.$queryRaw`SELECT id FROM products WHERE id IN (${PrismaRuntime.join(productIds)}) ORDER BY id FOR UPDATE`;
     const products = await transaction.product.findMany({
       where: { id: { in: productIds }, isActive: true, productPurpose: { in: ["SALE", "BOTH"] } },
       select: { id: true, name: true, sellingPrice: true, stockQuantity: true }
@@ -194,15 +205,16 @@ export async function insertStoreOrder(input: StoreOrderInput, accessTokenHash: 
     if (products.length !== productIds.length) throw new StoreOrderIssue("PRODUCT_UNAVAILABLE");
     const productMap = new Map(products.map((product) => [product.id.toString(), product]));
     const items = input.items.map((item) => {
-      const product = productMap.get(item.productId)!;
+      const product = productMap.get(BigInt(item.productId).toString())!;
       if (product.stockQuantity < item.quantity) throw new StoreOrderIssue("INSUFFICIENT_STOCK", product.name);
       return { productId: product.id, productName: product.name, unitPrice: product.sellingPrice, quantity: item.quantity };
     });
     const totalAmount = items.reduce((total, item) => total.plus(item.unitPrice.mul(item.quantity)), new PrismaRuntime.Decimal(0));
 
-    return transaction.storeOrder.create({
+    const order = await transaction.storeOrder.create({
       data: {
         accessTokenHash,
+        idempotencyKeyHash: identity.keyHash, requestHash: identity.requestHash, encryptedAccessToken: identity.encryptedAccessToken,
         firstName: input.customer.firstName,
         lastName: input.customer.lastName,
         phone: input.customer.phone,
@@ -213,8 +225,10 @@ export async function insertStoreOrder(input: StoreOrderInput, accessTokenHash: 
         totalAmount,
         items: { create: items }
       },
-      include: { items: true }
+      include: orderWithItems
     });
+    await reserveOrder(transaction, order);
+    return { order: await lockOrder(transaction, order.id), isNew: true };
   });
 }
 

@@ -9,6 +9,8 @@ let prisma: PrismaClient;
 let payments: typeof import("../src/modules/payments/monobank.service.js");
 let orderId: bigint;
 let invoiceId: string;
+let ownerToken: string;
+let attemptId: string;
 const modifiedDate = "2026-09-01T10:00:00Z";
 let fetchMock: ReturnType<typeof mock.method>;
 
@@ -24,19 +26,28 @@ describe("Monobank signed events", { skip: !databaseUrl, concurrency: false }, (
       const key = Buffer.from(publicKey.export({ type: "spki", format: "pem" })).toString("base64");
       return Response.json({ key });
     });
+    const access = (await import("../src/modules/catalog/order-access.js")).createOrderAccess();
+    ownerToken = access.accessToken;
     const order = await prisma.storeOrder.create({ data: {
-      accessTokenHash: (await import("../src/modules/catalog/order-access.js")).createOrderAccess().accessTokenHash,
+      accessTokenHash: access.accessTokenHash,
       firstName: "Payment", lastName: "Test", phone: "0000000000",
       deliveryMethod: "PICKUP", totalAmount: 100, paymentAmount: 100
     } });
     orderId = order.id;
     invoiceId = `security-test-invoice-${orderId}`;
+    attemptId = (await prisma.paymentAttempt.create({ data: { orderId, attemptNumber: 1,
+      reference: String(orderId), providerInvoiceId: invoiceId, amount: 100, status: "PENDING",
+      paymentUrl: "https://pay.mbnk.biz/test-placeholder"
+    } })).id;
   });
   beforeEach(async () => {
     await prisma.storeOrder.update({ where: { id: orderId }, data: {
       paymentStatus: "PENDING", monobankInvoiceId: invoiceId,
+      status: "PENDING", reservationState: "ACTIVE", reservationExpiresAt: new Date(Date.now() + 600_000),
+      settledAttemptId: null, stockDeductedAt: null, requiresReview: false,
       paymentPageUrl: "https://pay.mbnk.biz/test-placeholder", paymentModifiedAt: null, paidAt: null
     } });
+    await prisma.paymentAttempt.update({ where: { id: attemptId }, data: { status: "PENDING", providerModifiedAt: null } });
   });
   after(async () => {
     mock.restoreAll();
@@ -85,11 +96,11 @@ describe("Monobank signed events", { skip: !databaseUrl, concurrency: false }, (
     assert.equal(await status(), "REFUNDED");
     await deliver({ modifiedDate: "2026-09-01T12:00:00Z" });
     assert.equal(await status(), "REFUNDED");
-    await assert.rejects(payments.createMonobankPaymentForOrder(orderId));
+    await assert.rejects(payments.createMonobankPaymentForOrder(orderId, ownerToken));
   });
   test("concurrent retries reuse a pending invoice without bank requests", async () => {
     const callsBefore = fetchMock.mock.callCount();
-    const results = await Promise.all([payments.createMonobankPaymentForOrder(orderId), payments.createMonobankPaymentForOrder(orderId)]);
+    const results = await Promise.all([payments.createMonobankPaymentForOrder(orderId, ownerToken), payments.createMonobankPaymentForOrder(orderId, ownerToken)]);
     assert.ok(results.every((result) => result.paymentUrl === "https://pay.mbnk.biz/test-placeholder"));
     assert.equal(fetchMock.mock.callCount(), callsBefore);
   });

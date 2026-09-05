@@ -76,7 +76,7 @@ catalogRouter.post("/public/store-reviews", async (request, response, next) => {
 
 catalogRouter.post("/public/orders", async (request, response, next) => {
   try {
-    response.status(201).json({ data: await createStoreOrder(storeOrderSchema.parse(request.body)) });
+    response.status(201).json({ data: await createStoreOrder(storeOrderSchema.parse(request.body), request.header("Idempotency-Key")) });
   } catch (error) {
     next(error);
   }

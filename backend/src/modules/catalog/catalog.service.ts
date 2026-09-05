@@ -15,6 +15,8 @@ import {
 } from "./catalog.repository.js";
 import { HttpError } from "../../utils/http-error.js";
 import { createOrderAccess, requireOrderAccess } from "./order-access.js";
+import { orderIdempotency, encryptOrderToken, decryptOrderToken } from "./order-idempotency.js";
+import { expireReservations } from "./order-lifecycle.js";
 import { createMonobankPaymentForOrder, getPublicStorePaymentStatus } from "../payments/monobank.service.js";
 import type { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 import type { z } from "zod";
@@ -98,11 +100,17 @@ export async function createStoreReview(input: z.infer<typeof storeReviewSchema>
   return formatStoreReview(await insertStoreReview({ authorName: input.authorName, rating: input.rating, comment: input.comment }));
 }
 
-export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) {
+export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>, key?: string) {
+  const identity = orderIdempotency(key, input);
+  await expireReservations();
   try {
     const { accessToken, accessTokenHash } = createOrderAccess();
-    const order = await insertStoreOrder(input, accessTokenHash);
-    return { ...await createMonobankPaymentForOrder(order.id), accessToken };
+    const { order, isNew } = await insertStoreOrder(input, accessTokenHash, {
+      ...identity, encryptedAccessToken: encryptOrderToken(accessToken, identity.key, identity.requestHash)
+    });
+    const ownerToken = decryptOrderToken(order.encryptedAccessToken!, identity.key, identity.requestHash);
+    const result = isNew ? await createMonobankPaymentForOrder(order.id, ownerToken) : await getPublicStorePaymentStatus(order.id);
+    return { ...result, accessToken: ownerToken };
   } catch (error) {
     if (error instanceof StoreOrderIssue) {
       if (error.code === "INSUFFICIENT_STOCK") throw new HttpError(409, `${error.productName ?? "Product"} is not available in the requested quantity.`);
@@ -117,7 +125,7 @@ export async function getStoreOrderPaymentStatus(idValue: string, accessToken?: 
 }
 
 export async function payStoreOrder(idValue: string, accessToken?: string) {
-  return createMonobankPaymentForOrder(await requireOrderAccess(idValue, accessToken));
+  return createMonobankPaymentForOrder(await requireOrderAccess(idValue, accessToken), accessToken);
 }
 
 export async function getProduct(idValue: string) {

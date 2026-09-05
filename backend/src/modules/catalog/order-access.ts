@@ -17,13 +17,17 @@ export async function requireOrderAccess(idValue: string, token?: string) {
   }
   const id = BigInt(idValue);
   const order = await prisma.storeOrder.findUnique({ where: { id }, select: { accessTokenHash: true } });
+  assertOrderToken(order?.accessTokenHash, token);
+  return id;
+}
+
+export function assertOrderToken(storedHash: string | null | undefined, token?: string) {
   const validToken = typeof token === "string" && /^[a-f0-9]{64}$/.test(token);
   // Compare fixed-size digests even for nonexistent and legacy orders.
-  const expected = order?.accessTokenHash && /^[a-f0-9]{64}$/.test(order.accessTokenHash)
-    ? Buffer.from(order.accessTokenHash, "hex") : Buffer.alloc(32);
+  const expected = storedHash && /^[a-f0-9]{64}$/.test(storedHash)
+    ? Buffer.from(storedHash, "hex") : Buffer.alloc(32);
   const matches = timingSafeEqual(hashOrderAccessToken(validToken ? token : ""), expected);
-  if (!validToken || !order?.accessTokenHash || !matches) {
+  if (!validToken || !storedHash || !matches) {
     throw new HttpError(404, "Order not found.");
   }
-  return id;
 }

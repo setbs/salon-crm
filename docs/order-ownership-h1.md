@@ -1,5 +1,10 @@
 # H1: public order ownership
 
+Follow-up: [H5/H6 lifecycle](./order-payment-lifecycle-h5-h6.md) adds required
+Idempotency-Key on creation and encrypted owner-token recovery for idempotent
+replays. The one-time creation response description below is the original H1
+contract; replay now reissues the same token only to the original key holder.
+
 Implemented locally on 2026-09-05. This follow-up supersedes the open-H1
 status in the original security audit; other findings remain unchanged.
 

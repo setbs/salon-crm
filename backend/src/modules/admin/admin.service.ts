@@ -1,3 +1,4 @@
+import { changeStoreOrderStatus } from "../catalog/order-lifecycle.js";
 import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, StoreOrderStatus, UserRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
@@ -1061,58 +1062,23 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
 
 export async function getStoreOrders(actor: CrmAuthenticatedUser) {
   if (actor.role !== "ADMIN") return [];
-  const orders = await prisma.storeOrder.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } });
-  return orders.map(formatStoreOrder);
+  const orders = await prisma.storeOrder.findMany({ include: { items: true, paymentAttempts: { orderBy: { attemptNumber: "asc" } } }, orderBy: { createdAt: "desc" } });
+  return orders.map((order) => ({
+    ...formatStoreOrder({ ...order, paymentFailureReason: order.paymentAttempts.some((attempt) => attempt.status === "UNKNOWN")
+      ? "Invoice result unknown. Verify with the bank before retrying." : order.paymentFailureReason }),
+    attempts: order.paymentAttempts.map((attempt) => ({ id: attempt.id, number: attempt.attemptNumber,
+      status: attempt.status.toLowerCase(), invoiceId: attempt.providerInvoiceId, amount: Number(attempt.amount),
+      currency: attempt.currency, failureReason: attempt.failureReason, lastCheckedAt: attempt.lastCheckedAt?.toISOString() ?? null }))
+  }));
 }
 
 export async function updateStoreOrderStatus(actor: CrmAuthenticatedUser, id: bigint, statusValue: string) {
   assertAdmin(actor);
-  const target = toStoreOrderStatus(statusValue);
-
-  return prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw`SELECT id FROM store_orders WHERE id = ${id} FOR UPDATE`;
-    const order = await transaction.storeOrder.findUnique({ where: { id }, include: { items: true } });
-    if (!order) throw new HttpError(404, "Store order not found.");
-    if (order.status === target) return formatStoreOrder(order);
-
-    const allowed: Record<StoreOrderStatus, StoreOrderStatus[]> = {
-      PENDING: [StoreOrderStatus.CONFIRMED, StoreOrderStatus.CANCELLED],
-      CONFIRMED: [StoreOrderStatus.PROCESSING, StoreOrderStatus.CANCELLED],
-      PROCESSING: [StoreOrderStatus.SHIPPED, StoreOrderStatus.CANCELLED],
-      SHIPPED: [StoreOrderStatus.COMPLETED],
-      COMPLETED: [],
-      CANCELLED: []
-    };
-    if (!allowed[order.status].includes(target)) throw new HttpError(409, `Cannot move order from ${order.status.toLowerCase()} to ${statusValue}.`);
-
-    let stockDeductedAt = order.stockDeductedAt;
-    let stockRestoredAt = order.stockRestoredAt;
-    if (target === StoreOrderStatus.CONFIRMED && !stockDeductedAt) {
-      for (const item of order.items) {
-        const product = await transaction.product.findUnique({ where: { id: item.productId }, select: { name: true, contentAmount: true, stockQuantity: true } });
-        if (!product || product.stockQuantity < item.quantity) throw new HttpError(409, `${item.productName} does not have enough stock.`);
-        const updated = await transaction.product.updateMany({ where: { id: item.productId, stockQuantity: { gte: item.quantity } }, data: { stockQuantity: { decrement: item.quantity }, ...(product.contentAmount ? { stockContentAmount: { decrement: product.contentAmount.mul(item.quantity) } } : {}) } });
-        if (updated.count !== 1) throw new HttpError(409, `${item.productName} does not have enough stock.`);
-        await insertStockMovement(transaction, { productId: item.productId, movementType: StockMovementType.SALE, quantity: -item.quantity, contentQuantity: product.contentAmount ? -Number(product.contentAmount) * item.quantity : null, contentUnit: null, reason: `Store order #${order.id}` });
-      }
-      stockDeductedAt = new Date();
-    }
-
-    if (target === StoreOrderStatus.CANCELLED && stockDeductedAt && !stockRestoredAt) {
-      for (const item of order.items) {
-        const product = await transaction.product.findUnique({ where: { id: item.productId }, select: { contentAmount: true } });
-        await transaction.product.update({ where: { id: item.productId }, data: { stockQuantity: { increment: item.quantity }, ...(product?.contentAmount ? { stockContentAmount: { increment: product.contentAmount.mul(item.quantity) } } : {}) } });
-        await insertStockMovement(transaction, { productId: item.productId, movementType: StockMovementType.RETURN, quantity: item.quantity, contentQuantity: product?.contentAmount ? Number(product.contentAmount) * item.quantity : null, contentUnit: null, reason: `Cancelled store order #${order.id}` });
-      }
-      stockRestoredAt = new Date();
-    }
-
-    return formatStoreOrder(await transaction.storeOrder.update({ where: { id }, data: { status: target, stockDeductedAt, stockRestoredAt }, include: { items: true } }));
-  });
+  return formatStoreOrder(await changeStoreOrderStatus(id, toStoreOrderStatus(statusValue)));
 }
 
-function formatStoreOrder(order: { id: bigint; status: StoreOrderStatus; paymentStatus: string; paymentProvider: string | null; monobankInvoiceId: string | null; paymentPageUrl: string | null; paymentFailureReason: string | null; paidAt: Date | null; firstName: string; lastName: string; phone: string; email: string | null; deliveryMethod: string; deliveryAddress: string | null; comment: string | null; totalAmount: Prisma.Decimal; stockDeductedAt: Date | null; stockRestoredAt: Date | null; createdAt: Date; items: Array<{ id: bigint; productId: bigint; productName: string; unitPrice: Prisma.Decimal; quantity: number }> }) {
-  return { id: order.id.toString(), status: order.status.toLowerCase(), paymentStatus: order.paymentStatus.toLowerCase(), paymentProvider: order.paymentProvider, monobankInvoiceId: order.monobankInvoiceId, paymentUrl: order.paymentPageUrl, paymentError: order.paymentFailureReason, paidAt: order.paidAt?.toISOString() ?? null, customer: { firstName: order.firstName, lastName: order.lastName, phone: order.phone, email: order.email }, deliveryMethod: order.deliveryMethod.toLowerCase(), deliveryAddress: order.deliveryAddress, comment: order.comment, totalAmount: Number(order.totalAmount), stockDeductedAt: order.stockDeductedAt?.toISOString() ?? null, stockRestoredAt: order.stockRestoredAt?.toISOString() ?? null, createdAt: order.createdAt.toISOString(), items: order.items.map((item) => ({ id: item.id.toString(), productId: item.productId.toString(), productName: item.productName, unitPrice: Number(item.unitPrice), quantity: item.quantity })) };
+function formatStoreOrder(order: { requiresReview?: boolean; reviewReason?: string | null; reservationState?: string; id: bigint; status: StoreOrderStatus; paymentStatus: string; paymentProvider: string | null; monobankInvoiceId: string | null; paymentPageUrl: string | null; paymentFailureReason: string | null; paidAt: Date | null; firstName: string; lastName: string; phone: string; email: string | null; deliveryMethod: string; deliveryAddress: string | null; comment: string | null; totalAmount: Prisma.Decimal; stockDeductedAt: Date | null; stockRestoredAt: Date | null; createdAt: Date; items: Array<{ id: bigint; productId: bigint; productName: string; unitPrice: Prisma.Decimal; quantity: number }> }) {
+  return { id: order.id.toString(), status: order.status.toLowerCase(), paymentStatus: order.paymentStatus.toLowerCase(), paymentProvider: order.paymentProvider, monobankInvoiceId: order.monobankInvoiceId, paymentUrl: order.paymentPageUrl, requiresReview: order.requiresReview ?? false, reservationState: order.reservationState?.toLowerCase(), paymentError: order.requiresReview ? 'Manual payment review required: ' + order.reviewReason : order.paymentFailureReason, paidAt: order.paidAt?.toISOString() ?? null, customer: { firstName: order.firstName, lastName: order.lastName, phone: order.phone, email: order.email }, deliveryMethod: order.deliveryMethod.toLowerCase(), deliveryAddress: order.deliveryAddress, comment: order.comment, totalAmount: Number(order.totalAmount), stockDeductedAt: order.stockDeductedAt?.toISOString() ?? null, stockRestoredAt: order.stockRestoredAt?.toISOString() ?? null, createdAt: order.createdAt.toISOString(), items: order.items.map((item) => ({ id: item.id.toString(), productId: item.productId.toString(), productName: item.productName, unitPrice: Number(item.unitPrice), quantity: item.quantity })) };
 }
 
 function toStoreOrderStatus(value: string) {
@@ -1937,39 +1903,54 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
   const categoryId = input.categoryId !== undefined || input.category !== undefined ? await resolveProductCategoryId(input, false) : undefined;
   const brand = input.brandId !== undefined || input.brand !== undefined ? await resolveProductBrand(input) : undefined;
 
-  const product = await prisma.product.update({
-    where: { id },
-    data: {
-      categoryId,
-      name: input.name,
-      description: input.description === undefined ? undefined : input.description || null,
-      brand: brand === undefined ? undefined : brand?.name ?? input.brand ?? null,
-      sku: input.sku,
-      purchasePrice: input.purchase,
-      sellingPrice: input.sale,
-      stockQuantity: input.stock,
-      minStockQuantity: input.min,
-      popularityBoost: input.popularityBoost
-    }
-  });
+  const product = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM products WHERE id = ${id} FOR UPDATE`;
+    const current = await tx.product.findUniqueOrThrow({ where: { id } });
+    const reserved = await tx.storeOrderItem.count({ where: { productId: id, order: { reservationState: "ACTIVE" } } });
+    if (reserved && (
+      (input.stock !== undefined && input.stock !== current.stockQuantity) ||
+      (input.contentAmount !== undefined && input.contentAmount !== Number(current.contentAmount)) ||
+      (input.contentUnit !== undefined && toConsumableUnit(input.contentUnit) !== current.contentUnit)
+    )) throw new HttpError(409, "Inventory is reserved by store orders. Use stock movements for available-stock adjustments.");
+    const product = await tx.product.update({
+      where: { id },
+      data: {
+        categoryId,
+        name: input.name,
+        description: input.description === undefined ? undefined : input.description || null,
+        brand: brand === undefined ? undefined : brand?.name ?? input.brand ?? null,
+        sku: input.sku,
+        purchasePrice: input.purchase,
+        sellingPrice: input.sale,
+        stockQuantity: input.stock,
+        minStockQuantity: input.min,
+        popularityBoost: input.popularityBoost
+      }
+    });
 
-  if (input.contentAmount !== undefined) {
-    await prisma.$executeRaw`
-      UPDATE products
-      SET
-        content_amount = ${input.contentAmount},
-        content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit",
-        stock_content_amount = ${input.contentAmount * (input.stock ?? product.stockQuantity)}
-      WHERE id = ${id}
-    `;
-  } else if (input.stock !== undefined) {
-    await prisma.$executeRaw`
-      UPDATE products
-      SET stock_content_amount = ${input.stock} * content_amount
-      WHERE id = ${id}
-        AND content_amount IS NOT NULL
-    `;
-  }
+    if (!reserved && input.contentAmount !== undefined) {
+      await tx.$executeRaw`
+        UPDATE products
+        SET
+          content_amount = ${input.contentAmount},
+          content_unit = ${toConsumableUnit(input.contentUnit ?? "ml")}::"ConsumableUnit",
+          stock_content_amount = ${input.contentAmount * (input.stock ?? product.stockQuantity)}
+        WHERE id = ${id}
+      `;
+    } else if (!reserved && input.stock !== undefined) {
+      await tx.$executeRaw`
+        UPDATE products
+        SET stock_content_amount = ${input.stock} * content_amount
+        WHERE id = ${id}
+          AND content_amount IS NOT NULL
+      `;
+    }
+    if (input.stock !== undefined && input.stock !== current.stockQuantity) {
+      await tx.stockMovement.create({ data: { productId: id, movementType: "ADJUSTMENT",
+        quantity: input.stock - current.stockQuantity, reason: "CRM available-stock correction" } });
+    }
+    return product;
+  });
 
   if (input.imageUrl !== undefined) {
     await prisma.$executeRaw`
@@ -2054,6 +2035,7 @@ export async function createStockMovement(actor: CrmAuthenticatedUser, input: z.
   const productId = BigInt(input.productId);
 
   const movement = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId} FOR UPDATE`;
     const product = await tx.product.findUnique({ where: { id: productId } });
 
     if (!product) {
@@ -2157,6 +2139,7 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
   const employeeId = actor.role === "EMPLOYEE" ? employeeScope(actor) : input.employeeId ? BigInt(input.employeeId) : null;
 
   const sale = await prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT id FROM products WHERE id = ${productId} FOR UPDATE`;
     const product = await transaction.product.findUnique({ where: { id: productId } });
 
     if (!product || !product.isActive) {
@@ -2180,7 +2163,7 @@ export async function createProductSale(actor: CrmAuthenticatedUser, input: z.in
       throw new HttpError(400, "Not enough product content for this sale.");
     }
 
-    if (stockContentAmount === null && product.stockQuantity < quantity) {
+    if (product.stockQuantity < quantity) {
       throw new HttpError(400, "Not enough stock for this sale.");
     }
 
@@ -3187,7 +3170,8 @@ async function returnProductSaleStock(client: Prisma.TransactionClient, saleId: 
     FROM product_sale_items item
     JOIN products product ON product.id = item.product_id
     WHERE item.sale_id = ${saleId}
-    ORDER BY product.name ASC
+    ORDER BY product.id ASC
+    FOR UPDATE OF product
   `;
   const returnedItems: Array<Record<string, unknown>> = [];
 
@@ -3656,6 +3640,8 @@ async function syncAppointmentConsumables(
       stock_quantity AS "stockQuantity"
     FROM products
     WHERE id IN (${Prisma.join(productIds)})
+    ORDER BY id
+    FOR UPDATE
   `;
   const productsById = new Map(productRows.map((product) => [product.id.toString(), product]));
 
