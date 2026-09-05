@@ -734,7 +734,7 @@ function toCsvValue(value: CsvValue) {
   }
 
   const text = String(value);
-  const guardedText = /^[=+@]/.test(text) ? `'${text}` : text;
+  const guardedText = typeof value === "string" && /^(?:\s*[=+@-]|[\t\r\n])/.test(text) ? `'${text}` : text;
 
   return `"${guardedText.replace(/"/g, '""')}"`;
 }

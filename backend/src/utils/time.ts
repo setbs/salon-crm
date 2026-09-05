@@ -1,3 +1,5 @@
+import { HttpError } from "./http-error.js";
+
 const slotStepMinutes = 30;
 
 export function parseIdList(value: unknown): bigint[] {
@@ -5,7 +7,11 @@ export function parseIdList(value: unknown): bigint[] {
     return [];
   }
 
-  return value.split(",").map((id) => BigInt(id));
+  const ids = value.split(",");
+  if (ids.length > 30 || ids.some((id) => !/^[1-9]\d{0,17}$/.test(id))) {
+    throw new HttpError(400, "Invalid service IDs.");
+  }
+  return ids.map((id) => BigInt(id));
 }
 
 export function parseDate(value: string): Date {

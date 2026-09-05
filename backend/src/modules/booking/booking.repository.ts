@@ -1,15 +1,16 @@
-import { AppointmentStatus, UserRole, type Prisma } from "@prisma/client";
+import { AppointmentStatus, UserRole, Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
+import { HttpError } from "../../utils/http-error.js";
 
 export function findActiveServicesByIds(serviceIds: bigint[]) {
   return prisma.service.findMany({
-    where: { id: { in: serviceIds }, isActive: true }
+    where: { id: { in: serviceIds }, isActive: true, OR: [{ categoryId: null }, { category: { isActive: true } }] }
   });
 }
 
 export function countEmployeeServices(employeeId: bigint, serviceIds: bigint[]) {
   return prisma.employeeService.count({
-    where: { employeeId, serviceId: { in: serviceIds } }
+    where: { employeeId, employee: { isActive: true }, serviceId: { in: serviceIds } }
   });
 }
 
@@ -114,6 +115,11 @@ export function createAppointmentWithClient(input: {
       },
       include: appointmentDetailsInclude
     });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      throw new HttpError(409, "This time slot is no longer available. Please try again.");
+    }
+    throw error;
   });
 }
 

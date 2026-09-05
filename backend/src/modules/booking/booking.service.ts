@@ -46,6 +46,9 @@ export async function bookAppointment(input: CreateAppointmentInput) {
   const employeeId = BigInt(input.employeeId);
   const serviceIds = input.serviceIds.map((id) => BigInt(id));
   const startTime = new Date(input.startTime);
+  if (startTime.getTime() <= Date.now()) {
+    throw new HttpError(400, "Appointments must start in the future.");
+  }
   const services = await findActiveServicesByIds(serviceIds);
 
   if (services.length !== serviceIds.length) {
@@ -80,10 +83,10 @@ export async function bookAppointment(input: CreateAppointmentInput) {
     startTime: appointment.startTime.toISOString(),
     endTime: appointment.endTime.toISOString(),
     client: {
-      firstName: appointment.client.firstName,
-      lastName: appointment.client.lastName,
-      phone: appointment.client.phone,
-      email: appointment.client.email
+      firstName: input.client.firstName,
+      lastName: input.client.lastName,
+      phone: input.client.phone,
+      email: input.client.email || null
     },
     employee: {
       id: appointment.employee.id.toString(),
@@ -103,9 +106,11 @@ async function ensureSlotWithinEmployeeSchedule(employeeId: bigint, startTime: D
     throw new HttpError(409, "Appointments must fit within one working day.");
   }
 
-  const workingHour = await findWorkingHour(employeeId, startTime.getDay());
+  const day = new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate());
+  const override = await findScheduleOverride(employeeId, day);
+  const workingHour = override?.isClosed ? null : override ?? await findWorkingHour(employeeId, startTime.getDay());
 
-  if (!workingHour) {
+  if (!workingHour?.startTime || !workingHour.endTime) {
     throw new HttpError(409, "The selected employee is not working at this time.");
   }
 

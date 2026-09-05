@@ -30,9 +30,12 @@ const monobankWebhookSchema = z.object({
 });
 
 let cachedPublicKeyBase64: string | null = null;
+let lastPublicKeyFetch = 0;
 
 export async function createMonobankPaymentForOrder(orderId: bigint) {
-  const order = await prisma.storeOrder.findUnique({
+  return prisma.$transaction(async (transaction) => {
+  await transaction.$queryRaw`SELECT id FROM store_orders WHERE id = ${orderId} FOR UPDATE`;
+  const order = await transaction.storeOrder.findUnique({
     where: { id: orderId },
     include: { items: true }
   });
@@ -49,8 +52,15 @@ export async function createMonobankPaymentForOrder(orderId: bigint) {
     throw new HttpError(409, "Cannot pay a cancelled order.");
   }
 
+  if (order.paymentStatus === StorePaymentStatus.REFUNDED) {
+    throw new HttpError(409, "Cannot pay a refunded order.");
+  }
+  if (order.paymentStatus === StorePaymentStatus.PENDING && order.monobankInvoiceId && order.paymentPageUrl) {
+    return formatStorePaymentStatus(order);
+  }
+
   if (!env.MONOBANK_TOKEN) {
-    const updated = await prisma.storeOrder.update({
+    const updated = await transaction.storeOrder.update({
       where: { id: order.id },
       data: {
         paymentStatus: StorePaymentStatus.FAILED,
@@ -76,7 +86,7 @@ export async function createMonobankPaymentForOrder(orderId: bigint) {
       }))
     });
 
-    const updated = await prisma.storeOrder.update({
+    const updated = await transaction.storeOrder.update({
       where: { id: order.id },
       data: {
         paymentStatus: StorePaymentStatus.PENDING,
@@ -91,18 +101,21 @@ export async function createMonobankPaymentForOrder(orderId: bigint) {
 
     return formatStorePaymentStatus(updated);
   } catch (error) {
-    const updated = await prisma.storeOrder.update({
+    const updated = await transaction.storeOrder.update({
       where: { id: order.id },
       data: {
         paymentStatus: StorePaymentStatus.FAILED,
+        paymentPageUrl: null,
         paymentProvider: "monobank",
         paymentAmount: order.totalAmount,
-        paymentFailureReason: error instanceof Error ? error.message : "Payment invoice could not be created."
+        paymentFailureReason: error instanceof Error && error.message.startsWith("Monobank invoice failed")
+          ? error.message.slice(0, 400) : "Payment invoice could not be created."
       }
     });
 
     return formatStorePaymentStatus(updated);
   }
+  }, { timeout: 20_000 });
 }
 
 export async function getPublicStorePaymentStatus(orderId: bigint) {
@@ -131,37 +144,40 @@ export async function handleMonobankWebhook(rawBody: Buffer, signature: string |
   }
 
   const payload = monobankWebhookSchema.parse(JSON.parse(rawBody.toString("utf8")));
-  const orderId = parseWebhookOrderId(payload.reference);
-  const modifiedAt = payload.modifiedDate ? new Date(payload.modifiedDate) : new Date();
+  if (!payload.invoiceId || !payload.modifiedDate || !Number.isFinite(Date.parse(payload.modifiedDate))) {
+    throw new HttpError(400, "Invalid Monobank invoice metadata.");
+  }
+  const modifiedAt = new Date(payload.modifiedDate);
   const nextStatus = mapMonobankStatus(payload.status);
   const expectedAmount = payload.finalAmount ?? payload.amount;
 
   await prisma.$transaction(async (transaction) => {
-    const orderByInvoice = payload.invoiceId ? await transaction.storeOrder.findFirst({ where: { monobankInvoiceId: payload.invoiceId } }) : null;
-    const order = orderByInvoice ?? (orderId ? await transaction.storeOrder.findUnique({ where: { id: orderId } }) : null);
+    await transaction.$queryRaw`SELECT id FROM store_orders WHERE monobank_invoice_id = ${payload.invoiceId} FOR UPDATE`;
+    const order = await transaction.storeOrder.findFirst({ where: { monobankInvoiceId: payload.invoiceId } });
 
     if (!order) {
       return;
     }
 
-    if (order.paymentModifiedAt && modifiedAt < order.paymentModifiedAt) {
+    if (order.paymentModifiedAt && modifiedAt <= order.paymentModifiedAt) {
       return;
     }
 
-    const amountMatches = expectedAmount === undefined || moneyToMinorUnits(order.paymentAmount ?? order.totalAmount) === expectedAmount;
+    const amountMatches = nextStatus !== StorePaymentStatus.PAID ||
+      (payload.ccy === UAH_CCY && expectedAmount !== undefined && moneyToMinorUnits(order.paymentAmount ?? order.totalAmount) === expectedAmount);
     const paymentStatus = amountMatches ? nextStatus : StorePaymentStatus.FAILED;
     const failureReason = amountMatches ? payload.failureReason ?? null : "Monobank payment amount does not match the order amount.";
 
     if (order.paymentStatus === StorePaymentStatus.PAID && paymentStatus !== StorePaymentStatus.REFUNDED && paymentStatus !== StorePaymentStatus.PAID) {
       return;
     }
+    if (order.paymentStatus === StorePaymentStatus.REFUNDED) return;
 
     await transaction.storeOrder.update({
       where: { id: order.id },
       data: {
         paymentStatus,
         paymentProvider: "monobank",
-        monobankInvoiceId: orderByInvoice || !order.monobankInvoiceId ? payload.invoiceId ?? order.monobankInvoiceId : order.monobankInvoiceId,
         paymentAmount: order.paymentAmount ?? order.totalAmount,
         paymentCurrency: payload.ccy === UAH_CCY || !payload.ccy ? "UAH" : String(payload.ccy),
         paymentFailureReason: paymentStatus === StorePaymentStatus.FAILED ? failureReason : null,
@@ -192,7 +208,7 @@ function formatStorePaymentStatus(order: {
     paymentUrl: order.paymentPageUrl,
     paymentError: order.paymentFailureReason,
     paidAt: order.paidAt?.toISOString() ?? null,
-    canRetry: order.paymentStatus !== StorePaymentStatus.PAID,
+    canRetry: order.status !== "CANCELLED" && order.paymentStatus !== StorePaymentStatus.PAID && order.paymentStatus !== StorePaymentStatus.REFUNDED,
     createdAt: order.createdAt.toISOString()
   };
 }
@@ -231,6 +247,7 @@ async function createMonobankInvoice(input: {
   };
 
   const response = await fetch(`${MONOBANK_API_URL}/api/merchant/invoice/create`, {
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -304,11 +321,12 @@ async function verifyMonobankSignature(rawBody: Buffer, xSignBase64: string, ref
 }
 
 async function getMonobankPublicKey(refresh = false) {
-  if (cachedPublicKeyBase64 && !refresh) {
+  if (cachedPublicKeyBase64 && (!refresh || Date.now() - lastPublicKeyFetch < 60_000)) {
     return cachedPublicKeyBase64;
   }
 
   const response = await fetch(`${MONOBANK_API_URL}/api/merchant/pubkey`, {
+    signal: AbortSignal.timeout(5_000),
     headers: { "X-Token": env.MONOBANK_TOKEN }
   });
   const body = await response.json().catch(() => null);
@@ -318,6 +336,7 @@ async function getMonobankPublicKey(refresh = false) {
   }
 
   cachedPublicKeyBase64 = monobankPublicKeySchema.parse(body).key;
+  lastPublicKeyFetch = Date.now();
   return cachedPublicKeyBase64;
 }
 
@@ -353,14 +372,10 @@ function normalizePublicUrl(value: string) {
   return `https://${url}`;
 }
 
-function parseWebhookOrderId(reference: string | null | undefined) {
-  return reference && /^\d+$/.test(reference) ? BigInt(reference) : null;
-}
-
 function mapMonobankStatus(status: string) {
   const normalized = status.toLowerCase();
 
-  if (["success", "hold"].includes(normalized)) {
+  if (normalized === "success") {
     return StorePaymentStatus.PAID;
   }
 

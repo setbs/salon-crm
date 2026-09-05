@@ -15,6 +15,8 @@ pids
 *.pid.lock
 
 # Environment variables
+.env.*
+!.env.example
 .env
 .env.local
 .env.development.local

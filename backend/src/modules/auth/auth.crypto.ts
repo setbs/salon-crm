@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
 import { TextEncoder } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
@@ -16,6 +16,7 @@ export type AuthenticatedUser = {
   employeeId: string | null;
   name: string;
   email: string | null;
+  credentialVersion?: string;
 };
 
 export type CrmAuthenticatedUser = AuthenticatedUser & {
@@ -27,7 +28,8 @@ const sessionPayloadSchema = z.object({
   role: z.enum(["ADMIN", "EMPLOYEE", "CLIENT"]),
   employeeId: z.string().nullable(),
   name: z.string().min(1),
-  email: z.string().email().nullable()
+  email: z.string().email().nullable(),
+  credentialVersion: z.string().length(64)
 });
 
 export function hashPassword(password: string) {
@@ -37,7 +39,7 @@ export function hashPassword(password: string) {
   return `scrypt$${salt}$${hash}`;
 }
 
-export function verifyPassword(password: string, storedHash: string | null) {
+export async function verifyPassword(password: string, storedHash: string | null) {
   if (!storedHash) {
     return false;
   }
@@ -49,19 +51,26 @@ export function verifyPassword(password: string, storedHash: string | null) {
   }
 
   const expected = Buffer.from(hash, "hex");
-  const actual = scryptSync(password, salt, expected.length);
+  const actual = await new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, expected.length, (error, key) => error ? reject(error) : resolve(key));
+  });
 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-export async function createSessionToken(user: AuthenticatedUser) {
+export function credentialVersion(passwordHash: string | null) {
+  return createHash("sha256").update(passwordHash ?? "").digest("hex");
+}
+
+export async function createSessionToken(user: AuthenticatedUser, passwordHash: string | null = null) {
   const expiresIn = user.role === "CLIENT" ? CLIENT_ACCESS_TOKEN_TTL : STAFF_ACCESS_TOKEN_TTL;
 
   return new SignJWT({
     role: user.role,
     employeeId: user.employeeId,
     name: user.name,
-    email: user.email
+    email: user.email,
+    credentialVersion: credentialVersion(passwordHash)
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(JWT_ISSUER)
@@ -73,7 +82,7 @@ export async function createSessionToken(user: AuthenticatedUser) {
 
 export async function verifySessionToken(token: string) {
   try {
-    const { payload } = await jwtVerify(token, jwtSecret, { issuer: JWT_ISSUER });
+    const { payload } = await jwtVerify(token, jwtSecret, { issuer: JWT_ISSUER, algorithms: ["HS256"], requiredClaims: ["exp", "iat", "sub"] });
     const sessionPayload = sessionPayloadSchema.parse(payload);
 
     return {
@@ -81,7 +90,8 @@ export async function verifySessionToken(token: string) {
       role: sessionPayload.role,
       employeeId: sessionPayload.employeeId,
       name: sessionPayload.name,
-      email: sessionPayload.email
+      email: sessionPayload.email,
+      credentialVersion: sessionPayload.credentialVersion
     } satisfies AuthenticatedUser;
   } catch (error) {
     if (error instanceof z.ZodError) {

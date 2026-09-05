@@ -5,6 +5,9 @@
     "backend",
     "frontend"
   ],
+  "overrides": {
+    "qs": "6.16.0"
+  },
   "scripts": {
     "db:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d postgres",
     "db:down": "docker compose --env-file .env -f docker/docker-compose.yml down",

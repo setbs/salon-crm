@@ -84,6 +84,42 @@ describe("DB-backed admin API workflows", { concurrency: false, skip: !testDatab
     }
   });
 
+  test("public booking does not disclose saved client identity and rejects concurrent reservations", async () => {
+    const storedClient = await prisma.user.create({ data: {
+      firstName: "Private", lastName: "Identity", phone: "+48999990001", email: `${runId}.private@example.com`, role: "CLIENT"
+    } });
+    const start = new Date(appointmentStartTime);
+    start.setHours(14);
+    const payload = { employeeId: employeeId.toString(), serviceIds: [serviceId.toString()], startTime: start.toISOString(),
+      client: { firstName: "Submitted", lastName: "Name", phone: storedClient.phone } };
+    const responses = await Promise.all([1, 2].map(() => fetch(`${baseUrl}/appointments`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    })));
+    assert.deepEqual(responses.map((response) => response.status).sort(), [201, 409]);
+    const successful = await responses.find((response) => response.status === 201)!.json();
+    assert.deepEqual(successful.data.client, { ...payload.client, email: null });
+    assert.equal(await prisma.appointment.count({ where: { employeeId, startTime: start } }), 1);
+    await prisma.appointment.delete({ where: { id: BigInt(successful.data.id) } });
+  });
+
+  test("public booking rejects past dates, disabled employees and closed schedule overrides", async () => {
+    const start = new Date(appointmentStartTime);
+    start.setHours(14);
+    const payload = { employeeId: employeeId.toString(), serviceIds: [serviceId.toString()], startTime: start.toISOString(),
+      client: { firstName: "Public", lastName: "Client", phone: "+48999990002" } };
+    const submit = (body = payload) => fetch(`${baseUrl}/appointments`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+    assert.equal((await submit({ ...payload, startTime: "2020-01-01T10:00:00Z" })).status, 400);
+    await prisma.employee.update({ where: { id: employeeId }, data: { isActive: false } });
+    try { assert.equal((await submit()).status, 400); }
+    finally { await prisma.employee.update({ where: { id: employeeId }, data: { isActive: true } }); }
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const override = await prisma.employeeScheduleOverride.create({ data: { employeeId, workDate: day, isClosed: true } });
+    try { assert.equal((await submit()).status, 409); }
+    finally { await prisma.employeeScheduleOverride.delete({ where: { id: override.id } }); }
+  });
+
   test("creates an appointment through the admin API", async () => {
     const response = await apiFetch("/admin/appointments", {
       method: "POST",

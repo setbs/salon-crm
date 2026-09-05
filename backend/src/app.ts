@@ -1,5 +1,8 @@
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import { env } from "./config/env.js";
@@ -11,13 +14,29 @@ import { monobankWebhookRouter } from "./modules/payments/monobank.routes.js";
 import { HttpError } from "./utils/http-error.js";
 
 export const app = express();
+app.set("trust proxy", env.TRUST_PROXY_HOPS);
+app.disable("x-powered-by");
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use((request, response, next) => {
+  const started = Date.now();
+  response.locals.requestId = randomUUID();
+  response.setHeader("X-Request-Id", response.locals.requestId);
+  response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  response.on("finish", () => {
+    if (env.NODE_ENV === "production") {
+      console.info(JSON.stringify({ event: "http_request", requestId: response.locals.requestId,
+        method: request.method, route: request.route?.path ?? "unmatched", status: response.statusCode, durationMs: Date.now() - started }));
+    }
+  });
+  next();
+});
 
 const allowedOrigins = parseAllowedOrigins(env.FRONTEND_ORIGIN, env.STOREFRONT_ORIGIN);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin) || isLocalViteOrigin(origin)) {
+      if (!origin || allowedOrigins.has(origin) || (env.NODE_ENV === "development" && !process.env.RAILWAY_ENVIRONMENT_ID && isLocalViteOrigin(origin))) {
         callback(null, true);
         return;
       }
@@ -26,7 +45,19 @@ app.use(
     }
   })
 );
-app.use("/api/payments/monobank", express.raw({ type: "application/json" }), monobankWebhookRouter);
+const limiter = (limit: number, windowMs = 60_000) => rateLimit({
+  windowMs, limit, standardHeaders: "draft-7", legacyHeaders: false,
+  message: { message: "Too many requests. Please try again later." }
+});
+app.use("/api/auth/login", limiter(10, 15 * 60_000));
+app.use("/api/appointments", limiter(10, 15 * 60_000));
+app.use("/api/public/orders", limiter(120));
+app.post("/api/public/orders", limiter(10, 15 * 60_000));
+app.post("/api/public/orders/:id/pay", limiter(5, 15 * 60_000));
+app.post("/api/public/store-reviews", limiter(5, 60 * 60_000));
+app.use("/api/admin/uploads", limiter(20));
+app.use("/api/payments/monobank", limiter(120), express.raw({ type: "application/json", limit: "100kb" }), monobankWebhookRouter);
+app.use("/api", limiter(300));
 app.use(express.json());
 app.use("/uploads", express.static(path.resolve(process.cwd(), "public/uploads")));
 
@@ -55,7 +86,12 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
     return;
   }
 
-  console.error(error);
+  const parserStatus = error && typeof error === "object" && "type" in error ? error.type : undefined;
+  if (parserStatus === "entity.too.large" || parserStatus === "entity.parse.failed") {
+    response.status(parserStatus === "entity.too.large" ? 413 : 400).json({ message: "Invalid request body." });
+    return;
+  }
+  console.error(JSON.stringify({ event: "request_failed", requestId: response.locals.requestId, errorType: error instanceof Error ? error.name : "UnknownError" }));
   response.status(500).json({ message: "Internal server error." });
 });
 

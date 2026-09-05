@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "../../utils/http-error.js";
-import { type AuthenticatedUser, type CrmAuthenticatedUser, verifySessionToken } from "./auth.crypto.js";
+import { prisma } from "../../config/prisma.js";
+import { credentialVersion, type AuthenticatedUser, type CrmAuthenticatedUser, verifySessionToken } from "./auth.crypto.js";
 
 type AuthenticatedRequest = Request & {
   user?: CrmAuthenticatedUser;
@@ -19,6 +20,18 @@ export async function requireCrmUser(request: Request, _response: Response, next
 
     if (!isCrmAuthenticatedUser(user)) {
       throw new HttpError(403, "You do not have access to CRM.");
+    }
+
+    if (!/^[1-9]\d{0,18}$/.test(user.id)) {
+      throw new HttpError(401, "Invalid session.");
+    }
+    const current = await prisma.user.findUnique({
+      where: { id: BigInt(user.id) },
+      select: { role: true, passwordHash: true, employeeProfile: { select: { id: true, isActive: true } } }
+    });
+    if (!current || credentialVersion(current.passwordHash) !== user.credentialVersion || current.role !== user.role || (current.role === "EMPLOYEE" &&
+      (!current.employeeProfile?.isActive || current.employeeProfile.id.toString() !== user.employeeId))) {
+      throw new HttpError(401, "Session is no longer active. Please sign in again.");
     }
 
     (request as AuthenticatedRequest).user = user;

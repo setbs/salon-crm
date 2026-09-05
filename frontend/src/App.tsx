@@ -710,7 +710,7 @@ const publicText = {
     back: "Назад",
     chooseDateTime: "Оберіть дату і час",
     chooseVisitTime: "Оберіть, коли хочете завітати до салону.",
-    selectedForVisit: "обраний для цього візиту.",
+    selectedForVisit: "обрана для цього візиту.",
     visitSummary: "Підсумок візиту",
     employeeNotSelected: "Спеціаліст не обраний",
     date: "Дата",

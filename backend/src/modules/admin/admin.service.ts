@@ -1,6 +1,6 @@
 import { AppointmentStatus, PaymentMethod, PaymentStatus, Prisma, StockMovementType, StoreOrderStatus, UserRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { prisma } from "../../config/prisma.js";
@@ -101,6 +101,7 @@ type AppointmentDisplayExtras = {
 const allowedUploadTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const uploadImageMaxSize = 2200;
 const uploadWebpQuality = 82;
+let activeImageUploads = 0;
 const portfolioUploadDir = path.resolve(process.cwd(), "public/uploads/portfolio");
 const productUploadDir = path.resolve(process.cwd(), "public/uploads/products");
 
@@ -803,17 +804,32 @@ async function saveUploadedWebpImage({
     throw new HttpError(400, "Only JPG, PNG, WEBP, and GIF images can be uploaded.");
   }
 
-  if (buffer.length === 0) {
-    throw new HttpError(400, "Upload file is empty.");
+  if (buffer.length === 0 || buffer.length > 6 * 1024 * 1024) {
+    throw new HttpError(400, "Image must contain between 1 byte and 6 MB.");
   }
+
+  const rasterSignature = buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ||
+    buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    ["GIF87a", "GIF89a"].includes(buffer.toString("ascii", 0, 6)) ||
+    (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP");
+  if (!rasterSignature) throw new HttpError(400, "Only raster images are supported.");
 
   await mkdir(directory, { recursive: true });
 
   const fileName = `${Date.now()}-${randomUUID()}.webp`;
   const filePath = path.join(directory, fileName);
 
+  if (activeImageUploads >= 2) throw new HttpError(429, "Image processing is busy. Please try again shortly.");
+  activeImageUploads += 1;
+
   try {
-    await sharp(buffer, { animated: false })
+    const image = sharp(buffer, { animated: false, limitInputPixels: 40_000_000 });
+    const metadata = await image.metadata();
+    if (!metadata.format || !["jpeg", "png", "webp", "gif"].includes(metadata.format)) {
+      throw new Error("Unsupported image format.");
+    }
+    await image
+      .timeout({ seconds: 10 })
       .rotate()
       .resize({
         width: uploadImageMaxSize,
@@ -827,7 +843,10 @@ async function saveUploadedWebpImage({
       })
       .toFile(filePath);
   } catch {
+    await rm(filePath, { force: true }).catch(() => undefined);
     throw new HttpError(400, "Uploaded file is not a valid image.");
+  } finally {
+    activeImageUploads -= 1;
   }
 
   return fileName;

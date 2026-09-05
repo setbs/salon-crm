@@ -96,8 +96,8 @@ export function listClients(search?: string, employeeId?: bigint) {
         : {})
     },
     include: {
-      clientAppointments: { include: { payment: true } },
-      productSales: { include: { payment: true } },
+      clientAppointments: { where: { employeeId }, include: { payment: true } },
+      productSales: { where: { employeeId }, include: { payment: true } },
       nameAliases: { orderBy: { createdAt: "desc" } },
       emailAliases: { orderBy: { createdAt: "desc" } },
       clientNotes: { orderBy: { createdAt: "desc" }, take: 1 }

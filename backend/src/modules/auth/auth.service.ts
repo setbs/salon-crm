@@ -11,7 +11,7 @@ export async function login(input: z.infer<typeof loginSchema>) {
     include: { employeeProfile: true }
   });
 
-  if (!user || !verifyPassword(input.password, user.passwordHash)) {
+  if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
     throw new HttpError(401, "Invalid email or password.");
   }
 
@@ -19,7 +19,7 @@ export async function login(input: z.infer<typeof loginSchema>) {
     throw new HttpError(403, "You do not have access to CRM.");
   }
 
-  if (user.role === UserRole.EMPLOYEE && !user.employeeProfile) {
+  if (user.role === UserRole.EMPLOYEE && !user.employeeProfile?.isActive) {
     throw new HttpError(403, "Employee profile is not configured.");
   }
 
@@ -32,7 +32,7 @@ export async function login(input: z.infer<typeof loginSchema>) {
   };
 
   return {
-    token: await createSessionToken(sessionUser),
+    token: await createSessionToken(sessionUser, user.passwordHash),
     user: sessionUser
   };
 }
