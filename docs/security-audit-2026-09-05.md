@@ -1,5 +1,7 @@
 # Security audit: salon-crm + product-store
 
+Дополнение: H1 закрыт в локальном коде отдельной задачей. Контракт, миграция, ограничения legacy-заказов и новые проверки описаны в [order-ownership-h1.md](./order-ownership-h1.md). Упоминания открытого H1 ниже относятся к исходному снимку аудита до этого исправления; остальные находки не менялись.
+
 Дата: 2026-09-05. **Production readiness: пока не рекомендован приём реальных платежей.**
 
 Проверены исходники маршрутов, middleware, сервисов, Prisma schema и migrations, auth, uploads, Monobank, frontend API/рендеринг, deployment-файлы, доступная локальная git history, npm audit/outdated. Исправления находятся в рабочем дереве, не задеплоены. «Исправлено» ниже означает локальный код.
@@ -238,4 +240,3 @@ Production проверялся только HEAD-запросами. Railway Va
 - [Sharp: constructor/pixel limits](https://sharp.pixelplumbing.com/api-constructor/).
 - [Monobank acquiring API](https://api.monobank.ua/docs/acquiring.html), [invoice/webhook ordering](https://monobank.ua/api-docs/acquiring/integrations/marketplace-and-agents/post--api--merchant--invoice--create).
 - [qs advisory, patched 6.16.0](https://github.com/advisories/GHSA-4mjr-xmp4-gh2g).
-

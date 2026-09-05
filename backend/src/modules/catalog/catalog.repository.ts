@@ -183,7 +183,7 @@ export function insertStoreReview(input: { authorName: string; rating: number; c
   return prisma.storeReview.create({ data: input });
 }
 
-export async function insertStoreOrder(input: StoreOrderInput) {
+export async function insertStoreOrder(input: StoreOrderInput, accessTokenHash: string) {
   return prisma.$transaction(async (transaction) => {
     const productIds = input.items.map((item) => BigInt(item.productId));
     const products = await transaction.product.findMany({
@@ -202,6 +202,7 @@ export async function insertStoreOrder(input: StoreOrderInput) {
 
     return transaction.storeOrder.create({
       data: {
+        accessTokenHash,
         firstName: input.customer.firstName,
         lastName: input.customer.lastName,
         phone: input.customer.phone,

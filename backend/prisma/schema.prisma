@@ -451,6 +451,7 @@ model ProductComponentItem {
 
 model StoreOrder {
   id             BigInt              @id @default(autoincrement())
+  accessTokenHash String?            @map("access_token_hash") @db.VarChar(64)
   status         StoreOrderStatus    @default(PENDING)
   paymentStatus  StorePaymentStatus  @default(PENDING) @map("payment_status")
   paymentProvider String?            @map("payment_provider") @db.VarChar(50)

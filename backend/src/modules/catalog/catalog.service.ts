@@ -14,6 +14,7 @@ import {
   type PublicProductRow
 } from "./catalog.repository.js";
 import { HttpError } from "../../utils/http-error.js";
+import { createOrderAccess, requireOrderAccess } from "./order-access.js";
 import { createMonobankPaymentForOrder, getPublicStorePaymentStatus } from "../payments/monobank.service.js";
 import type { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 import type { z } from "zod";
@@ -99,8 +100,9 @@ export async function createStoreReview(input: z.infer<typeof storeReviewSchema>
 
 export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) {
   try {
-    const order = await insertStoreOrder(input);
-    return createMonobankPaymentForOrder(order.id);
+    const { accessToken, accessTokenHash } = createOrderAccess();
+    const order = await insertStoreOrder(input, accessTokenHash);
+    return { ...await createMonobankPaymentForOrder(order.id), accessToken };
   } catch (error) {
     if (error instanceof StoreOrderIssue) {
       if (error.code === "INSUFFICIENT_STOCK") throw new HttpError(409, `${error.productName ?? "Product"} is not available in the requested quantity.`);
@@ -110,12 +112,12 @@ export async function createStoreOrder(input: z.infer<typeof storeOrderSchema>) 
   }
 }
 
-export async function getStoreOrderPaymentStatus(idValue: string) {
-  return getPublicStorePaymentStatus(parsePublicOrderId(idValue));
+export async function getStoreOrderPaymentStatus(idValue: string, accessToken?: string) {
+  return getPublicStorePaymentStatus(await requireOrderAccess(idValue, accessToken));
 }
 
-export async function payStoreOrder(idValue: string) {
-  return createMonobankPaymentForOrder(parsePublicOrderId(idValue));
+export async function payStoreOrder(idValue: string, accessToken?: string) {
+  return createMonobankPaymentForOrder(await requireOrderAccess(idValue, accessToken));
 }
 
 export async function getProduct(idValue: string) {
@@ -194,12 +196,4 @@ function getPublicProductBadge(product: PublicProductRow): "new" | null {
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
   return product.createdAt >= twoWeeksAgo ? "new" : null;
-}
-
-function parsePublicOrderId(idValue: string) {
-  if (!/^\d+$/.test(idValue)) {
-    throw new HttpError(400, "Invalid order id.");
-  }
-
-  return BigInt(idValue);
 }

@@ -25,6 +25,7 @@ describe("Monobank signed events", { skip: !databaseUrl, concurrency: false }, (
       return Response.json({ key });
     });
     const order = await prisma.storeOrder.create({ data: {
+      accessTokenHash: (await import("../src/modules/catalog/order-access.js")).createOrderAccess().accessTokenHash,
       firstName: "Payment", lastName: "Test", phone: "0000000000",
       deliveryMethod: "PICKUP", totalAmount: 100, paymentAmount: 100
     } });
@@ -93,4 +94,3 @@ describe("Monobank signed events", { skip: !databaseUrl, concurrency: false }, (
     assert.equal(fetchMock.mock.callCount(), callsBefore);
   });
 });
-

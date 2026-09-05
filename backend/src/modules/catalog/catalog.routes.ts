@@ -5,6 +5,11 @@ import { storeOrderSchema, storeReviewSchema } from "./catalog.schemas.js";
 
 export const catalogRouter = Router();
 
+catalogRouter.use("/public/orders", (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 catalogRouter.get("/services", async (_request, response, next) => {
   try {
     response.json({ data: await getServices() });
@@ -79,7 +84,7 @@ catalogRouter.post("/public/orders", async (request, response, next) => {
 
 catalogRouter.get("/public/orders/:id/payment-status", async (request, response, next) => {
   try {
-    response.json({ data: await getStoreOrderPaymentStatus(request.params.id) });
+    response.json({ data: await getStoreOrderPaymentStatus(request.params.id, request.header("X-Order-Access-Token")) });
   } catch (error) {
     next(error);
   }
@@ -87,7 +92,7 @@ catalogRouter.get("/public/orders/:id/payment-status", async (request, response,
 
 catalogRouter.post("/public/orders/:id/pay", async (request, response, next) => {
   try {
-    response.json({ data: await payStoreOrder(request.params.id) });
+    response.json({ data: await payStoreOrder(request.params.id, request.header("X-Order-Access-Token")) });
   } catch (error) {
     next(error);
   }
