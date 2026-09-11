@@ -1744,7 +1744,7 @@ function ProductDetailDialog({
             {imageUrl ? <img alt={product.name} src={imageUrl} /> : <span>{product.brand?.slice(0, 2) || "SL"}</span>}
           </div>
           <div className="product-detail-copy">
-            <p>{product.description || (language === "uk" ? "Професійний салонний догляд, підібраний для домашньої рутини." : "Professional salon care selected for home routine support.")}</p>
+            <ProductDescription text={product.description || (language === "uk" ? "Професійний салонний догляд, підібраний для домашньої рутини." : "Professional salon care selected for home routine support.")} />
             <div className="product-detail-meta">
               <span>{product.category?.name ?? "Home care"}</span>
               <span>{formatProductVolume(product)}</span>
@@ -4199,3 +4199,4 @@ function BookingView({
     </main>
   );
 }
+import { ProductDescription } from "./components/ProductDescription";

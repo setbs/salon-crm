@@ -708,6 +708,11 @@ function ProductForm({
 }) {
   const t = useCrmT();
   const initialComponentIds = product?.components.map((component) => component.id) ?? [];
+  const [componentSearch, setComponentSearch] = useState("");
+  const componentQuery = componentSearch.trim().toLocaleLowerCase();
+  const visibleComponents = components.filter((component) =>
+    `${component.name} ${component.description ?? ""}`.toLocaleLowerCase().includes(componentQuery)
+  );
   const [form, setForm] = useState({
     categoryId: product?.categoryId ?? categories[0]?.id ?? "",
     brandId: product?.brandId ?? brands[0]?.id ?? "",
@@ -805,7 +810,7 @@ function ProductForm({
           <div className="product-visual-meta">
             <small>{previewCategory}</small>
             <strong>{previewName}</strong>
-            <p>{previewDescription}</p>
+            <ProductDescription text={previewDescription} />
             {previewQuote ? <blockquote>“{previewQuote}”</blockquote> : null}
             <b>{previewPrice}</b>
           </div>
@@ -852,10 +857,7 @@ function ProductForm({
             <span>{t("product")}</span>
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
           </label>
-          <label>
-            <span>{t("description")}</span>
-            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={7} />
-          </label>
+          <DescriptionEditor label={t("description")} value={form.description} onChange={(description) => setForm({ ...form, description })} />
           <label>
             <span>{t("productQuote")}</span>
             <textarea value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder={t("productQuotePlaceholder")} rows={3} />
@@ -919,8 +921,22 @@ function ProductForm({
         <fieldset className="component-picker">
           <legend>{t("keyComponents")}</legend>
           {components.length > 0 ? (
+            <div className="admin-search component-search">
+              <Search aria-hidden="true" size={17} />
+              <input
+                aria-label={t("searchComponents")}
+                placeholder={t("searchComponents")}
+                type="search"
+                value={componentSearch}
+                onChange={(event) => setComponentSearch(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
+              />
+            </div>
+          ) : null}
+          {components.length > 0 ? (
             <div className="component-picker-grid">
-              {components.map((component) => {
+              {visibleComponents.length === 0 ? <p className="form-note" role="status">{t("noComponentsFound")}</p> : null}
+              {visibleComponents.map((component) => {
                 const checked = form.componentIds.includes(component.id);
 
                 return (
@@ -1233,7 +1249,7 @@ function ProductInventoryModal({
           <div className="product-inventory-title">
             <p className="admin-kicker">{product.brand || t("noBrand")}</p>
             <h3>{product.name}</h3>
-            <span>{product.description || t("noProductDescription")}</span>
+            <CollapsibleProductDescription text={product.description || t("noProductDescription")} expandLabel={t("expandDescription")} collapseLabel={t("collapseDescription")} />
           </div>
           <StatusBadge status={stockLevel} />
         </section>
@@ -1573,3 +1589,6 @@ function toDateTimeFields(value: string) {
     time: date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
   };
 }
+import { ProductDescription } from "../../components/ProductDescription";
+import { DescriptionEditor } from "../../components/DescriptionEditor";
+import { CollapsibleProductDescription } from "../../components/CollapsibleProductDescription";

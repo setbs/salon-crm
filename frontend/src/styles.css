@@ -4132,7 +4132,7 @@ textarea {
 }
 
 .product-inventory-modal {
-  width: min(1040px, calc(100vw - 48px));
+  width: min(1440px, calc(100vw - 48px));
 }
 
 .appointment-detail {
@@ -4962,7 +4962,7 @@ textarea {
 
 .product-inventory-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -5186,6 +5186,7 @@ textarea {
 
 .product-visual-card {
   display: grid;
+  align-items: start;
   grid-template-columns: minmax(210px, 0.82fr) minmax(0, 1fr);
   gap: 18px;
   min-width: 0;
@@ -5201,7 +5202,9 @@ textarea {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 330px;
+  align-self: start;
+  height: 330px;
+  min-width: 0;
   overflow: hidden;
   border: 1px solid #e0d6c8;
   border-radius: 5px;
@@ -5307,6 +5310,19 @@ textarea {
 
 .product-visual-fields label:has(textarea) {
   grid-column: 1 / -1;
+}
+
+@media (min-width: 981px) {
+  .product-visual-fields > .description-editor,
+  .product-visual-fields > label:has(input[required]) {
+    grid-column: 1 / -1;
+  }
+
+  .product-visual-fields > .description-editor textarea {
+    min-height: 360px;
+    line-height: 1.55;
+    resize: vertical;
+  }
 }
 
 .product-form-inline {
@@ -6655,7 +6671,7 @@ textarea {
   }
 
   .product-visual-image {
-    min-height: 260px;
+    height: 260px;
   }
 
   .product-visual-image img {
@@ -6818,4 +6834,53 @@ textarea {
     gap: 6px;
     text-align: center;
   }
+}
+.formatted-description { min-width: 0; overflow-wrap: anywhere; line-height: 1.55; }
+.formatted-description p { margin: 0 0 0.8em; white-space: pre-line; }
+.formatted-description ul, .formatted-description ol { display: block; padding-left: 1.5em; margin: 0 0 0.8em; }
+.formatted-description ul { list-style: disc outside; }
+.formatted-description ol { list-style: decimal outside; }
+.formatted-description li { display: list-item; margin-bottom: 0.3em; }
+.formatted-description > :last-child { margin-bottom: 0; }
+.product-visual-meta .formatted-description strong { font-size: inherit; font-family: inherit; line-height: inherit; font-weight: 700; }
+.description-editor { display: grid; gap: 8px; min-width: 0; }
+.description-toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.description-toolbar button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid #b8ac9f; border-radius: 4px; color: #332820; background: transparent; cursor: pointer; }
+.description-toolbar button:hover { background: #e5ddd2; }
+.description-toolbar button:focus-visible { outline: 2px solid #526b58; outline-offset: 2px; }
+.component-picker .component-search { width: 100%; min-width: 0; margin-bottom: 12px; }
+.component-picker .component-search input { min-width: 0; width: 100%; }
+.product-inventory-detail,
+.product-inventory-title,
+.product-inventory-panel,
+.quick-stock-form,
+.quick-stock-form label { min-width: 0; }
+.product-inventory-panel { align-content: start; overflow-wrap: anywhere; }
+.product-inventory-modal .quick-stock-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.product-inventory-modal .quick-stock-form .segmented-control { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; min-width: 0; }
+.product-inventory-modal .segmented-control button { min-width: 0; white-space: normal; overflow-wrap: anywhere; padding: 8px; }
+.product-inventory-modal input,
+.product-inventory-modal select,
+.product-inventory-modal textarea { min-width: 0; max-width: 100%; width: 100%; }
+.product-inventory-modal .table-wrap { min-width: 0; }
+.product-inventory-modal .admin-table { min-width: 0; table-layout: fixed; }
+.product-inventory-modal .admin-table th,
+.product-inventory-modal .admin-table td { overflow-wrap: anywhere; }
+.inventory-description-preview,
+.inventory-description-toggle { display: none; }
+@media (max-width: 640px) {
+  .product-inventory-modal { width: calc(100vw - 24px); padding: 14px; }
+  .product-inventory-modal .product-inventory-hero { grid-template-columns: 72px minmax(0, 1fr); align-items: start; }
+  .product-inventory-hero > .status-badge { grid-column: 2; justify-self: start; }
+  .product-inventory-modal .product-inventory-image { width: 72px; }
+  .product-inventory-modal .product-inventory-title h3 { font-size: 1.3rem; overflow-wrap: anywhere; }
+  .product-inventory-modal .product-history-header,
+  .product-inventory-modal .product-card-actions { flex-wrap: wrap; }
+  .product-inventory-modal .quick-stock-grid { grid-template-columns: minmax(0, 1fr); }
+  .product-inventory-modal .admin-table { font-size: 0.8rem; }
+  .product-inventory-modal .admin-table th,
+  .product-inventory-modal .admin-table td { padding: 8px 4px; font-size: 0.75rem; }
+  .inventory-description[data-expanded="false"] .inventory-description-full { display: none; }
+  .inventory-description-preview { display: block; margin: 0; overflow-wrap: anywhere; }
+  .inventory-description-toggle { display: inline-flex; padding: 6px 0; border: 0; background: transparent; color: #516b4a; text-decoration: underline; cursor: pointer; }
 }
