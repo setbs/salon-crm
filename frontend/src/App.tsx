@@ -1,3 +1,4 @@
+import { formatDuration } from "./format-duration";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1046,7 +1047,7 @@ function HomeView({
         id: service.id,
         name: service.name,
         description: service.description,
-        durationLabel: `${service.durationMinutes} min`,
+        durationLabel: formatDuration(service.durationMinutes, language),
         priceLabel: formatServicePrice(service, language)
       };
 
@@ -3712,7 +3713,7 @@ function BookingView({
               <div>
                 <dt>{t("total")}</dt>
                 <dd>
-                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
+                  {formatSelectedServicesPrice(selectedServices, total.price)} · {formatDuration(total.duration, language)}
                 </dd>
               </div>
             </dl>
@@ -3807,7 +3808,7 @@ function BookingView({
                             </span>
                             <span className="service-choice-meta">
                               <strong>{formatServicePrice(service, language)}</strong>
-                              <small>{service.durationMinutes} min</small>
+                              <small>{formatDuration(service.durationMinutes, language)}</small>
                             </span>
                           </button>
                         );
@@ -3822,7 +3823,7 @@ function BookingView({
               <div className="summary">
                 <span>{selectedServices.length > 0 ? `${selectedServices.length} ${t("selected")}` : t("noServicesSelected")}</span>
                 <strong>{selectedServices.length > 0 ? formatSelectedServicesPrice(selectedServices, total.price) : t("chooseServices")}</strong>
-                <small>{total.duration > 0 ? `${total.duration} ${t("minTotal")}` : t("startWithServices")}</small>
+                <small>{total.duration > 0 ? formatDuration(total.duration, language) : t("startWithServices")}</small>
               </div>
               <button
                 className="primary-button icon-button"
@@ -4011,7 +4012,7 @@ function BookingView({
               <div>
                 <strong>{selectedServices.map((service) => service.name).join(", ")}</strong>
                 <span>
-                  {formatSelectedServicesPrice(selectedServices, total.price)} · {total.duration} min
+                  {formatSelectedServicesPrice(selectedServices, total.price)} · {formatDuration(total.duration, language)}
                 </span>
               </div>
               <small>{selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : t("employeeNotSelected")}</small>
@@ -4024,7 +4025,7 @@ function BookingView({
             <footer className="booksy-bottom-bar">
               <div className="summary">
                 <span>
-                  {selectedServices.length} {t("selected")} · {total.duration} min
+                  {selectedServices.length} {t("selected")} · {formatDuration(total.duration, language)}
                 </span>
                 <strong>{formatSelectedServicesPrice(selectedServices, total.price)}</strong>
               </div>
@@ -4055,7 +4056,7 @@ function BookingView({
                     </div>
                     <div>
                       <strong>{formatServicePrice(service, language)}</strong>
-                      <small>{service.durationMinutes} min</small>
+                      <small>{formatDuration(service.durationMinutes, language)}</small>
                     </div>
                   </div>
                 ))}

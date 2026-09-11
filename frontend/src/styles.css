@@ -235,9 +235,9 @@ p {
 
 .home-hero-content h1 {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(3rem, 7vw, 6.2rem);
+  font-size: 3.75rem;
   font-weight: 500;
-  line-height: 0.94;
+  line-height: 1.08;
   max-width: 780px;
 }
 
@@ -823,7 +823,7 @@ p {
 .home-price-list {
   display: grid;
   gap: 38px;
-  width: min(920px, 100%);
+  width: min(1120px, 100%);
   margin: 0 auto;
 }
 
@@ -878,15 +878,15 @@ p {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 66%;
+  left: 58%;
   width: 1px;
   background: #594235;
 }
 
 .price-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.34fr);
-  gap: 34px;
+  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  gap: 0;
   align-items: start;
 }
 
@@ -911,7 +911,23 @@ p {
 }
 
 .price-value {
-  padding-left: 12px;
+  padding-left: 24px;
+  text-align: right;
+}
+
+.price-service {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding-right: 24px;
+  overflow-wrap: anywhere;
+}
+
+.price-service > strong,
+.price-service > small {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .home-price-signature {
@@ -5740,11 +5756,11 @@ textarea {
   }
 
   .price-category-items::before {
-    left: 62%;
+    left: 58%;
   }
 
   .price-row {
-    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr);
+    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
   }
 
   .home-booking-strip,
@@ -6091,7 +6107,7 @@ textarea {
   }
 
   .home-hero-content {
-    padding: 56px 18px 64px;
+    padding: 132px 18px 48px;
   }
 
   .shop-hero-content {
@@ -6099,7 +6115,7 @@ textarea {
   }
 
   .home-hero-content h1 {
-    font-size: 3rem;
+    font-size: 2.25rem;
   }
 
   .shop-hero-content h1 {
@@ -6309,6 +6325,11 @@ textarea {
 
   .price-value {
     padding-left: 0;
+    text-align: left;
+  }
+
+  .price-service {
+    padding-right: 0;
   }
 
   .home-price-signature .sl-logo {
