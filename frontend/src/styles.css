@@ -4847,6 +4847,28 @@ textarea {
   min-width: 420px;
 }
 
+@media (min-width: 981px) {
+  .compact-management-grid {
+    align-items: start;
+  }
+
+  .compact-management-card {
+    align-content: start;
+  }
+
+  .compact-management-card .table-wrap {
+    max-height: 320px;
+    overflow: auto;
+  }
+
+  .compact-management-card .admin-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f6f1e8;
+  }
+}
+
 .inventory-summary-grid,
 .service-summary-grid {
   display: grid;
