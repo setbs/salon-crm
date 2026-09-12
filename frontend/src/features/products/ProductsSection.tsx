@@ -1,4 +1,4 @@
-import { Package, Search } from "lucide-react";
+import { Package, Search, Star, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createAdminProduct,
@@ -723,6 +723,7 @@ function ProductForm({
     brand: product?.brand ?? "",
     sku: product?.sku ?? "",
     imageUrl: product?.imageUrl ?? "",
+    imageUrls: product?.imageUrls?.length ? product.imageUrls : product?.imageUrl ? [product.imageUrl] : [],
     purpose: product?.purpose ?? ("both" as ProductPurpose),
     purchase: String(product?.purchase ?? 0),
     sale: String(product?.sale ?? 0),
@@ -736,17 +737,22 @@ function ProductForm({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
-  async function uploadFile(file: File | null) {
-    if (!file) {
+  async function uploadFiles(files: File[]) {
+    if (!files.length || isUploading) return;
+    if (form.imageUrls.length + files.length > 10) {
+      setUploadError(t("galleryLimit"));
       return;
     }
-
     setIsUploading(true);
     setUploadError("");
-
     try {
-      const result = await uploadAdminProductImage(file);
-      setForm((current) => ({ ...current, imageUrl: result.imageUrl }));
+      for (const file of files) {
+        const result = await uploadAdminProductImage(file);
+        setForm((current) => {
+          const imageUrls = [...current.imageUrls, result.imageUrl];
+          return { ...current, imageUrls, imageUrl: imageUrls[0] ?? "" };
+        });
+      }
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : t("couldNotUploadImage"));
     } finally {
@@ -766,6 +772,7 @@ function ProductForm({
       brand: brands.length > 0 ? undefined : form.brand || undefined,
       sku: form.sku || undefined,
       imageUrl: form.imageUrl,
+      imageUrls: form.imageUrls,
       purpose: form.purpose,
       purchase: Number(form.purchase),
       sale: Number(form.sale),
@@ -798,15 +805,28 @@ function ProductForm({
     <form className="admin-form product-visual-form" onSubmit={submit}>
       <section className="product-visual-editor" aria-label={t("productPreview")}>
         <div className="product-visual-card">
+          <div className="product-visual-media">
           <div className="product-visual-image">
             <span className="shop-volume-badge">{previewVolume}</span>
             {previewImageUrl ? <img alt={previewName} src={previewImageUrl} /> : <Package aria-hidden="true" size={46} />}
             <label className="product-visual-upload">
-              <input accept="image/jpeg,image/png,image/webp,image/gif" disabled={isUploading} onChange={(event) => void uploadFile(event.target.files?.[0] ?? null)} type="file" />
+              <input accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={isUploading || form.imageUrls.length >= 10} onChange={(event) => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} type="file" />
               <span>{isUploading ? t("uploading") : t("productPhoto")}</span>
             </label>
           </div>
-          {uploadError ? <p className="form-note">{uploadError}</p> : null}
+          <div className="product-gallery-editor">
+            {form.imageUrls.map((url, index) => <div className="product-gallery-tile" key={url}>
+              <img src={resolveMediaUrl(url)} alt={`${previewName} ${index + 1}`} />
+              <div className="product-gallery-actions">
+                <button type="button" disabled={isUploading} aria-pressed={index === 0} title={t("mainPhoto")} aria-label={t("mainPhoto")}
+                  onClick={() => setForm((current) => ({ ...current, imageUrl: url, imageUrls: [url, ...current.imageUrls.filter((image) => image !== url)] }))}><Star size={16} fill={index === 0 ? "currentColor" : "none"} /></button>
+                <button type="button" disabled={isUploading} title={t("removePhoto")} aria-label={t("removePhoto")}
+                  onClick={() => setForm((current) => { const imageUrls = current.imageUrls.filter((image) => image !== url); return { ...current, imageUrls, imageUrl: imageUrls[0] ?? "" }; })}><Trash2 size={16} /></button>
+              </div>
+            </div>)}
+          </div>
+          {uploadError ? <p className="form-note" role="alert">{uploadError}</p> : null}
+          </div>
           <div className="product-visual-meta">
             <small>{previewCategory}</small>
             <strong>{previewName}</strong>
@@ -1235,6 +1255,9 @@ function ProductInventoryModal({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const t = useCrmT();
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const gallery = product.imageUrls?.length ? product.imageUrls : product.imageUrl ? [product.imageUrl] : [];
+  useEffect(() => setPhotoIndex(0), [product.id]);
   const productMovements = buildStockMovementHistoryRows([product]);
   const latestMovements = productMovements.slice(0, 6);
   const stockLevel = getProductStockLevel(product);
@@ -1243,8 +1266,13 @@ function ProductInventoryModal({
     <AdminModal className="product-inventory-modal" title={t("productCard")} onClose={onClose}>
       <div className="product-inventory-detail">
         <section className="product-inventory-hero">
-          <div className="product-inventory-image">
-            {product.imageUrl ? <img alt={product.name} src={resolveMediaUrl(product.imageUrl)} /> : <Package aria-hidden="true" size={30} />}
+          <div className="product-inventory-media">
+            <div className="product-inventory-image">
+              {gallery.length ? <img alt={product.name} src={resolveMediaUrl(gallery[photoIndex] ?? gallery[0])} /> : <Package aria-hidden="true" size={30} />}
+            </div>
+            {gallery.length > 1 ? <div className="product-photo-thumbnails">
+              {gallery.map((url, index) => <button key={url} type="button" aria-label={`${t("productPhoto")} ${index + 1}`} aria-pressed={photoIndex === index} onClick={() => setPhotoIndex(index)}><img alt="" src={resolveMediaUrl(url)} /></button>)}
+            </div> : null}
           </div>
           <div className="product-inventory-title">
             <p className="admin-kicker">{product.brand || t("noBrand")}</p>

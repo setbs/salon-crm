@@ -236,6 +236,7 @@ export const createProductSchema = z.object({
   brand: z.string().trim().max(255).optional(),
   sku: z.string().trim().max(100).optional(),
   imageUrl: z.string().trim().max(1000).optional(),
+  imageUrls: z.array(z.string().trim().min(1).max(1000).refine((url) => url.startsWith("/uploads/products/") || /^https?:\/\//i.test(url), "Invalid image URL")).max(10).optional(),
   purpose: productPurposeSchema.optional(),
   purchase: z.coerce.number().nonnegative().optional(),
   sale: z.coerce.number().nonnegative(),

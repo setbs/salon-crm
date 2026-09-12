@@ -1020,6 +1020,7 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
       brand: content?.brandName ?? product.brand,
       sku: product.sku,
       imageUrl: content?.imageUrl ?? null,
+      imageUrls: product.imageUrls,
       name: product.name,
       description: product.description,
       quote: content?.quote ?? null,
@@ -1831,6 +1832,8 @@ async function resolveProductComponentIds(componentIdValues: string[] = []) {
 
 export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<typeof createProductSchema>) {
   assertAdmin(actor);
+  const imageUrls = [...new Set(input.imageUrls ?? (input.imageUrl ? [input.imageUrl] : []))];
+  input = { ...input, imageUrl: imageUrls[0] ?? "" };
 
   const categoryId = await resolveProductCategoryId(input, true);
   const brand = await resolveProductBrand(input);
@@ -1843,6 +1846,8 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
       description: input.description || null,
       brand: brand?.name ?? input.brand,
       sku: input.sku || null,
+      imageUrls,
+      imageUrl: imageUrls[0] ?? null,
       purchasePrice: input.purchase,
       sellingPrice: input.sale,
       stockQuantity: input.stock,
@@ -1920,6 +1925,8 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
         description: input.description === undefined ? undefined : input.description || null,
         brand: brand === undefined ? undefined : brand?.name ?? input.brand ?? null,
         sku: input.sku,
+        imageUrls: input.imageUrls !== undefined ? [...new Set(input.imageUrls)] : input.imageUrl === undefined ? undefined : input.imageUrl ? [input.imageUrl, ...current.imageUrls.filter((url) => url !== input.imageUrl)].slice(0, 10) : [],
+        imageUrl: input.imageUrls !== undefined ? input.imageUrls[0] ?? null : input.imageUrl === undefined ? undefined : input.imageUrl || null,
         purchasePrice: input.purchase,
         sellingPrice: input.sale,
         stockQuantity: input.stock,
@@ -1952,13 +1959,7 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
     return product;
   });
 
-  if (input.imageUrl !== undefined) {
-    await prisma.$executeRaw`
-      UPDATE products
-      SET image_url = ${input.imageUrl || null}
-      WHERE id = ${id}
-    `;
-  }
+
 
   const detailUpdates: Prisma.Sql[] = [];
 

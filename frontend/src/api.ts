@@ -45,6 +45,7 @@ export type PublicProduct = {
   description: string | null;
   quote: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   purpose: ProductPurpose;
   price: number;
   contentAmount: number | null;
@@ -474,6 +475,7 @@ export type AdminProduct = {
   brand: string | null;
   sku: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   name: string;
   description: string | null;
   quote: string | null;
@@ -714,6 +716,7 @@ export type ProductInput = {
   brand?: string;
   sku?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   purpose?: ProductPurpose;
   purchase?: number;
   sale: number;

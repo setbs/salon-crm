@@ -174,6 +174,7 @@ function formatPublicProduct(product: PublicProductRow, badge: "top" | "new" | n
     description: product.description,
     quote: product.quote,
     imageUrl: product.imageUrl,
+    imageUrls: product.imageUrls,
     purpose: product.purpose === "SALE" ? "sale" : product.purpose === "PROCEDURE" ? "procedure" : "both",
     price: Number(product.price),
     contentAmount: product.contentAmount ? Number(product.contentAmount) : null,

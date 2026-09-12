@@ -73,6 +73,7 @@ export function listPublicProducts() {
       p.description,
       p.quote,
       p.image_url AS "imageUrl",
+      p.image_urls AS "imageUrls",
       p.product_purpose AS "purpose",
       p.selling_price AS price,
       p.content_amount AS "contentAmount",
@@ -132,6 +133,7 @@ export function listPopularPublicProducts(limit = 30) {
       pc.description AS "categoryDescription", pc.image_url AS "categoryImageUrl",
       p.brand_id AS "brandId", pb.name AS "brandName", p.name, p.brand,
       p.description, p.quote, p.image_url AS "imageUrl", p.product_purpose AS "purpose",
+      p.image_urls AS "imageUrls",
       p.selling_price AS price, p.content_amount AS "contentAmount",
       lower(p.content_unit::text) AS "contentUnit", p.stock_quantity AS "stockQuantity",
       p.stock_content_amount AS "stockContentAmount",
@@ -259,6 +261,7 @@ export async function findPublicProductById(id: bigint) {
       p.description,
       p.quote,
       p.image_url AS "imageUrl",
+      p.image_urls AS "imageUrls",
       p.product_purpose AS "purpose",
       p.selling_price AS price,
       p.content_amount AS "contentAmount",
@@ -308,6 +311,7 @@ export type PublicProductRow = {
   description: string | null;
   quote: string | null;
   imageUrl: string | null;
+  imageUrls: string[];
   purpose: string;
   price: Prisma.Decimal;
   contentAmount: Prisma.Decimal | null;
