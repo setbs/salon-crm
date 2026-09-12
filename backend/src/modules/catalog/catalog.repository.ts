@@ -63,6 +63,7 @@ export function listPublicProducts() {
     SELECT
       p.id,
       p.category_id AS "categoryId",
+      p.subgroup_id AS "subgroupId", psg.name AS "subgroupName",
       pc.name AS "categoryName",
       pc.description AS "categoryDescription",
       pc.image_url AS "categoryImageUrl",
@@ -87,6 +88,7 @@ export function listPublicProducts() {
       NULL::numeric AS "popularityScore"
     FROM products p
     LEFT JOIN product_categories pc ON pc.id = p.category_id
+    LEFT JOIN product_subgroups psg ON psg.id = p.subgroup_id AND psg.category_id = p.category_id
     LEFT JOIN product_brands pb ON pb.id = p.brand_id
     WHERE p.is_active = true
       AND p.product_purpose IN ('SALE', 'BOTH')
@@ -129,7 +131,8 @@ export function listPopularPublicProducts(limit = 30) {
       GROUP BY sold.product_id
     )
     SELECT
-      p.id, p.category_id AS "categoryId", pc.name AS "categoryName",
+      p.id, p.category_id AS "categoryId",
+      p.subgroup_id AS "subgroupId", psg.name AS "subgroupName", pc.name AS "categoryName",
       pc.description AS "categoryDescription", pc.image_url AS "categoryImageUrl",
       p.brand_id AS "brandId", pb.name AS "brandName", p.name, p.brand,
       p.description, p.quote, p.image_url AS "imageUrl", p.product_purpose AS "purpose",
@@ -149,6 +152,7 @@ export function listPopularPublicProducts(limit = 30) {
       ) AS "popularityScore"
     FROM products p
     LEFT JOIN product_categories pc ON pc.id = p.category_id
+    LEFT JOIN product_subgroups psg ON psg.id = p.subgroup_id AND psg.category_id = p.category_id
     LEFT JOIN product_brands pb ON pb.id = p.brand_id
     LEFT JOIN sales ON sales.product_id = p.id
     WHERE p.is_active = true AND p.product_purpose IN ('SALE', 'BOTH') AND p.stock_quantity > 0
@@ -251,6 +255,7 @@ export async function findPublicProductById(id: bigint) {
     SELECT
       p.id,
       p.category_id AS "categoryId",
+      p.subgroup_id AS "subgroupId", psg.name AS "subgroupName",
       pc.name AS "categoryName",
       pc.description AS "categoryDescription",
       pc.image_url AS "categoryImageUrl",
@@ -275,6 +280,7 @@ export async function findPublicProductById(id: bigint) {
       NULL::numeric AS "popularityScore"
     FROM products p
     LEFT JOIN product_categories pc ON pc.id = p.category_id
+    LEFT JOIN product_subgroups psg ON psg.id = p.subgroup_id AND psg.category_id = p.category_id
     LEFT JOIN product_brands pb ON pb.id = p.brand_id
     WHERE p.id = ${id}
       AND p.is_active = true
@@ -299,6 +305,8 @@ export type ActiveServiceRow = {
 };
 
 export type PublicProductRow = {
+  subgroupId: bigint | null;
+  subgroupName: string | null;
   id: bigint;
   categoryId: bigint | null;
   categoryName: string | null;

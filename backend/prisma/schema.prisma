@@ -363,6 +363,8 @@ model ProductCategory {
 
   products Product[]
 
+  subgroups ProductSubgroup[]
+
   @@map("product_categories")
 }
 
@@ -405,6 +407,7 @@ model Product {
   id                 BigInt          @id @default(autoincrement())
   categoryId         BigInt?         @map("category_id")
   brandId            BigInt?         @map("brand_id")
+  subgroupId         BigInt?         @map("subgroup_id")
   name               String          @db.VarChar(255)
   brand              String?         @db.VarChar(255)
   description        String?
@@ -433,7 +436,9 @@ model Product {
   serviceConsumptionLogs ServiceConsumptionLog[]
   storeOrderItems       StoreOrderItem[]
   components            ProductComponentItem[]
+  subgroup              ProductSubgroup? @relation(fields: [subgroupId], references: [id], onDelete: SetNull)
 
+  @@index([subgroupId])
   @@map("products")
 }
 
@@ -708,4 +713,14 @@ model ReportExportLog {
   admin User @relation("AdminReportExports", fields: [adminUserId], references: [id])
 
   @@map("report_export_logs")
+}
+model ProductSubgroup {
+  id BigInt @id @default(autoincrement())
+  categoryId BigInt @map("category_id")
+  name String @db.VarChar(255)
+  category ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([categoryId, name])
+  @@map("product_subgroups")
 }

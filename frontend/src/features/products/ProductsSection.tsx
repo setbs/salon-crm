@@ -66,6 +66,8 @@ export function ProductsSection({
   runAction: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   const t = useCrmT();
+  const [subgroupCategoryId, setSubgroupCategoryId] = useState<string | null>(null);
+  const subgroupCategory = categories.find((category) => category.id === subgroupCategoryId);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingComponent, setIsCreatingComponent] = useState(false);
@@ -73,6 +75,7 @@ export function ProductsSection({
   const [isCreatingStockMovement, setIsCreatingStockMovement] = useState(false);
   const [productCategoryFilter, setProductCategoryFilter] = useState("all");
   const [productBrandFilter, setProductBrandFilter] = useState("all");
+  const [productSubgroupFilter, setProductSubgroupFilter] = useState("all");
   const [productPurposeFilter, setProductPurposeFilter] = useState("all");
   const [productSearch, setProductSearch] = useState("");
   const [productPage, setProductPage] = useState(1);
@@ -108,7 +111,8 @@ export function ProductsSection({
         value.toLowerCase().includes(normalizedProductSearch)
       );
 
-    return matchesCategory && matchesBrand && matchesPurpose && matchesSearch;
+    const matchesSubgroup = productSubgroupFilter === "all" || (productSubgroupFilter === "" ? !product.subgroupId : product.subgroupId === productSubgroupFilter);
+    return matchesCategory && matchesBrand && matchesPurpose && matchesSearch && matchesSubgroup;
   });
   const productPageCount = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PAGE_SIZE));
   const currentProductPage = Math.min(productPage, productPageCount);
@@ -119,7 +123,7 @@ export function ProductsSection({
 
   useEffect(() => {
     setProductPage(1);
-  }, [productBrandFilter, productCategoryFilter, productPurposeFilter, productSearch]);
+  }, [productBrandFilter, productCategoryFilter, productPurposeFilter, productSearch, productSubgroupFilter]);
 
   return (
     <div className="admin-grid">
@@ -141,7 +145,7 @@ export function ProductsSection({
                 categories.length > 0
                   ? categories.map((category) => [
                       <span className="product-category-thumb">{category.imageUrl ? <img alt="" src={resolveMediaUrl(category.imageUrl)} /> : <Package aria-hidden="true" size={16} />}</span>,
-                      category.name,
+                      <div>{category.name}<button className="subgroups-link" type="button" onClick={() => setSubgroupCategoryId(category.id)}>{t("subgroups")} ({category.subgroups?.length ?? 0})</button></div>,
                       String(category.productCount),
                       <InlineActions
                         labels={[t("edit"), t("delete")]}
@@ -262,7 +266,7 @@ export function ProductsSection({
           </label>
           <label>
             <span>{t("categoryFilter")}</span>
-            <select value={productCategoryFilter} onChange={(event) => setProductCategoryFilter(event.target.value)}>
+            <select value={productCategoryFilter} onChange={(event) => { setProductCategoryFilter(event.target.value); setProductSubgroupFilter("all"); }}>
               <option value="all">{t("allCategories")}</option>
               <option value="">{t("uncategorized")}</option>
               {categories.map((category) => (
@@ -270,6 +274,14 @@ export function ProductsSection({
                   {category.name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            <span>{t("subgroup")}</span>
+            <select value={productSubgroupFilter} onChange={event => setProductSubgroupFilter(event.target.value)}>
+              <option value="all">{t("allSubgroups")}</option>
+              <option value="">{t("noSubgroup")}</option>
+              {categories.filter(category => productCategoryFilter === "all" || category.id === productCategoryFilter).flatMap(category => (category.subgroups ?? []).map(group => <option key={group.id} value={group.id}>{category.name} / {group.name}</option>))}
             </select>
           </label>
           <label>
@@ -446,6 +458,7 @@ export function ProductsSection({
           />
         </AdminModal>
       ) : null}
+      {subgroupCategory ? <AdminModal title={`${t("subgroups")}: ${subgroupCategory.name}`} onClose={() => setSubgroupCategoryId(null)}><ProductSubgroups key={subgroupCategory.id} category={subgroupCategory} runAction={runAction} /></AdminModal> : null}
       {isCreatingProduct ? (
         <AdminModal className="product-editor-modal" title={t("newProduct")} onClose={() => setIsCreatingProduct(false)}>
           <ProductForm
@@ -715,6 +728,7 @@ function ProductForm({
   );
   const [form, setForm] = useState({
     categoryId: product?.categoryId ?? categories[0]?.id ?? "",
+    subgroupId: product?.subgroupId ?? "",
     brandId: product?.brandId ?? brands[0]?.id ?? "",
     category: product?.category ?? "",
     name: product?.name ?? "",
@@ -763,6 +777,7 @@ function ProductForm({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void onSubmit({
+      subgroupId: form.subgroupId,
       categoryId: categories.length > 0 ? form.categoryId : undefined,
       category: categories.length > 0 ? undefined : form.category,
       brandId: brands.length > 0 ? form.brandId : undefined,
@@ -840,7 +855,7 @@ function ProductForm({
           {categories.length > 0 ? (
             <label>
               <span>{t("category")}</span>
-              <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} required>
+              <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value, subgroupId: "" })} required>
                 <option value="">{t("selectCategory")}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
@@ -855,6 +870,13 @@ function ProductForm({
               <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required />
             </label>
           )}
+          <label>
+            <span>{t("subgroup")}</span>
+            <select value={form.subgroupId} disabled={!selectedCategory?.subgroups?.length} onChange={(event) => setForm({ ...form, subgroupId: event.target.value })}>
+              <option value="">{t("noSubgroup")}</option>
+              {selectedCategory?.subgroups?.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+          </label>
           {brands.length > 0 ? (
             <label>
               <span>{t("brand")}</span>
@@ -1620,3 +1642,4 @@ function toDateTimeFields(value: string) {
 import { ProductDescription } from "../../components/ProductDescription";
 import { DescriptionEditor } from "../../components/DescriptionEditor";
 import { CollapsibleProductDescription } from "../../components/CollapsibleProductDescription";
+import { ProductSubgroups } from "./ProductSubgroups";

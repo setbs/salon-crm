@@ -871,12 +871,14 @@ export async function getProductCategories(actor: CrmAuthenticatedUser) {
     ORDER BY category.name ASC
   `;
 
+  const subgroups = await prisma.productSubgroup.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { products: { where: { isActive: true } } } } } });
   return rows.map((category) => ({
     id: category.id.toString(),
     name: category.name,
     description: category.description,
     imageUrl: category.imageUrl,
-    productCount: category.productCount
+    productCount: category.productCount,
+    subgroups: subgroups.filter((group) => group.categoryId === category.id).map((group) => ({ id: group.id.toString(), name: group.name, productCount: group._count.products }))
   }));
 }
 
@@ -1015,6 +1017,7 @@ export async function getProducts(actor: CrmAuthenticatedUser) {
     return {
       id: product.id.toString(),
       categoryId: product.category?.id.toString() ?? null,
+      subgroupId: product.subgroupId?.toString() ?? null,
       category: product.category?.name ?? "Uncategorized",
       brandId: content?.brandId?.toString() ?? null,
       brand: content?.brandName ?? product.brand,
@@ -1836,12 +1839,14 @@ export async function createProduct(actor: CrmAuthenticatedUser, input: z.infer<
   input = { ...input, imageUrl: imageUrls[0] ?? "" };
 
   const categoryId = await resolveProductCategoryId(input, true);
+  const subgroupId = await resolveSubgroup(prisma, input.subgroupId, categoryId);
   const brand = await resolveProductBrand(input);
   await resolveProductComponentIds(input.componentIds);
 
   const product = await prisma.product.create({
     data: {
       categoryId,
+      subgroupId,
       name: input.name,
       description: input.description || null,
       brand: brand?.name ?? input.brand,
@@ -1921,6 +1926,7 @@ export async function updateProduct(actor: CrmAuthenticatedUser, id: bigint, inp
       where: { id },
       data: {
         categoryId,
+        subgroupId: input.subgroupId !== undefined ? await resolveSubgroup(tx, input.subgroupId, categoryId === undefined ? current.categoryId : categoryId) : categoryId !== undefined && categoryId !== current.categoryId ? null : undefined,
         name: input.name,
         description: input.description === undefined ? undefined : input.description || null,
         brand: brand === undefined ? undefined : brand?.name ?? input.brand ?? null,
@@ -4262,3 +4268,4 @@ function toClockTime(date: Date) {
 
   return `${hours}:${minutes}`;
 }
+import { resolveSubgroup } from "./product-subgroups.js";

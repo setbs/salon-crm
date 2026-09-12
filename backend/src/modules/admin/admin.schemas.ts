@@ -229,6 +229,7 @@ export const updateProductComponentSchema = createProductComponentSchema.partial
 export const createProductSchema = z.object({
   categoryId: idStringSchema.optional().or(z.literal("")),
   category: z.string().trim().max(255).optional(),
+  subgroupId: idStringSchema.optional().or(z.literal("")),
   brandId: idStringSchema.optional().or(z.literal("")),
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(5000).optional(),

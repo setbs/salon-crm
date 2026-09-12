@@ -175,6 +175,7 @@ function formatPublicProduct(product: PublicProductRow, badge: "top" | "new" | n
     quote: product.quote,
     imageUrl: product.imageUrl,
     imageUrls: product.imageUrls,
+    subgroup: product.subgroupId && product.subgroupName ? { id: product.subgroupId.toString(), name: product.subgroupName } : null,
     purpose: product.purpose === "SALE" ? "sale" : product.purpose === "PROCEDURE" ? "procedure" : "both",
     price: Number(product.price),
     contentAmount: product.contentAmount ? Number(product.contentAmount) : null,

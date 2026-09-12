@@ -6896,3 +6896,12 @@ textarea {
 .product-gallery-actions button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; background: transparent; color: #516b4a; border: 1px solid #d8cec1; border-radius: 3px; cursor: pointer; }
 .product-inventory-media .product-photo-thumbnails { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .product-inventory-media .product-inventory-image img { object-fit: contain; }
+.subgroups-link { display: block; border: 0; background: transparent; padding: 5px 0; color: #516b4a; text-decoration: underline; cursor: pointer; }
+.product-subgroups { display: grid; gap: 16px; min-width: 0; }
+.subgroup-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.subgroup-form label { display: grid; gap: 6px; flex: 1 1 180px; min-width: 0; }
+.subgroup-form input { width: 100%; min-width: 0; }
+.subgroup-list { max-height: 380px; overflow: auto; }
+.subgroup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 34px 34px; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #ddd4c8; }
+.subgroup-row > span { overflow-wrap: anywhere; }
+.subgroup-row .panel-action { padding: 0; }

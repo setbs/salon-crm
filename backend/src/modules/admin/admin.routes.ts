@@ -609,3 +609,26 @@ adminRouter.patch("/admin/settings", async (request, response, next) => {
     next(error);
   }
 });
+import { saveSubgroup, removeSubgroup, subgroupSchema, subgroupIdSchema } from "./product-subgroups.js";
+
+adminRouter.post("/admin/product-categories/:categoryId/subgroups", async (request, response, next) => {
+  try {
+    const categoryId = BigInt(subgroupIdSchema.parse(request.params.categoryId));
+    const { name } = subgroupSchema.parse(request.body);
+    response.status(201).json({ data: await saveSubgroup(getAuthenticatedUser(request), categoryId, name) });
+  } catch (error) { next(error); }
+});
+adminRouter.patch("/admin/product-categories/:categoryId/subgroups/:id", async (request, response, next) => {
+  try {
+    const categoryId = BigInt(subgroupIdSchema.parse(request.params.categoryId));
+    const id = BigInt(subgroupIdSchema.parse(request.params.id));
+    const { name } = subgroupSchema.parse(request.body);
+    response.json({ data: await saveSubgroup(getAuthenticatedUser(request), categoryId, name, id) });
+  } catch (error) { next(error); }
+});
+adminRouter.delete("/admin/product-categories/:categoryId/subgroups/:id", async (request, response, next) => {
+  try {
+    await removeSubgroup(getAuthenticatedUser(request), BigInt(subgroupIdSchema.parse(request.params.categoryId)), BigInt(subgroupIdSchema.parse(request.params.id)));
+    response.status(204).send();
+  } catch (error) { next(error); }
+});

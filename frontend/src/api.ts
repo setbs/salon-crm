@@ -473,6 +473,7 @@ export type AdminProduct = {
   brandId: string | null;
   category: string;
   brand: string | null;
+  subgroupId?: string | null;
   sku: string | null;
   imageUrl: string | null;
   imageUrls?: string[];
@@ -506,6 +507,7 @@ export type AdminProduct = {
 };
 
 export type AdminProductCategory = {
+  subgroups?: Array<{ id: string; name: string; productCount: number }>;
   id: string;
   name: string;
   description: string | null;
@@ -707,6 +709,7 @@ export type AdminAppointmentInput = {
 };
 
 export type ProductInput = {
+  subgroupId?: string;
   categoryId?: string;
   category?: string;
   brandId?: string;
@@ -1195,4 +1198,10 @@ function withAuthHeader(init: RequestInit): RequestInit {
       Authorization: `Bearer ${token}`
     }
   };
+}
+export async function saveAdminProductSubgroup(categoryId: string, name: string, id?: string) {
+  return request(`/api/admin/product-categories/${categoryId}/subgroups${id ? `/${id}` : ""}`, jsonRequest(id ? "PATCH" : "POST", { name }));
+}
+export async function deleteAdminProductSubgroup(categoryId: string, id: string) {
+  return request<void>(`/api/admin/product-categories/${categoryId}/subgroups/${id}`, { method: "DELETE" });
 }
